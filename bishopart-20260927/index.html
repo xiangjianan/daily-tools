@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>BISHOPART — watch the drunken bishop draw your SSH fingerprint's randomart</title>
+<meta name="description" content="Paste an SSH fingerprint (or a public key line) and watch the drunken bishop walk that draws OpenSSH's randomart — byte-exact, 100% local.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1117'/%3E%3Ctext x='16' y='23' font-size='18' text-anchor='middle' fill='%23f5a623'%3E%E2%99%9B%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0d1117; --bg2:#161b22; --bg3:#1f2630; --line:#2d3642;
+  --fg:#e6edf3; --dim:#8b98a5; --faint:#5a6673;
+  --amber:#f5a623; --cyan:#58c4dd; --green:#3fb950; --red:#f85149;
+  --mono:ui-monospace,'SF Mono','Cascadia Mono','JetBrains Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg); color:var(--fg);
+  font:16px/1.6 -apple-system,'Segoe UI',Roboto,'Noto Sans',sans-serif;
+  min-height:100vh;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.wrap{max-width:880px;margin:0 auto;padding:24px 16px 64px}
+header{text-align:center;margin-bottom:22px}
+h1{font-size:1.7rem;letter-spacing:.12em;font-family:var(--mono);color:var(--amber)}
+h1 .bp{display:inline-block;transform:translateY(-1px)}
+.tagline{color:var(--dim);font-size:.95rem;margin-top:4px}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+.card h2{font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-family:var(--mono);margin-bottom:10px}
+textarea{
+  width:100%;min-height:96px;background:var(--bg);color:var(--fg);
+  border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+  font:13px/1.5 var(--mono);resize:vertical;
+}
+textarea:focus{outline:none;border-color:var(--amber)}
+.hint{color:var(--faint);font-size:.8rem;margin-top:8px}
+.hint code{color:var(--dim);background:var(--bg3);padding:1px 5px;border-radius:4px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{
+  background:var(--bg3);border:1px solid var(--line);color:var(--cyan);
+  font:12px var(--mono);padding:5px 12px;border-radius:999px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.chip:hover,.chip:focus-visible{border-color:var(--cyan);outline:none}
+.msg{display:none;margin-top:10px;padding:10px 12px;border-radius:8px;font-size:.88rem}
+.msg.err{display:block;background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.4);color:#ffb3ae}
+.msg.ok{display:block;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.35);color:#7ee2a8}
+#result{display:none}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.badge{font:12px var(--mono);padding:4px 10px;border-radius:6px;background:var(--bg3);border:1px solid var(--line);color:var(--dim)}
+.badge b{color:var(--fg);font-weight:600}
+.badge.acc b{color:var(--amber)}
+.stage{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.gridwrap{flex:0 0 auto}
+#grid{display:grid;grid-template-columns:repeat(17,auto);gap:0;font-family:var(--mono);line-height:1;
+  border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg)}
+.cell{
+  width:26px;height:26px;display:flex;align-items:center;justify-content:center;
+  font-size:15px;color:var(--fg);position:relative;user-select:none;
+}
+.cell.heat{background:rgba(245,166,35,.08)}
+.cell.hot{background:rgba(245,166,35,.18)}
+.cell.se{color:var(--green);font-weight:700}
+.cell.cur{background:var(--amber);color:#0d1117;font-weight:700}
+.cell.trail{color:var(--amber)}
+.side{flex:1;min-width:250px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.stat{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.stat .v{font:600 1.15rem var(--mono);color:var(--amber)}
+.stat .k{font-size:.72rem;color:var(--faint);text-transform:uppercase;letter-spacing:.08em}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+button.btn{
+  background:var(--bg3);border:1px solid var(--line);color:var(--fg);
+  font:13px var(--mono);padding:8px 14px;border-radius:8px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+button.btn:hover{border-color:var(--amber);color:var(--amber)}
+button.btn.primary{background:var(--amber);border-color:var(--amber);color:#0d1117;font-weight:700}
+button.btn.primary:hover{filter:brightness(1.1);color:#0d1117}
+button.btn:disabled{opacity:.4;cursor:not-allowed}
+input[type=range]{accent-color:var(--amber);flex:1;min-width:120px}
+.speed{display:flex;align-items:center;gap:8px;font:12px var(--mono);color:var(--dim);width:100%;margin-top:4px}
+.checkline{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--dim);margin-top:10px;cursor:pointer;user-select:none}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+pre.art{
+  font:13px/1.25 var(--mono);color:var(--cyan);background:var(--bg);
+  border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto;
+  white-space:pre;margin:0;
+}
+.explain p{color:var(--dim);font-size:.92rem;margin-bottom:8px}
+.explain code{font:12px var(--mono);background:var(--bg3);padding:1px 5px;border-radius:4px;color:var(--cyan)}
+.explain .legend{font-family:var(--mono);font-size:.85rem;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;display:inline-block;margin-top:4px}
+.explain .legend b{color:var(--amber)}
+footer{text-align:center;color:var(--faint);font-size:.78rem;margin-top:28px}
+footer a{color:var(--dim)}
+@media (max-width:640px){
+  .cell{width:20px;height:20px;font-size:12px}
+  .stage{flex-direction:column}
+  .side{width:100%}
+  h1{font-size:1.35rem}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1><span class="bp">&#9821;</span> BISHOPART</h1>
+  <p class="tagline">Paste an SSH fingerprint — watch the drunken bishop walk that draws OpenSSH's randomart.</p>
+</header>
+
+<div class="card">
+  <h2>Fingerprint or public key</h2>
+  <textarea id="input" spellcheck="false" placeholder="SHA256:AxaASkx82eSlwOi9C9qYi8HDt4AMmW5/gKVwLxUM2xA&#10;&#10;…or a full line:&#10;ssh-ed25519 AAAAC3Nz... user@host&#10;…or MD5: 01:23:45:…"></textarea>
+  <div class="chips" id="chips">
+    <button class="chip" data-sample="ed">ed25519 sample</button>
+    <button class="chip" data-sample="rsa">RSA sample</button>
+    <button class="chip" data-sample="md5">MD5 sample</button>
+    <button class="chip" data-sample="keyline">full public key line</button>
+  </div>
+  <div class="msg err" id="err"></div>
+  <p class="hint">Accepts <code>SHA256:…</code> (base64), <code>MD5:aa:bb:…</code>, bare hex, or a whole <code>id_*.pub</code> line — the key blob is hashed with WebCrypto. Everything stays in your browser.</p>
+</div>
+
+<div id="result">
+  <div class="card">
+    <h2>Randomart</h2>
+    <div class="badges" id="badges"></div>
+    <div class="stage">
+      <div class="gridwrap">
+        <div id="grid" aria-label="randomart grid"></div>
+      </div>
+      <div class="side">
+        <div class="stats" id="stats"></div>
+        <div class="controls">
+          <button class="btn primary" id="playBtn">&#9654; Walk</button>
+          <button class="btn" id="stepBtn">Step</button>
+          <button class="btn" id="resetBtn">Reset</button>
+        </div>
+        <div class="speed">
+          <span>slow</span>
+          <input type="range" id="speed" min="4" max="200" value="60" aria-label="walk speed">
+          <span>fast</span>
+        </div>
+        <label class="checkline"><input type="checkbox" id="heatToggle" checked> heat shading (visit counts)</label>
+        <div class="actions">
+          <button class="btn" id="copyBtn">Copy art</button>
+          <button class="btn" id="pngBtn">Download PNG</button>
+        </div>
+        <p class="msg ok" id="copyOk" style="margin-top:10px">Copied ✓</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>ASCII output</h2>
+    <pre class="art" id="artText"></pre>
+  </div>
+
+  <div class="card explain">
+    <h2>Why does OpenSSH draw this?</h2>
+    <p>When you run <code>ssh-keygen -lv</code>, OpenSSH feeds every byte of the fingerprint's digest to a
+    <b>drunken bishop</b>. The bishop starts at the center of a 17×9 board and, for each 2-bit pair
+    (read LSB-first), steps diagonally: bit&nbsp;0 → right/left, bit&nbsp;1 → down/up. Steps off the board
+    are clamped to the edge. Every visited square accumulates a count, rendered with this ladder:</p>
+    <p class="legend">" <b>.</b> o + = * B O X @ % &amp; # / ^" — then <b>S</b> marks the start, <b>E</b> the final square.</p>
+    <p>Same key ⇒ same walk ⇒ same picture. That's the trick: you can recognize a server's key at a glance
+    without comparing hex strings character by character. BISHOPART reproduces the exact OpenSSH algorithm
+    (verified byte-for-byte against <code>ssh-keygen -lv</code>) and lets you watch the walk itself.</p>
+  </div>
+</div>
+
+<footer>BISHOPART · single-file, zero dependencies · runs 100% locally, nothing leaves your browser · <a href="https://github.com/xiangjianan/daily-tools/tree/main/bishopart-20260927" rel="noopener">source</a></footer>
+</div>
+
+<script>
+"use strict";
+/* ================= samples & constants ================= */
+var AUG = ' .o+=*BOX@%&#/^SE';
+var W = 17, H = 9, CX = 8, CY = 4;
+
+var SAMPLES = {
+  ed:  'SHA256:AxaASkx82eSlwOi9C9qYi8HDt4AMmW5/gKVwLxUM2xA',
+  rsa: 'SHA256:ZZ/2dNlJq+DQrPrk09pSr8x655o/lW55lD8AbXcucHw',
+  md5: 'MD5:e0:f8:61:d6:ab:7e:0a:42:e7:c0:b2:64:56:c1:49:02',
+  keyline: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA7gkubXw7+dXb2+TqBgTfyx3kdm216botFvvHOdo1or bishopart-demo'
+};
+
+/* ================= parsing ================= */
+function b64ToBytes(s) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/').replace(/\s+/g, '');
+  while (s.length % 4) s += '=';
+  var bin = atob(s);           // throws on invalid chars
+  var out = [];
+  for (var i = 0; i < bin.length; i++) out.push(bin.charCodeAt(i));
+  return out;
+}
+function hexToBytes(s) {
+  s = s.replace(/[\s:]/g, '').toLowerCase();
+  if (!/^[0-9a-f]+$/.test(s)) throw new Error('not hexadecimal');
+  if (s.length % 2) throw new Error('odd number of hex digits');
+  var out = [];
+  for (var i = 0; i < s.length; i += 2) out.push(parseInt(s.substr(i, 2), 16));
+  return out;
+}
+/* extract a digest from free-form user input; returns {bytes,label,kind,keyType,keyBits,fullLine} */
+function parseInput(raw) {
+  var text = (raw || '').trim();
+  if (!text) throw new Error('Paste an SSH fingerprint first — try a sample chip below.');
+  if (text.indexOf('\n') >= 0) text = text.split(/\r?\n/).filter(function (l) { return l.trim(); })[0].trim();
+
+  var res = { kind: '', label: '', bytes: null, keyType: '', keyBits: '', fullLine: '' };
+
+  /* full public key line: <type> <base64 blob> [comment] — hash the blob */
+  var lineParts = text.split(/\s+/);
+  var KEYTYPES = { 'ssh-ed25519': 'ED25519|256', 'ssh-rsa': 'RSA|2048', 'ssh-dss': 'DSA|1024',
+                   'ecdsa-sha2-nistp256': 'ECDSA|256', 'ecdsa-sha2-nistp384': 'ECDSA|384',
+                   'ecdsa-sha2-nistp521': 'ECDSA|521' };
+  if (lineParts.length >= 2 && KEYTYPES[lineParts[0]] && /^[A-Za-z0-9+/=_-]{40,}$/.test(lineParts[1])) {
+    var blob = b64ToBytes(lineParts[1]);
+    if (blob.length < 40) throw new Error('That key blob decodes to only ' + blob.length + ' bytes — too short to be a public key.');
+    res.kind = 'keyline';
+    res.keyType = KEYTYPES[lineParts[0]].split('|')[0];
+    res.keyBits = KEYTYPES[lineParts[0]].split('|')[1];
+    res.fullLine = text;
+    res.pendingBlob = blob;          // hashed async by caller
+    return res;
+  }
+
+  var m;
+  if ((m = text.match(/^SHA256:([A-Za-z0-9+/=_-]+)$/))) {
+    res.bytes = b64ToBytes(m[1]); res.kind = 'sha256'; res.label = 'SHA256';
+  } else if ((m = text.match(/^(?:MD5:)?([0-9a-fA:]{31,47})$/i)) && text.indexOf(':') >= 0) {
+    res.bytes = hexToBytes(m[1]); res.kind = 'md5'; res.label = 'MD5';
+  } else if (/^[0-9a-fA-F]{32}$/.test(text)) {
+    res.bytes = hexToBytes(text); res.kind = 'md5'; res.label = 'MD5';
+  } else if (/^[A-Za-z0-9+/=_-]{43}$/.test(text)) {
+    res.bytes = b64ToBytes(text); res.kind = 'sha256'; res.label = 'SHA256';
+  } else {
+    throw new Error('Unrecognized format. Expected SHA256:… , MD5:aa:bb:… , bare hex, or a full id_*.pub line.');
+  }
+  if (res.kind === 'sha256' && res.bytes.length !== 32)
+    throw new Error('SHA256 digest must decode to 32 bytes, got ' + res.bytes.length + '. Is the fingerprint truncated?');
+  if (res.kind === 'md5' && res.bytes.length !== 16)
+    throw new Error('MD5 digest must decode to 16 bytes, got ' + res.bytes.length + '.');
+  return res;
+}
+
+/* ================= drunken bishop (OpenSSH-compatible) ================= */
+/* returns {field, path} — path[i] = {x,y} after i-th increment (path[0] = start cell) */
+function walk(digest) {
+  var field = [];
+  for (var r = 0; r < H; r++) field.push(new Array(W).fill(0));
+  var x = CX, y = CY;
+  field[y][x]++;
+  var path = [{ x: x, y: y }];
+  for (var i = 0; i < digest.length; i++) {
+    var input = digest[i];
+    for (var j = 0; j < 4; j++) {
+      var pair = (input >> (2 * j)) & 3;
+      x += (pair & 1) ? 1 : -1;
+      y += (pair & 2) ? 1 : -1;
+      if (x < 0) x = 0; else if (x > W - 1) x = W - 1;
+      if (y < 0) y = 0; else if (y > H - 1) y = H - 1;
+      field[y][x]++;
+      path.push({ x: x, y: y });
+    }
+  }
+  return { field: field, path: path, endX: x, endY: y };
+}
+/* final art rows exactly like ssh-keygen -lv inner 9 lines */
+function artRows(field, endX, endY) {
+  var rows = [];
+  for (var r = 0; r < H; r++) {
+    var line = '';
+    for (var c = 0; c < W; c++) {
+      var ch;
+      if (r === CY && c === CX) ch = 'S';
+      else if (r === endY && c === endX) ch = 'E';
+      else ch = AUG[Math.min(field[r][c], 14)];
+      line += ch;
+    }
+    rows.push(line);
+  }
+  return rows;
+}
+function borderedArt(rows, leftLabel, rightLabel) {
+  var top = '+' + '--' + '[' + leftLabel + ']' + '-'.repeat(Math.max(2, 13 - leftLabel.length)) + '+';
+  var bot = '+' + '----' + '[' + rightLabel + ']' + '-'.repeat(Math.max(2, 12 - rightLabel.length)) + '+';
+  return [top].concat(rows.map(function (r) { return '|' + r + '|'; }), [bot]).join('\n');
+}
+
+/* ================= state & dom ================= */
+var $ = function (id) { return document.getElementById(id); };
+var state = { rows: null, field: null, path: null, step: 0, timer: null, label: '', meta: null };
+
+function showErr(msg) { var e = $('err'); e.textContent = msg; e.className = 'msg err'; }
+function clearErr() { $('err').className = 'msg'; }
+
+function statsFor(st) {
+  var max = 0, total = 0, revisits = 0;
+  for (var r = 0; r < H; r++) for (var c = 0; c < W; c++) {
+    if (st.field[r][c] > 0) {
+      total++;
+      if (st.field[r][c] > 1) revisits++;
+      if (st.field[r][c] > max) max = st.field[r][c];
+    }
+  }
+  return { max: max, squares: total, revisits: revisits, steps: st.path.length - 1 };
+}
+
+function renderGrid(st, upto) {
+  var g = $('grid');
+  if (!g.childNodes.length) {
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < W * H; i++) {
+      var d = document.createElement('div');
+      d.className = 'cell';
+      d.setAttribute('data-i', i);
+      frag.appendChild(d);
+    }
+    g.appendChild(frag);
+  }
+  var cells = g.children;
+  var showHeat = $('heatToggle').checked;
+  var cur = st.path[upto];
+  for (var r = 0; r < H; r++) {
+    for (var c = 0; c < W; c++) {
+      var el = cells[r * W + c];
+      var n = st.field[r][c];
+      var ch;
+      var isS = (r === CY && c === CX), isE = (r === st.endY && c === st.endX);
+      if (upto >= st.path.length - 1) {
+        ch = isS ? 'S' : isE ? 'E' : AUG[Math.min(n, 14)];
+      } else {
+        /* progressive reveal: cells not yet visited show as blank */
+        var vis = 0;
+        for (var k = 0; k <= upto; k++) if (st.path[k].x === c && st.path[k].y === r) vis++;
+        ch = vis ? AUG[Math.min(vis, 14)] : ' ';
+      }
+      el.textContent = ch;
+      var cls = 'cell';
+      if (upto >= st.path.length - 1 && showHeat) {
+        if (n >= Math.max(4, Math.ceil(st._stats.max * 0.5))) cls += ' hot';
+        else if (n >= 2) cls += ' heat';
+      }
+      if ((isS || isE) && upto >= st.path.length - 1) cls += ' se';
+      if (cur && cur.x === c && cur.y === r && upto < st.path.length - 1) cls += ' cur';
+      else if (ch !== ' ' && ch !== 'S' && ch !== 'E' && upto < st.path.length - 1) cls += ' trail';
+      if (el.className !== cls) el.className = cls;
+    }
+  }
+}
+
+function renderAll(res, digest) {
+  var st = walk(digest);
+  st._stats = statsFor(st);
+  st.label = res.label || 'SHA256';
+  state = st; state.step = 0; state.meta = res;
+
+  var leftLabel = res.keyType ? (res.keyType.toUpperCase() + ' ' + res.keyBits) : 'SSH';
+  var rightLabel = res.label;
+  $('artText').textContent = borderedArt(artRows(st.field, st.endX, st.endY), leftLabel, rightLabel);
+
+  var badges = [];
+  function badge(html, acc) { return '<span class="badge' + (acc ? ' acc' : '') + '">' + html + '</span>'; }
+  badges.push(badge('key <b>' + (res.keyType || 'digest-only') + '</b>'));
+  if (res.keyBits) badges.push(badge('bits <b>' + res.keyBits + '</b>'));
+  badges.push(badge('digest <b>' + res.label + ' · ' + digest.length + ' bytes</b>', true));
+  badges.push(badge('bishop steps <b>' + st._stats.steps + '</b>'));
+  $('badges').innerHTML = badges.join('');
+
+  var statsHtml = ''
+    + '<div class="stat"><div class="v">' + st._stats.steps + '</div><div class="k">diagonal steps</div></div>'
+    + '<div class="stat"><div class="v">' + st._stats.squares + '</div><div class="k">squares visited</div></div>'
+    + '<div class="stat"><div class="v">' + st._stats.revisits + '</div><div class="k">revisited squares</div></div>'
+    + '<div class="stat"><div class="v">' + st._stats.max + '</div><div class="k">busiest square</div></div>';
+  $('stats').innerHTML = statsHtml;
+
+  $('grid').innerHTML = '';
+  renderGrid(st, 0);
+  $('result').style.display = 'block';
+  setPlayState(false);
+  $('playBtn').textContent = '\u25B6 Walk';
+}
+
+/* ================= animation ================= */
+function setPlayState(playing) {
+  state.playing = playing;
+  if (state.timer) { clearInterval(state.timer); state.timer = null; }
+  if (playing) {
+    var speed = parseInt($('speed').value, 10);
+    state.timer = setInterval(function () {
+      if (state.step >= state.path.length - 1) { setPlayState(false); $('playBtn').textContent = '\u25B6 Walk'; return; }
+      state.step++;
+      renderGrid(state, state.step);
+    }, speed);
+  }
+}
+function onFinishReset() {
+  if (state.timer) setPlayState(false);
+  state.step = 0;
+  renderGrid(state, 0);
+  $('playBtn').textContent = '\u25B6 Walk';
+}
+
+/* ================= exports ================= */
+function currentArtText() {
+  var res = state.meta || {};
+  var leftLabel = res.keyType ? (res.keyType.toUpperCase() + ' ' + res.keyBits) : 'SSH';
+  return borderedArt(artRows(state.field, state.endX, state.endY), leftLabel, state.label);
+}
+function downloadPNG() {
+  var text = currentArtText();
+  var lines = text.split('\n');
+  var cw = 9.6, chh = 16, pad = 20;
+  var canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(pad * 2 + lines[0].length * cw);
+  canvas.height = Math.ceil(pad * 2 + lines.length * chh);
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = '14px ui-monospace, Menlo, Consolas, monospace';
+  ctx.textBaseline = 'top';
+  for (var r = 0; r < lines.length; r++) {
+    for (var c = 0; c < lines[r].length; c++) {
+      var chr = lines[r][c];
+      ctx.fillStyle = (chr === 'S' || chr === 'E') ? '#3fb950' : (chr === '+' || chr === '-' || chr === '|') ? '#8b98a5' : '#58c4dd';
+      ctx.fillText(chr, pad + c * cw, pad + r * chh);
+    }
+  }
+  var a = document.createElement('a');
+  a.download = 'randomart-' + Date.now() + '.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
+/* ================= events ================= */
+function digestReady(res, digest) {
+  clearErr();
+  renderAll(res, digest);
+  try { $('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {}
+}
+function run() {
+  var res;
+  try { res = parseInput($('input').value); }
+  catch (e) { showErr(e.message); $('result').style.display = 'none'; return; }
+  if (res.pendingBlob) {
+    if (!(window.crypto && crypto.subtle && crypto.subtle.digest)) {
+      showErr('WebCrypto unavailable in this context — paste the SHA256/MD5 fingerprint instead.');
+      return;
+    }
+    crypto.subtle.digest('SHA-256', new Uint8Array(res.pendingBlob).buffer).then(function (buf) {
+      var digest = Array.prototype.slice.call(new Uint8Array(buf));
+      res.label = 'SHA256';
+      digestReady(res, digest);
+    }).catch(function () { showErr('Hashing the key blob failed — paste the fingerprint instead.'); });
+  } else {
+    digestReady(res, res.bytes);
+  }
+}
+var debounceT = null;
+$('input').addEventListener('input', function () {
+  clearTimeout(debounceT);
+  debounceT = setTimeout(run, 350);
+});
+document.getElementById('chips').addEventListener('click', function (ev) {
+  var b = ev.target.closest('.chip');
+  if (!b) return;
+  $('input').value = SAMPLES[b.getAttribute('data-sample')];
+  run();
+});
+$('playBtn').addEventListener('click', function () {
+  if (state.step >= state.path.length - 1) { onFinishReset(); }
+  if (state.playing) { setPlayState(false); this.textContent = '\u25B6 Walk'; }
+  else { setPlayState(true); this.textContent = '\u23F8 Pause'; }
+});
+$('stepBtn').addEventListener('click', function () {
+  if (state.playing) { setPlayState(false); $('playBtn').textContent = '\u25B6 Walk'; }
+  if (state.step < state.path.length - 1) { state.step++; renderGrid(state, state.step); }
+});
+$('resetBtn').addEventListener('click', onFinishReset);
+$('speed').addEventListener('input', function () { if (state.playing) setPlayState(true); });
+$('heatToggle').addEventListener('change', function () { renderGrid(state, state.step); });
+$('copyBtn').addEventListener('click', function () {
+  var self = this;
+  var done = function () {
+    $('copyOk').style.display = 'block';
+    setTimeout(function () { $('copyOk').style.display = 'none'; }, 1600);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(currentArtText()).then(done, function () { fallbackCopy(); done(); });
+  } else { fallbackCopy(); done(); }
+  function fallbackCopy() {
+    var ta = document.createElement('textarea');
+    ta.value = currentArtText();
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+});
+$('pngBtn').addEventListener('click', downloadPNG);
+
+/* auto-run sample on load so the page never looks empty */
+$('input').value = SAMPLES.ed;
+run();
+</script>
+</body>
+</html>
