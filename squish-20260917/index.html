@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQUISH — how much air is in your text?</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f14'/%3E%3Crect x='5' y='20' width='22' height='7' rx='2' fill='%23ffb703'/%3E%3Crect x='5' y='12' width='22' height='5' rx='2' fill='%234cc9f0'/%3E%3Crect x='5' y='5' width='22' height='4' rx='2' fill='%2335d0ba'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0b0f14; --card:#121822; --card2:#0e141d; --line:#1e2a3a;
+    --text:#d7e2ee; --muted:#7b8ba0; --cyan:#4cc9f0; --teal:#35d0ba; --amber:#ffb703; --red:#ff6b6b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Courier New',monospace;
+    font-size:15px; line-height:1.5;
+    display:flex; flex-direction:column; align-items:center;
+    padding:20px 14px 40px;
+  }
+  header{width:100%;max-width:860px;text-align:center;margin-bottom:18px}
+  h1{
+    font-size:clamp(28px,6vw,44px); letter-spacing:.35em; color:var(--cyan);
+    text-shadow:0 0 18px rgba(76,201,240,.35);
+  }
+  h1 .z{color:var(--amber)}
+  .tagline{color:var(--muted);font-size:13px;margin-top:4px}
+  main{width:100%;max-width:860px;display:flex;flex-direction:column;gap:14px}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:14px 16px;
+  }
+  .card h2{font-size:12px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase;margin-bottom:10px}
+  textarea{
+    width:100%; min-height:170px; resize:vertical;
+    background:var(--card2); color:var(--text);
+    border:1px solid var(--line); border-radius:8px;
+    padding:12px; font:inherit; font-size:14px;
+  }
+  textarea:focus{outline:none;border-color:var(--cyan)}
+  textarea::placeholder{color:#4a586c}
+  .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
+  button{
+    font:inherit; font-size:13px; cursor:pointer;
+    background:var(--card2); color:var(--text);
+    border:1px solid var(--line); border-radius:8px; padding:8px 14px;
+    transition:border-color .15s,color .15s;
+  }
+  button:hover{border-color:var(--cyan);color:var(--cyan)}
+  button.primary{background:var(--cyan);border-color:var(--cyan);color:#04222e;font-weight:700}
+  button.primary:hover{background:#7ad9f5}
+  .hint{color:var(--muted);font-size:12px}
+  .verdict{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  }
+  .badge{
+    font-size:clamp(20px,4.5vw,28px); font-weight:700; letter-spacing:.12em;
+    padding:8px 18px; border-radius:10px; border:1px solid var(--line);
+    background:var(--card2); white-space:nowrap;
+  }
+  .verdict .desc{color:var(--muted);font-size:13px;flex:1;min-width:200px}
+  .big{font-size:clamp(26px,6vw,40px);font-weight:700;color:var(--amber)}
+  /* bars */
+  .bars{display:flex;flex-direction:column;gap:12px}
+  .barrow{display:grid;grid-template-columns:110px 1fr 92px;gap:10px;align-items:center}
+  .barlabel{font-size:12px;color:var(--muted);text-align:right}
+  .bartrack{background:var(--card2);border:1px solid var(--line);border-radius:6px;height:22px;overflow:hidden}
+  .barfill{height:100%;width:0%;border-radius:5px;transition:width .45s cubic-bezier(.2,.8,.2,1)}
+  .barfill.orig{background:linear-gradient(90deg,#2b6f8a,var(--cyan))}
+  .barfill.gz{background:linear-gradient(90deg,#2e8f7c,var(--teal))}
+  .barfill.ent{background:linear-gradient(90deg,#a67c00,var(--amber))}
+  .barval{font-size:12px;color:var(--text)}
+  /* stats grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+  .stat{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .stat .k{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+  .stat .v{font-size:20px;font-weight:700;color:var(--cyan);margin-top:2px}
+  .stat .v.small{font-size:15px}
+  /* repeats */
+  .repeats{display:flex;flex-direction:column;gap:6px}
+  .rep{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;
+       background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:13px}
+  .rep .w{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rep .c{color:var(--amber);font-weight:700}
+  .empty{color:var(--muted);font-size:13px;font-style:italic}
+  .error{color:var(--red);font-size:13px}
+  footer{margin-top:18px;color:var(--muted);font-size:12px;text-align:center;max-width:860px}
+  footer a{color:var(--muted)}
+  .toast{
+    position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(80px);
+    background:var(--teal);color:#03231d;font-weight:700;font-size:13px;
+    padding:10px 22px;border-radius:99px;opacity:0;transition:all .3s;pointer-events:none;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media(max-width:560px){
+    .barrow{grid-template-columns:76px 1fr 70px}
+    .barlabel{font-size:10px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>SQUIS<span class="z">H</span></h1>
+  <div class="tagline">how much air is in your text? · gzip + entropy X-ray, 100% in your browser</div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Input</h2>
+    <textarea id="input" placeholder="Paste any text — a prompt, an email, a README, a novel chapter… and watch it get squeezed.&#10;&#10;Everything stays on this device. Nothing is uploaded." spellcheck="false"></textarea>
+    <div class="row">
+      <button id="sampleBtn" type="button">Load sample</button>
+      <button id="clearBtn" type="button">Clear</button>
+      <span class="hint" id="charHint">0 chars</span>
+    </div>
+  </section>
+
+  <section class="card" id="verdictCard" style="display:none">
+    <h2>Verdict</h2>
+    <div class="verdict">
+      <span class="badge" id="badge">—</span>
+      <span class="big" id="savedPct">—</span>
+      <span class="desc" id="verdictDesc"></span>
+    </div>
+  </section>
+
+  <section class="card" id="barsCard" style="display:none">
+    <h2>Size X-ray</h2>
+    <div class="bars">
+      <div class="barrow">
+        <div class="barlabel">Original</div>
+        <div class="bartrack"><div class="barfill orig" id="barOrig"></div></div>
+        <div class="barval" id="valOrig">—</div>
+      </div>
+      <div class="barrow">
+        <div class="barlabel">Gzipped</div>
+        <div class="bartrack"><div class="barfill gz" id="barGz"></div></div>
+        <div class="barval" id="valGz">—</div>
+      </div>
+      <div class="barrow">
+        <div class="barlabel">Entropy floor</div>
+        <div class="bartrack"><div class="barfill ent" id="barEnt"></div></div>
+        <div class="barval" id="valEnt">—</div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:10px" id="floorNote"></div>
+  </section>
+
+  <section class="card" id="statsCard" style="display:none">
+    <h2>Stats</h2>
+    <div class="grid">
+      <div class="stat"><div class="k">Words</div><div class="v" id="stWords">—</div></div>
+      <div class="stat"><div class="k">Unique words</div><div class="v" id="stUnique">—</div></div>
+      <div class="stat"><div class="k">Vocabulary</div><div class="v" id="stVocab">—</div></div>
+      <div class="stat"><div class="k">Avg word len</div><div class="v" id="stAvgLen">—</div></div>
+      <div class="stat"><div class="k">Est. LLM tokens</div><div class="v" id="stTokens">—</div></div>
+      <div class="stat"><div class="k">If it were air…</div><div class="v small" id="stAir">—</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="repCard" style="display:none">
+    <h2>Repetition radar — top repeats</h2>
+    <div class="repeats" id="repeats"></div>
+  </section>
+
+  <div class="row">
+    <button class="primary" id="copyBtn" type="button" style="display:none">Copy report</button>
+    <span class="error" id="errBox"></span>
+  </div>
+</main>
+
+<footer>
+  gzip via native CompressionStream · Shannon entropy floor computed locally · zero upload, zero deps ·
+  <a href="https://github.com/xiangjianan/daily-tools/tree/main/squish-20260917">source</a>
+</footer>
+
+<div class="toast" id="toast">Report copied ✓</div>
+
+<script>
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var input = $('input');
+
+/* ---------- helpers ---------- */
+function fmtBytes(n){
+  if(n < 1024) return n + ' B';
+  if(n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1048576).toFixed(2) + ' MB';
+}
+function esc(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* Shannon entropy floor: bits/char * chars / 8 = theoretical order-0 minimum */
+function entropyFloorBytes(text){
+  if(!text.length) return 0;
+  var freq = Object.create(null);
+  var n = text.length;
+  for(var i=0;i<n;i++){
+    var ch = text[i];
+    freq[ch] = (freq[ch]||0)+1;
+  }
+  var bits = 0;
+  for(var k in freq){
+    var p = freq[k]/n;
+    bits -= p * Math.log2(p);
+  }
+  return Math.ceil(bits * n / 8);
+}
+
+/* top repeated words and 2-3 word phrases (repeated >=3 times, length>=3) */
+function topRepeats(text, max){
+  var words = text.toLowerCase().match(/[a-z0-9\u00c0-\u024f\u4e00-\u9fff']{3,}/g) || [];
+  var counts = Object.create(null);
+  var i, g;
+  // unigrams
+  for(i=0;i<words.length;i++){ counts[words[i]] = (counts[words[i]]||0)+1; }
+  // bigrams & trigrams
+  for(var n=2;n<=3;n++){
+    for(i=0;i+n<=words.length;i++){
+      g = words.slice(i,i+n).join(' ');
+      counts[g] = (counts[g]||0)+1;
+    }
+  }
+  var arr = [];
+  for(var key in counts){
+    if(counts[key] >= 3) arr.push([key, counts[key]]);
+  }
+  arr.sort(function(a,b){ return b[1]-a[1] || b[0].length-a[0].length; });
+  // drop phrases fully inside a higher-count longer phrase already listed? keep simple: dedupe substring containment
+  var out = [];
+  for(i=0;i<arr.length && out.length<max;i++){
+    var dup = false;
+    for(var j=0;j<out.length;j++){
+      if(out[j][0].indexOf(arr[i][0]) !== -1 || arr[i][0].indexOf(out[j][0]) !== -1){ dup = true; break; }
+    }
+    if(!dup) out.push(arr[i]);
+  }
+  return out;
+}
+
+/* gzip via native CompressionStream, returns Promise<Uint8Array> */
+function gzipBytes(text){
+  var bytes = new TextEncoder().encode(text);
+  var cs = new CompressionStream('gzip');
+  var stream = new Blob([bytes]).stream().pipeThrough(cs);
+  return new Response(stream).arrayBuffer().then(function(buf){
+    return new Uint8Array(buf);
+  });
+}
+
+/* ---------- verdict ---------- */
+function verdictFor(savedPct, size){
+  // savedPct: 0-100, percent smaller after gzip
+  if(size < 512){
+    return {name:'CRUMB', emoji:'🍞', color:'var(--muted)',
+      desc:'Too small to judge — gzip needs some bulk to show its moves. Paste at least a paragraph.'};
+  }
+  if(savedPct >= 75) return {name:'BALLOON', emoji:'🎈', color:'var(--red)',
+    desc:'Massively repetitive. Gzip just shaved off most of it — if a human wrote this, they repeated themselves a lot.'};
+  if(savedPct >= 55) return {name:'FLUFFY', emoji:'☁️', color:'var(--amber)',
+    desc:'Very compressible. Lots of boilerplate or repeated phrasing. An LLM token bill would feel it too.'};
+  if(savedPct >= 35) return {name:'PUFFY', emoji:'🫧', color:'var(--amber)',
+    desc:'Typical natural text territory. Normal redundancy — this is what ordinary prose looks like under X-ray.'};
+  if(savedPct >= 18) return {name:'DENSE', emoji:'🧱', color:'var(--teal)',
+    desc:'Fairly dense. Varied vocabulary or already-compressed style. Not much fat to trim.'};
+  return {name:'BRICK', emoji:'🧱', color:'var(--teal)',
+    desc:'Barely compressible — near-random or extremely information-dense. Every byte earns its keep.'};
+}
+
+/* ---------- render ---------- */
+var lastReport = '';
+
+function showError(msg){
+  $('errBox').textContent = msg;
+  ['verdictCard','barsCard','statsCard','repCard'].forEach(function(id){ $(id).style.display='none'; });
+  $('copyBtn').style.display='none';
+  lastReport = '';
+}
+
+function hideAll(){
+  ['verdictCard','barsCard','statsCard','repCard'].forEach(function(id){ $(id).style.display='none'; });
+  $('copyBtn').style.display='none';
+  $('errBox').textContent='';
+  lastReport = '';
+}
+
+function render(text){
+  var chars = text.length;
+  $('charHint').textContent = chars.toLocaleString() + ' chars';
+  if(chars === 0){ hideAll(); return; }
+
+  var origBytes = new TextEncoder().encode(text).length;
+  var entBytes = entropyFloorBytes(text);
+  var words = text.trim().match(/\S+/g) || [];
+  var wordArr = text.toLowerCase().match(/[a-z0-9\u00c0-\u024f\u4e00-\u9fff']{3,}/g) || [];
+  var uniq = Object.create(null);
+  wordArr.forEach(function(w){ uniq[w]=1; });
+  var uniqCount = Object.keys(uniq).length;
+
+  var gzPromise;
+  if(typeof CompressionStream === 'undefined'){
+    gzPromise = Promise.reject(new Error('no-compression-stream'));
+  } else {
+    gzPromise = gzipBytes(text);
+  }
+
+  gzPromise.then(function(gz){
+    var gzLen = gz.length;
+    var savedPct = origBytes > 0 ? Math.max(0, Math.round((1 - gzLen/origBytes)*100)) : 0;
+    var v = verdictFor(savedPct, origBytes);
+
+    $('errBox').textContent = '';
+    $('verdictCard').style.display='';
+    $('barsCard').style.display='';
+    $('statsCard').style.display='';
+    $('repCard').style.display='';
+
+    // verdict
+    var badge = $('badge');
+    badge.textContent = v.emoji + ' ' + v.name;
+    badge.style.color = v.color;
+    badge.style.borderColor = v.color;
+    $('savedPct').textContent = savedPct + '%';
+    $('savedPct').style.color = v.color;
+    $('verdictDesc').textContent = v.desc;
+
+    // bars (orig always 100%)
+    var pctGz = origBytes ? Math.max(1.5, gzLen/origBytes*100) : 0;
+    var pctEnt = origBytes ? Math.max(1.5, Math.min(100, entBytes/origBytes*100)) : 0;
+    $('barOrig').style.width='100%';
+    $('barGz').style.width = pctGz+'%';
+    $('barEnt').style.width = pctEnt+'%';
+    $('valOrig').textContent = fmtBytes(origBytes);
+    $('valGz').textContent = fmtBytes(gzLen)+' · '+pctGz.toFixed(0)+'%';
+    $('valEnt').textContent = fmtBytes(entBytes)+' · '+pctEnt.toFixed(0)+'%';
+    var gap = gzLen - entBytes;
+    $('floorNote').textContent = gap > 0
+      ? 'gzip is ' + fmtBytes(gap) + ' above the theoretical entropy floor — that gap is structure gzip\'s simple window can\'t reach.'
+      : 'gzip reached (or dipped under) the order-0 entropy floor — the text is extremely structured.';
+
+    // stats
+    $('stWords').textContent = words.length.toLocaleString();
+    $('stUnique').textContent = uniqCount.toLocaleString();
+    $('stVocab').textContent = wordArr.length ? Math.round(uniqCount/wordArr.length*100)+'%' : '—';
+    var avgLen = wordArr.length ? (wordArr.join('').length/wordArr.length) : 0;
+    $('stAvgLen').textContent = avgLen.toFixed(1);
+    var tokens = Math.ceil(chars/4);
+    $('stTokens').textContent = '~' + tokens.toLocaleString();
+    $('stAir').textContent = savedPct + '% air';
+
+    // repeats
+    var reps = topRepeats(text, 8);
+    var repEl = $('repeats');
+    if(reps.length === 0){
+      repEl.innerHTML = '<div class="empty">Nothing repeated 3+ times. Suspiciously varied writing… or a thesaurus was involved.</div>';
+    } else {
+      var html = '';
+      for(var i=0;i<reps.length;i++){
+        html += '<div class="rep"><span class="w">'+esc(reps[i][0])+'</span><span class="c">×'+reps[i][1]+'</span></div>';
+      }
+      repEl.innerHTML = html;
+    }
+
+    // report
+    lastReport = [
+      'SQUISH text X-ray report',
+      '────────────────────────',
+      'Verdict:        ' + v.name + ' (' + savedPct + '% smaller after gzip)',
+      'Original:       ' + fmtBytes(origBytes) + ' (' + chars.toLocaleString() + ' chars, ' + words.length.toLocaleString() + ' words)',
+      'Gzipped:        ' + fmtBytes(gzLen),
+      'Entropy floor:  ' + fmtBytes(entBytes),
+      'Vocabulary:     ' + uniqCount.toLocaleString() + ' unique words (' + (wordArr.length ? Math.round(uniqCount/wordArr.length*100) : 0) + '%)',
+      'Est. LLM tokens: ~' + tokens.toLocaleString(),
+      reps.length ? 'Top repeats:    ' + reps.slice(0,5).map(function(r){ return '"'+r[0]+'"×'+r[1]; }).join(', ') : 'Top repeats:    none (3+ threshold)',
+      '',
+      'Computed locally at ' + new Date().toISOString() + ' · squish'
+    ].join('\n');
+    $('copyBtn').style.display='';
+  }).catch(function(e){
+    if(e && e.message === 'no-compression-stream'){
+      showError('This browser lacks CompressionStream (needs Chrome/Edge 80+, Firefox 113+, Safari 16.4+). Stats below still work — but no gzip bar for you.');
+      // still show stats without gzip
+      showStatsOnly(text, origBytes, entBytes, words, wordArr, uniqCount);
+    } else {
+      showError('Compression failed: ' + (e && e.message ? e.message : e));
+    }
+  });
+}
+
+function showStatsOnly(text, origBytes, entBytes, words, wordArr, uniqCount){
+  $('barsCard').style.display='none';
+  $('statsCard').style.display='';
+  $('repCard').style.display='';
+  $('stWords').textContent = words.length.toLocaleString();
+  $('stUnique').textContent = uniqCount.toLocaleString();
+  $('stVocab').textContent = wordArr.length ? Math.round(uniqCount/wordArr.length*100)+'%' : '—';
+  var avgLen = wordArr.length ? (wordArr.join('').length/wordArr.length) : 0;
+  $('stAvgLen').textContent = avgLen.toFixed(1);
+  $('stTokens').textContent = '~' + Math.ceil(text.length/4).toLocaleString();
+  $('stAir').textContent = 'n/a';
+  var reps = topRepeats(text, 8);
+  $('repeats').innerHTML = reps.length
+    ? reps.map(function(r){ return '<div class="rep"><span class="w">'+esc(r[0])+'</span><span class="c">×'+r[1]+'</span></div>'; }).join('')
+    : '<div class="empty">Nothing repeated 3+ times.</div>';
+}
+
+/* ---------- wiring ---------- */
+var timer = null;
+input.addEventListener('input', function(){
+  clearTimeout(timer);
+  timer = setTimeout(function(){ render(input.value); }, 280);
+});
+
+$('clearBtn').addEventListener('click', function(){
+  input.value='';
+  hideAll();
+  $('charHint').textContent='0 chars';
+  input.focus();
+});
+
+$('sampleBtn').addEventListener('click', function(){
+  var lorem = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. ';
+  var parts = [];
+  for(var i=0;i<12;i++){
+    parts.push('Reminder ' + (i+1) + ': ' + lorem);
+    parts.push('Please review the document before the meeting. Please review the report before the meeting. Please review the plan before the meeting. ');
+  }
+  parts.push('Note: this sample is deliberately fluffy. A real novel chapter usually lands around PUFFY. A minified JS file would be a BRICK.');
+  input.value = parts.join('\n');
+  render(input.value);
+});
+
+$('copyBtn').addEventListener('click', function(){
+  if(!lastReport) return;
+  function done(){ 
+    var t = $('toast');
+    t.classList.add('show');
+    setTimeout(function(){ t.classList.remove('show'); }, 1600);
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(lastReport).then(done).catch(function(){ fallbackCopy(lastReport); done(); });
+  } else {
+    fallbackCopy(lastReport); done();
+  }
+});
+function fallbackCopy(text){
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta);
+  ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+}
+
+/* URL ?text= launch support */
+try{
+  var q = new URLSearchParams(location.search).get('text');
+  if(q){ input.value = q; render(q); }
+}catch(e){}
+})();
+</script>
+</body>
+</html>
