@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ProseWave · 文案心电图 — 把文章节奏画出来</title>
+<meta name="description" content="Paste text, see your prose rhythm as a waveform. Local-only, zero dependency. 文章节奏可视化：句子长度波形、单调警报、臃肿句定位。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
+<style>
+:root{
+  --bg:#0e1116;--panel:#151a21;--panel2:#1b222c;--line:#262f3b;
+  --fg:#e7edf4;--mut:#8a97a8;--acc:#4fd1a5;--acc2:#5aa2f0;
+  --warn:#f0b45a;--bad:#ef6b6b;--good:#4fd1a5;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg);color:var(--fg);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 14px max(40px,env(safe-area-inset-bottom));
+}
+main{max-width:860px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.3px}
+h1 .en{color:var(--acc);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 18px}
+.sub b{color:var(--fg);font-weight:600}
+
+/* input */
+textarea{
+  width:100%;min-height:150px;resize:vertical;
+  background:var(--panel);color:var(--fg);
+  border:1px solid var(--line);border-radius:10px;
+  padding:12px 14px;font:14px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,"PingFang SC",monospace;
+  outline:none;
+}
+textarea:focus{border-color:var(--acc)}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 4px}
+button{
+  background:var(--panel2);color:var(--fg);
+  border:1px solid var(--line);border-radius:8px;
+  padding:7px 13px;font-size:13px;cursor:pointer;
+  transition:border-color .15s,background .15s;
+}
+button:hover{border-color:var(--acc)}
+button:active{transform:translateY(1px)}
+button.primary{background:var(--acc);color:#08281d;border-color:var(--acc);font-weight:700}
+button.ghost{color:var(--mut)}
+.count{margin-left:auto;color:var(--mut);font-size:12px;font-variant-numeric:tabular-nums}
+.samples{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chip{
+  background:transparent;border:1px dashed var(--line);border-radius:999px;
+  color:var(--mut);font-size:12px;padding:5px 12px;cursor:pointer;
+}
+.chip:hover{color:var(--acc);border-color:var(--acc)}
+
+/* verdict */
+#verdict{margin-top:18px;display:none}
+.vcard{
+  border-radius:12px;padding:14px 16px;
+  border:1px solid var(--line);background:var(--panel);
+  display:flex;gap:12px;align-items:flex-start;
+}
+.vcard .face{font-size:30px;line-height:1.2}
+.vcard .what{font-weight:700;font-size:15px}
+.vcard .why{color:var(--mut);font-size:13px;margin-top:3px}
+.vcard.good{border-color:rgba(79,209,165,.45)}
+.vcard.good .what{color:var(--good)}
+.vcard.warn{border-color:rgba(240,180,90,.45)}
+.vcard.warn .what{color:var(--warn)}
+.vcard.bad{border-color:rgba(239,107,107,.5)}
+.vcard.bad .what{color:var(--bad)}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-top:12px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.stat .k{color:var(--mut);font-size:11.5px;letter-spacing:.4px}
+.stat .v{font-size:17px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.stat .v small{font-size:11px;color:var(--mut);font-weight:400}
+
+/* wave */
+#chartCard{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 14px 8px;overflow:hidden}
+#chartCard h2{font-size:13px;color:var(--mut);font-weight:600;letter-spacing:.5px;margin-bottom:8px}
+#waveWrap{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+#wave{display:block}
+#hoverBox{
+  margin-top:8px;min-height:44px;border-top:1px dashed var(--line);padding-top:8px;
+  color:var(--mut);font-size:12.5px;line-height:1.55;
+}
+#hoverBox b{color:var(--fg)}
+#hoverBox .no{color:var(--acc);font-variant-numeric:tabular-nums}
+
+/* findings */
+#findings{margin-top:14px;display:grid;gap:10px}
+.find{
+  background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--warn);
+  border-radius:10px;padding:11px 14px;font-size:13px;
+}
+.find.bad{border-left-color:var(--bad)}
+.find .t{font-weight:700;margin-bottom:3px}
+.find .t .ico{margin-right:6px}
+.find .d{color:var(--mut);line-height:1.6;word-break:break-word}
+.find .d q{color:var(--fg)}
+
+/* report */
+#repCard{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;display:none}
+#repCard h2{font-size:13px;color:var(--mut);font-weight:600;letter-spacing:.5px;margin-bottom:6px}
+#report{
+  font:12.5px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  white-space:pre-wrap;word-break:break-word;color:#b9c6d6;
+  background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;
+}
+
+footer{margin-top:30px;color:var(--mut);font-size:12px;line-height:1.8}
+footer a{color:var(--acc2);text-decoration:none}
+.hidden{display:none!important}
+
+@media (max-width:560px){
+  body{font-size:14px}
+  h1{font-size:18px}
+  .stat .v{font-size:15px}
+  .count{width:100%;margin-left:0;order:9}
+}
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="en">ProseWave</span> · 文案心电图 🩺</h1>
+  <p class="sub">粘贴文本，把<b>每句话的长度</b>画成心电图——好文章有起伏，坏文章一条直线。全部在你的浏览器本地完成，<b>文本不上传</b>。</p>
+
+  <textarea id="in" placeholder="在此粘贴你的文章、邮件、文案、作文……（中英文都可以）&#10;Paste your article, email, or copy — Chinese & English both fine." spellcheck="false"></textarea>
+
+  <div class="tools">
+    <button class="primary" id="goBtn">⚡ 生成心电图</button>
+    <button id="clearBtn" class="ghost">清空</button>
+    <button id="copyBtn" class="ghost" disabled>📋 复制报告</button>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="samples">
+    <button class="chip" data-s="good">✅ 好节奏样例（Provost 风）</button>
+    <button class="chip" data-s="bad">〰️ 单调节奏样例</button>
+    <button class="chip" data-s="cn">🀄 中文书样例</button>
+  </div>
+
+  <section id="verdict" aria-live="polite">
+    <div class="vcard" id="vcard">
+      <div class="face" id="vface">🩺</div>
+      <div>
+        <div class="what" id="vwhat"></div>
+        <div class="why" id="vwhy"></div>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div id="chartCard">
+      <h2>句子长度心电图 · 每格一句，越高越长（点击查看原句）</h2>
+      <div id="waveWrap"><svg id="wave" role="img" aria-label="sentence length waveform"></svg></div>
+      <div id="hoverBox">👆 把鼠标悬停或点在波形上，看这一句写了什么。</div>
+    </div>
+
+    <div id="findings"></div>
+
+    <div id="repCard">
+      <h2>Markdown 诊断报告（可复制）</h2>
+      <div id="report"></div>
+    </div>
+  </section>
+
+  <footer>
+    灵感：Gary Provost《100 Ways to Improve Your Writing》的句子节奏论 · HN 上持续走热的 local-first 纯前端小工具风。<br>
+    所有解析均在本地完成 · 单文件 · 零依赖 · <a href="https://github.com/xiangjianan/daily-tools/tree/main/prosewave-20260929" target="_blank" rel="noopener">源码 GitHub</a>
+  </footer>
+</main>
+
+<script>
+'use strict';
+/* ================= ProseWave core =================
+   句子切分 → 长度度量（CJK 按字符、拉丁按词）→ 节奏统计 → SVG 波形 → 诊断 */
+
+// ---------- sentence splitting (CJK + Latin aware) ----------
+function splitSentences(text){
+  var out = [];
+  // terminator: full-width 。！？…；; + half-width . ! ? ; newline — the run class excludes ALL of them
+  var re = /[^.。!！?？…；;\n]+[.。!！?？…；;]+|[^.。!！?？…；;\n]+/g;
+  var m;
+  while ((m = re.exec(text)) !== null){
+    var s = m[0].replace(/\s+/g,' ').trim();
+    if (!s) continue;
+    out.push(s);
+  }
+  return out;
+}
+
+// ---------- length metrics ----------
+// CJK chars count 1 each; latin words count 1 each; digits groups count 1.
+function sentLength(s){
+  var cjk = (s.match(/[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]/g) || []).length;
+  var rest = s.replace(/[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]/g,' ');
+  var words = rest.split(/[^\w\u00C0-\u024F\u0400-\u04FF]+/).filter(function(w){return w.length>0;}).length;
+  return cjk + words;
+}
+function isCJKText(text){
+  var cjk = (text.match(/[\u3400-\u9FFF\uF900-\uFAFF]/g) || []).length;
+  var latin = (text.match(/[A-Za-z]/g) || []).length;
+  return cjk > latin;
+}
+
+// ---------- rhythm stats ----------
+function computeStats(sents){
+  var lens = sents.map(sentLength);
+  var n = lens.length;
+  var sum = lens.reduce(function(a,b){return a+b;},0);
+  var mean = sum / n;
+  var variance = lens.reduce(function(a,b){return a+(b-mean)*(b-mean);},0)/n;
+  var sd = Math.sqrt(variance);
+  var maxLen = Math.max.apply(null,lens);
+  var maxIdx = lens.indexOf(maxLen);
+  var minLen = Math.min.apply(null,lens);
+  // monotony: longest run of sentences whose lengths differ <=2 from each other
+  var maxRun = 1, run = 1, runEnd = 0;
+  for (var i=1;i<n;i++){
+    if (Math.abs(lens[i]-lens[i-1])<=2){ run++; } else { run=1; }
+    if (run>maxRun){ maxRun=run; runEnd=i; }
+  }
+  return {
+    lens:lens, n:n, mean:mean, sd:sd, cv: mean>0 ? sd/mean : 0,
+    maxLen:maxLen, maxIdx:maxIdx, minLen:minLen,
+    maxRun:maxRun, runStart:runEnd-maxRun+1, runEnd:runEnd
+  };
+}
+
+// ---------- verdict ----------
+function buildVerdict(st, cjk){
+  var cv = st.cv, run = st.maxRun, n = st.n;
+  var unit = cjk ? '字' : '词';
+  if (n < 3){
+    return {level:'warn', face:'✍️',
+      what:'句子太少，还看不出节奏',
+      why:'再多写几句（至少 3 句）就能画出完整心电图了。'};
+  }
+  var monotony = run>=4 || (run>=3 && cv<0.18);
+  if (monotony){
+    return {level:'bad', face:'〰️',
+      what:'节奏单调：连续 '+run+' 句长度几乎一样',
+      why:'长短句交替才有呼吸感——试试把其中一句砍到 5 '+unit+' 以内，或把两句合并成一长句。'};
+  }
+  // a long sentence is only a problem when it is extreme (runaway), not when variance is high on purpose
+  if (st.maxLen > 120){
+    return {level:'warn', face:'🐘',
+      what:'有一条失控超长句（'+st.maxLen+' '+unit+'）',
+      why:'第 '+(st.maxIdx+1)+' 句超过 120 '+unit+'，读者几乎必然迷路——这段多半需要断句或拆分。'};
+  }
+  if (st.maxLen > st.mean*8 && st.maxLen > 60){
+    return {level:'warn', face:'🐘',
+      what:'整体有起伏，但第 '+(st.maxIdx+1)+' 句过于突兀',
+      why:'这一句 '+st.maxLen+' '+unit+'，是平均句长（'+Math.round(st.mean)+'）的 '+Math.round(st.maxLen/st.mean)+' 倍，考虑拆成两三句。'};
+  }
+  if (cv < 0.2){
+    return {level:'warn', face:'〰️',
+      what:'节奏偏平：句长变化太小（CV '+cv.toFixed(2)+'）',
+      why:'虽然没有严格等长，但整体像一条直线。试着插入一句极短的，读者会精神一振。'};
+  }
+  return {level:'good', face:'💚',
+    what:'节奏健康：有起伏、有呼吸',
+    why:'长短句交替良好（波动系数 '+cv.toFixed(2)+'，最长 '+st.maxLen+' '+unit+' / 最短 '+st.minLen+'）。'+(st.maxLen>st.mean*2.5?'注意第 '+(st.maxIdx+1)+' 句偏长，但尚在可读范围。':'保持这个节奏！')};
+}
+
+// ---------- findings ----------
+function buildFindings(st, sents, cjk){
+  var unit = cjk ? '字' : '词';
+  var out = [];
+  // 1. longest sentences (top up to 3, only those > mean*1.8 and > 18)
+  var arr = sents.map(function(s,i){return {s:s,i:i,len:st.lens[i]};});
+  var longs = arr.filter(function(x){return x.len > Math.max(18, st.mean*1.8);})
+                 .sort(function(a,b){return b.len-a.len;}).slice(0,3);
+  if (longs.length){
+    out.push({cls:'bad', ico:'🐘', t:'臃肿长句（建议拆分）',
+      d: longs.map(function(x){
+        var snip = x.s.length>64 ? x.s.slice(0,64)+'…' : x.s;
+        return '第 '+(x.i+1)+' 句 · '+x.len+' '+unit+'：«'+snip+'»';
+      }).join('<br>')});
+  }
+  // 2. monotony strip
+  if (st.maxRun>=3 && st.n>=3){
+    out.push({cls:'warn', ico:'〰️', t:'等长句连击 ×'+st.maxRun,
+      d:'第 '+(st.runStart+1)+'–'+(st.runEnd+1)+' 句长度几乎相同（±2 '+unit+'）。Gary Provost 说：「连续五个词数相同的句子，读者会睡着。」'});
+  }
+  // 3. ultra-short punch count
+  var shorts = arr.filter(function(x){return x.len<=4;}).length;
+  if (shorts>=2){
+    out.push({cls:'warn', ico:'⚡', t:'短句爆发 ×'+shorts,
+      d: shorts+' 句 ≤4 '+unit+'。短句是武器，多而不乱才有力；如果连续出现，考虑合并。'});
+  }
+  // 4. no punctuation at all in a huge run
+  if (st.n>=1 && st.maxLen>120){
+    out.push({cls:'bad', ico:'🌊', t:'最大一句超过 120 '+unit,
+      d:'这句可能是忘记断句，或者需要拆成多句。长度：'+st.maxLen+' '+unit+'。'});
+  }
+  return out;
+}
+
+// ---------- markdown report ----------
+function buildReport(st, sents, cjk, verdict){
+  var unit = cjk ? '字' : '词';
+  var bars = st.lens.slice(0,60).map(function(l){
+    var k = Math.max(1, Math.min(24, Math.round(l/ Math.max(st.maxLen,1) *24)));
+    return '▇'.repeat(k);
+  });
+  var lines = [];
+  lines.push('## ProseWave 节奏诊断');
+  lines.push('');
+  lines.push('- 句子数：'+st.n);
+  lines.push('- 平均句长：'+Math.round(st.mean)+' '+unit);
+  lines.push('- 最长 / 最短：'+st.maxLen+' / '+st.minLen+' '+unit);
+  lines.push('- 波动系数 CV：'+st.cv.toFixed(2)+'（>0.35 说明节奏有起伏）');
+  lines.push('- 最长等长连击：'+st.maxRun+' 句');
+  lines.push('- 诊断：'+verdict.what);
+  lines.push('');
+  lines.push('句长波形：');
+  lines.push('```');
+  lines.push(bars.join('\n'));
+  lines.push('```');
+  if (st.maxRun>=3) {
+    lines.push('⚠️ 连续 '+(st.runEnd-st.runStart+1)+' 句长度几乎一样（第 '+(st.runStart+1)+'–'+(st.runEnd+1)+' 句），建议打破节奏。');
+  }
+  if (st.maxLen>Math.max(40, st.mean*2.5)){
+    lines.push('⚠️ 第 '+(st.maxIdx+1)+' 句过长（'+st.maxLen+' '+unit+'），建议拆分。');
+  }
+  return lines.join('\n');
+}
+
+/* ================= rendering ================= */
+var $ = function(id){return document.getElementById(id);};
+var current = null; // {sents, st, cjk, report}
+
+function renderVerdict(v){
+  var card = $('vcard');
+  card.className = 'vcard ' + v.level;
+  $('vface').textContent = v.face;
+  $('vwhat').textContent = v.what;
+  $('vwhy').textContent = v.why;
+}
+
+function renderStats(st, cjk){
+  var unit = cjk ? '字' : '词';
+  var items = [
+    ['句子数', st.n, ''],
+    ['平均句长', Math.round(st.mean), ' '+unit],
+    ['最长句', st.maxLen, ' '+unit],
+    ['最短句', st.minLen, ' '+unit],
+    ['波动系数 CV', st.cv.toFixed(2), st.cv>0.35?' 有起伏':' 偏平'],
+    ['等长连击', st.maxRun, ' 句']
+  ];
+  $('stats').innerHTML = items.map(function(it){
+    return '<div class="stat"><div class="k">'+it[0]+'</div><div class="v">'+it[1]+'<small>'+it[2]+'</small></div></div>';
+  }).join('');
+}
+
+var BAR_W = 14, BAR_GAP = 4, CHART_H = 120;
+
+function renderWave(st, sents){
+  var svg = $('wave');
+  var n = st.lens.length;
+  var width = Math.max(n*(BAR_W+BAR_GAP), 240);
+  var unit = current.cjk ? '字' : '词';
+  var maxL = st.maxLen;
+  var NS = 'http://www.w3.org/2000/svg';
+  svg.setAttribute('width', width);
+  svg.setAttribute('height', CHART_H + 18);
+  svg.setAttribute('viewBox', '0 0 ' + width + ' ' + (CHART_H + 18));
+  var parts = [];
+  // baseline
+  parts.push('<line x1="0" y1="'+(CHART_H+4)+'" x2="'+width+'" y2="'+(CHART_H+4)+'" stroke="#262f3b" stroke-width="1"/>');
+  for (var i=0;i<n;i++){
+    var l = st.lens[i];
+    var h = Math.max(3, Math.round(l/maxL * (CHART_H-10)));
+    var x = i*(BAR_W+BAR_GAP);
+    var y = CHART_H + 4 - h;
+    var color;
+    if (l > Math.max(18, st.mean*1.8)) color = 'var(--bad)';
+    else if (l <= 4) color = 'var(--warn)';
+    else color = 'var(--acc)';
+    var op = 0.55 + 0.45 * (h/(CHART_H-10));
+    parts.push('<rect class="bar" data-i="'+i+'" x="'+x+'" y="'+y+'" width="'+BAR_W+'" height="'+h+
+      '" rx="2.5" fill="'+color+'" fill-opacity="'+op.toFixed(2)+'"><title>'+(i+1)+'</title></rect>');
+    // x labels every 10
+    if ((i+1)%10===0){
+      parts.push('<text x="'+(x+BAR_W/2)+'" y="'+(CHART_H+16)+'" fill="#8a97a8" font-size="9" text-anchor="middle">'+(i+1)+'</text>');
+    }
+  }
+  // mean line
+  var my = CHART_H + 4 - Math.max(3, Math.round(st.mean/maxL*(CHART_H-10)));
+  parts.push('<line x1="0" y1="'+my+'" x2="'+width+'" y2="'+my+'" stroke="#5aa2f0" stroke-width="1" stroke-dasharray="5 4" opacity="0.75"/>');
+  parts.push('<text x="'+(width-4)+'" y="'+(my-4)+'" fill="#5aa2f0" font-size="9.5" text-anchor="end">平均 '+Math.round(st.mean)+' '+unit+'</text>');
+  svg.innerHTML = parts.join('');
+}
+
+function showSentence(i){
+  var s = current.sents[i];
+  var unit = current.cjk ? '字' : '词';
+  var snip = s.length>220 ? s.slice(0,220)+'…' : s;
+  $('hoverBox').innerHTML = '<span class="no">第 '+(i+1)+' 句 · '+current.st.lens[i]+' '+unit+'</span><br><b>'+escapeHtml(snip)+'</b>';
+}
+function escapeHtml(t){
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderFindings(list){
+  var box = $('findings');
+  if (!list.length){
+    box.innerHTML = '<div class="find" style="border-left-color:var(--good)"><div class="t"><span class="ico">✨</span>没有发现明显问题</div><div class="d">句子长度有起伏，也没有失控的超长句。继续保持。</div></div>';
+    return;
+  }
+  box.innerHTML = list.map(function(f){
+    return '<div class="find '+f.cls+'"><div class="t"><span class="ico">'+f.ico+'</span>'+f.t+'</div><div class="d">'+f.d+'</div></div>';
+  }).join('');
+}
+
+function analyze(){
+  var text = $('in').value;
+  $('count').textContent = text.trim() ? (text.length+' 字符') : '';
+  var sents = splitSentences(text);
+  if (!sents.length){
+    hideResults();
+    return;
+  }
+  if (sents.length===1 && sentLength(sents[0])<3){
+    hideResults();
+    return;
+  }
+  var cjk = isCJKText(text);
+  var st = computeStats(sents);
+  var verdict = buildVerdict(st, cjk);
+  var findings = buildFindings(st, sents, cjk);
+  var report = buildReport(st, sents, cjk, verdict);
+  current = {sents:sents, st:st, cjk:cjk, report:report, verdict:verdict};
+  $('verdict').style.display = 'block';
+  renderVerdict(verdict);
+  renderStats(st, cjk);
+  renderWave(st, sents);
+  renderFindings(findings);
+  $('report').textContent = report;
+  $('repCard').style.display = 'block';
+  $('copyBtn').disabled = false;
+}
+function hideResults(){
+  current = null;
+  $('verdict').style.display = 'none';
+  $('repCard').style.display = 'none';
+  $('copyBtn').disabled = true;
+}
+
+/* ================= samples ================= */
+var SAMPLES = {
+  good: "Vary sentence length. Short sentences read fast. They punch. Medium sentences carry the idea forward with a steady, comfortable rhythm that feels natural to the ear. And then, when everything has been flowing along smoothly for a while, a very long sentence arrives — it gathers clauses the way a river gathers rain, it slows the reader down deliberately, it builds a small world of its own — before the end snaps shut. Vary. Sentence. Length.",
+  bad: "The team held a meeting on Monday morning to discuss the quarterly roadmap. The manager presented the key metrics to everyone in the room. The engineers listened carefully and took detailed notes during the talk. The designers shared their latest mockups after the meeting ended. The team agreed to review the plan again next week.",
+  cn: "他推开门。雨停了。巷子里的青石板泛着光，像刚被人擦过一遍。他记得很多年前，也是这样的雨后，母亲牵着他的手走过这条巷子，去街口买一笼热气腾腾的包子，包子铺的老头总要多塞给他们一个，说是刚出笼破了皮的，不好卖，但好吃。如今铺子没了，老头也没了，巷子还在。他站了很久，然后转身离开。"
+};
+
+/* ================= events ================= */
+$('goBtn').addEventListener('click', analyze);
+$('clearBtn').addEventListener('click', function(){
+  $('in').value=''; $('count').textContent=''; hideResults(); $('in').focus();
+});
+$('copyBtn').addEventListener('click', function(){
+  if (!current) return;
+  var btn = this;
+  var done = function(ok){
+    btn.textContent = ok ? '✅ 已复制' : '⚠️ 复制失败';
+    setTimeout(function(){ btn.textContent='📋 复制报告'; }, 1600);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(current.report).then(function(){done(true);}, function(){done(fallbackCopy());});
+  } else done(fallbackCopy());
+});
+function fallbackCopy(){
+  try{
+    var ta = document.createElement('textarea');
+    ta.value = current.report;
+    ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    var ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  }catch(e){ return false; }
+}
+// live typing (debounced)
+var tId = null;
+$('in').addEventListener('input', function(){
+  clearTimeout(tId);
+  tId = setTimeout(analyze, 260);
+});
+// chips
+document.querySelectorAll('.chip').forEach(function(ch){
+  ch.addEventListener('click', function(){
+    $('in').value = SAMPLES[ch.getAttribute('data-s')];
+    analyze();
+  });
+});
+// wave hover/tap (event delegation)
+$('wave').addEventListener('click', function(e){
+  var t = e.target;
+  if (t.classList && t.classList.contains('bar')) showSentence(+t.getAttribute('data-i'));
+});
+$('wave').addEventListener('mouseover', function(e){
+  var t = e.target;
+  if (t.classList && t.classList.contains('bar')) showSentence(+t.getAttribute('data-i'));
+});
+
+/* ================= self-test (window.__pw) ================= */
+window.__pw = {splitSentences:splitSentences, sentLength:sentLength, computeStats:computeStats,
+  buildVerdict:buildVerdict, buildFindings:buildFindings, buildReport:buildReport, isCJKText:isCJKText};
+</script>
+</body>
+</html>
