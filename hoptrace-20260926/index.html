@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HOPTRACE — paste email headers, see the delivery route & phishing red flags</title>
+<meta name="description" content="Paste raw email headers, instantly see the SMTP hop timeline, SPF/DKIM/DMARC verdicts and phishing red flags. 100% local, nothing leaves your browser.">
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2b3444;
+  --fg:#d6deeb; --dim:#8b98ab; --faint:#5b6779;
+  --green:#3fb68b; --amber:#e0a34e; --red:#e06c6c; --cyan:#56b6c2; --violet:#a78bfa;
+  --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 -apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin-bottom:6px}
+h1{font-size:1.5rem;letter-spacing:.5px}
+h1 .hop{color:var(--cyan)} h1 .trace{color:var(--fg)}
+.tag{color:var(--dim);font-size:.85rem}
+.localbadge{margin-left:auto;font-size:.72rem;color:var(--green);border:1px solid var(--green);border-radius:999px;padding:2px 10px;font-family:var(--mono)}
+.sub{color:var(--faint);font-size:.85rem;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:1fr 1.25fr;gap:16px;align-items:start}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.panel h2{font-size:.8rem;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin-bottom:10px}
+textarea{width:100%;min-height:300px;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:12px;font:12.5px/1.5 var(--mono);resize:vertical}
+textarea:focus{outline:none;border-color:var(--cyan)}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--fg);border-radius:8px;padding:8px 14px;font-size:.85rem;transition:.15s}
+button:hover{border-color:var(--cyan);color:var(--cyan)}
+button.primary{background:var(--cyan);border-color:var(--cyan);color:#08222a;font-weight:600}
+button.primary:hover{filter:brightness(1.1);color:#08222a}
+button.ghost{font-size:.78rem;color:var(--dim)}
+.count{color:var(--faint);font-size:.75rem;margin-top:8px;font-family:var(--mono)}
+/* verdict */
+.verdict{display:flex;align-items:center;gap:14px;border-radius:10px;padding:14px 16px;margin-bottom:12px;border:1px solid var(--line);background:var(--panel2)}
+.verdict .sigil{font-size:1.9rem;line-height:1}
+.verdict .vtitle{font-family:var(--mono);font-weight:700;letter-spacing:1px;font-size:1.02rem}
+.verdict .vsub{color:var(--dim);font-size:.82rem;margin-top:2px}
+.v-clean{border-color:rgba(63,182,139,.5)} .v-clean .sigil,.v-clean .vtitle{color:var(--green)}
+.v-susp{border-color:rgba(224,163,78,.5)} .v-susp .sigil,.v-susp .vtitle{color:var(--amber)}
+.v-bad{border-color:rgba(224,108,108,.6)} .v-bad .sigil,.v-bad .vtitle{color:var(--red)}
+/* auth badges */
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.badge{font-family:var(--mono);font-size:.75rem;padding:5px 11px;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
+.badge b{font-weight:700;margin-left:5px}
+.badge.pass{border-color:rgba(63,182,139,.55);color:var(--green)} .badge.pass b{color:var(--green)}
+.badge.fail{border-color:rgba(224,108,108,.6);color:var(--red)} .badge.fail b{color:var(--red)}
+.badge.soft,.badge.none{color:var(--amber)} .badge.soft b,.badge.none b{color:var(--amber)}
+/* flags */
+.flags{list-style:none;margin-bottom:14px}
+.flags li{display:flex;gap:9px;padding:7px 10px;border-radius:7px;font-size:.84rem;margin-bottom:5px;background:var(--panel2);border-left:3px solid var(--line)}
+.flags li .fk{font-family:var(--mono);font-size:.68rem;padding:1px 7px;border-radius:5px;align-self:flex-start;flex-shrink:0;margin-top:1px}
+.f-danger{border-left-color:var(--red)} .f-danger .fk{background:rgba(224,108,108,.15);color:var(--red)}
+.f-warn{border-left-color:var(--amber)} .f-warn .fk{background:rgba(224,163,78,.15);color:var(--amber)}
+.f-note{border-left-color:var(--cyan)} .f-note .fk{background:rgba(86,182,194,.13);color:var(--cyan)}
+.flags li .ft{color:var(--fg)} .flags li .ft code{font-family:var(--mono);font-size:.78em;color:var(--cyan);word-break:break-all}
+/* timeline */
+.timeline{position:relative;margin:6px 0 4px 7px;padding-left:22px;border-left:2px solid var(--line)}
+.hop{position:relative;padding:10px 0 12px}
+.hop::before{content:'';position:absolute;left:-30px;top:14px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:2.5px solid var(--cyan)}
+.hop.first::before{border-color:var(--green)}
+.hop.last::before{border-color:var(--violet)}
+.hop .hidx{font-family:var(--mono);font-size:.68rem;color:var(--faint);letter-spacing:1px}
+.hop .hfrom{font-family:var(--mono);font-size:.88rem;color:var(--cyan);word-break:break-all}
+.hop .hby{font-family:var(--mono);font-size:.88rem;color:var(--violet);word-break:break-all}
+.hop .hmeta{color:var(--dim);font-size:.78rem;margin-top:2px}
+.hop .hgap{display:inline-block;margin-top:5px;font-family:var(--mono);font-size:.72rem;color:var(--amber);background:rgba(224,163,78,.1);border:1px solid rgba(224,163,78,.35);border-radius:6px;padding:1px 8px}
+.hop .hgap.ok{color:var(--dim);background:transparent;border-color:var(--line)}
+.hop .hip{color:var(--red);font-size:.74rem;font-family:var(--mono)}
+/* summary strip */
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px}
+.cell{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;text-align:center}
+.cell .cv{font-family:var(--mono);font-size:1.15rem;font-weight:700}
+.cell .ck{font-size:.68rem;color:var(--faint);text-transform:uppercase;letter-spacing:.8px;margin-top:1px}
+.empty{color:var(--faint);font-size:.88rem;text-align:center;padding:44px 18px;border:1px dashed var(--line);border-radius:10px}
+.empty .big{font-size:2rem;display:block;margin-bottom:8px}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--cyan);color:#08222a;font-weight:600;font-size:.85rem;padding:9px 20px;border-radius:999px;opacity:0;pointer-events:none;transition:.25s;z-index:9}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+footer{margin-top:22px;color:var(--faint);font-size:.75rem;text-align:center}
+footer a{color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="hop">HOP</span><span class="trace">TRACE</span></h1>
+    <span class="tag">email header X-ray — route, delays & phishing flags</span>
+    <span class="localbadge">● 100% LOCAL</span>
+  </header>
+  <div class="sub">Paste raw email headers → see the SMTP hop chain as a timeline, SPF/DKIM/DMARC verdicts, and plain-English red flags. Headers contain internal hostnames &amp; IPs — HOPTRACE never uploads them.</div>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Raw headers</h2>
+      <textarea id="in" placeholder="Paste the full header block here (Gmail: ⋮ → Show original → copy everything above the body). Received:, Authentication-Results:, From:, Reply-To:, ..." spellcheck="false"></textarea>
+      <div class="btnrow">
+        <button class="primary" id="go">TRACE ⛓</button>
+        <button class="ghost" id="sampleClean">clean sample</button>
+        <button class="ghost" id="samplePhish">phishing sample</button>
+        <button class="ghost" id="clear">clear</button>
+      </div>
+      <div class="count" id="count">0 chars</div>
+    </section>
+
+    <section class="panel">
+      <h2>Analysis</h2>
+      <div id="out">
+        <div class="empty"><span class="big">✉️</span>Paste headers (or load a sample) and hit <b>TRACE</b>.<br>Nothing you paste ever leaves this tab.</div>
+      </div>
+    </section>
+  </div>
+
+  <footer>HOPTRACE · every byte parsed in your browser · <a href="https://github.com/xiangjianan/daily-tools/tree/main/hoptrace-20260926" target="_blank" rel="noopener">source</a></footer>
+</div>
+<div class="toast" id="toast">copied ✓</div>
+
+<script>
+'use strict';
+/* ---------- helpers ---------- */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),1600);}
+
+/* unfold folded headers, split into [name,value] pairs */
+function unfoldHeaders(raw){
+  const lines=raw.replace(/\r\n/g,'\n').split('\n');
+  const out=[];
+  for(const line of lines){
+    if(/^[ \t]/.test(line)&&out.length){out[out.length-1]+=' '+line.trim();}
+    else{out.push(line);}
+  }
+  const pairs=[];
+  for(const line of out){
+    const m=line.match(/^([A-Za-z0-9-]+):\s?(.*)$/);
+    if(m)pairs.push({name:m[1].toLowerCase(),value:m[2]});
+  }
+  return pairs;
+}
+
+/* parse one Received value -> {from,by,with,for,ip,date} */
+function parseReceived(val){
+  const semi=val.lastIndexOf(';');
+  const route=semi>=0?val.slice(0,semi):val;
+  const dateStr=semi>=0?val.slice(semi+1).trim():'';
+  const grab=re=>{const m=route.match(re);return m?m[1]:null;};
+  const hop={
+    from:grab(/\bfrom\s+(\S+)/),
+    by:grab(/\bby\s+(\S+)/),
+    with:grab(/\bwith\s+([A-Za-z0-9-]+)/),
+    forAddr:(route.match(/\bfor\s+<([^>]+)>/)||[])[1]||(grab(/\bfor\s+(\S+)/)),
+    ip:(route.match(/\[([0-9a-fA-F.:]+)\]/)||[])[1]||null,
+    date:null
+  };
+  if(dateStr){
+    let d=new Date(dateStr);
+    if(isNaN(d)&&/\d{1,2}\s+\w{3}\s+\d{4}/.test(dateStr)){
+      const m=dateStr.match(/(\d{1,2})\s+(\w{3})\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([+-]\d{4})?/);
+      if(m){
+        const mon={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11}[m[2]];
+        if(mon!==undefined){
+          const tz=m[7]||'+0000';
+          const mins=(+tz.slice(1,3))*60+(+tz.slice(3,5));
+          const off=(tz[0]==='-'?-1:1)*mins;
+          d=new Date(Date.UTC(+m[3],mon,+m[1],+m[4],+m[5],+(m[6]||0))-off*60000);
+        }
+      }
+    }
+    if(!isNaN(d))hop.date=d;
+  }
+  return hop;
+}
+
+function isPrivateIp(ip){
+  if(!ip)return false;
+  if(/^(10\.|127\.|192\.168\.|0\.|169\.254\.)/.test(ip))return true;
+  const m=ip.match(/^172\.(\d+)\./);if(m&&+m[1]>=16&&+m[1]<=31)return true;
+  if(/^(::1|f[cd][0-9a-f]{2}:|fe80:)/i.test(ip))return true;
+  return false;
+}
+
+function domainOf(addr){
+  if(!addr)return null;
+  const m=String(addr).match(/@([A-Za-z0-9.-]+)>?/)||String(addr).match(/^([A-Za-z0-9.-]+\.[A-Za-z]{2,})$/);
+  return m?m[1].toLowerCase():null;
+}
+function rootDomain(d){if(!d)return null;const p=d.split('.');return p.length>2?p.slice(-2).join('.'):d;}
+
+function humanGap(ms){
+  const abs=Math.abs(ms),s=Math.round(abs/1000);
+  if(s<90)return s+'s';const m=Math.round(s/60);if(m<90)return m+' min';
+  const h=Math.floor(m/60),rm=m%60;return h+'h '+rm+'m';
+}
+
+/* ---------- analysis ---------- */
+function analyze(raw){
+  const pairs=unfoldHeaders(raw);
+  if(!pairs.length)return{error:'No recognizable email headers here. Copy the whole header block — lines like <code>Received:</code>, <code>From:</code>, <code>Authentication-Results:</code>.'};
+  const first=pairs[0].name;
+  if(!['received','from','return-path','authentication-results','delivered-to','date','message-id','dkim-signature'].includes(first))
+    return{error:'This does not start like an email header block (expected Received:/From:/...). Tip: in Gmail use ⋮ → Show original, then copy everything above the body.'};
+
+  const get=n=>{const p=pairs.find(x=>x.name===n);return p?p.value:null;};
+  const got=n=>pairs.filter(x=>x.name===n);
+
+  const hopsRaw=got('received').map(p=>parseReceived(p.value));
+  const hops=hopsRaw.filter(h=>h.from||h.by||h.date);
+  /* raw order: newest hop first. timeline shows newest -> oldest, i.e. as-is */
+  const flags=[];
+  /* auth */
+  const authResults=got('authentication-results').map(p=>p.value);
+  const auth={spf:'none',dkim:'none',dmarc:'none'};
+  let authFound=false;
+  for(const ar of authResults){
+    for(const k of ['spf','dkim','dmarc']){
+      const m=ar.match(new RegExp(k+'\\s*=\\s*(pass|fail|softfail|neutral|none|temperror|permerror)','i'));
+      if(m){auth[k]=m[1].toLowerCase();authFound=true;}
+    }
+  }
+  const dkimSigned=got('dkim-signature').length>0;
+  const fromAddr=get('from');
+  const fromDom=domainOf(fromAddr),fromRoot=rootDomain(fromDom);
+  const replyTo=get('reply-to');
+  const replyDom=domainOf(replyTo);
+  const returnPath=get('return-path');
+  const rpDom=domainOf(returnPath),rpRoot=rootDomain(rpDom);
+  const subject=get('subject');
+  const dateHdr=get('date');
+  const dateVal=dateHdr?new Date(dateHdr):null;
+
+  if(auth.dmarc==='fail')flags.push({k:'DANGER',t:'<b>DMARC failed</b> — the sending domain explicitly tells receivers to treat this as unauthenticated. Classic spoofing signal.'});
+  if(auth.spf==='fail'&&auth.dkim!=='pass')flags.push({k:'DANGER',t:'<b>SPF failed and no valid DKIM</b> — the server that sent this is not authorized by the envelope sender domain.'});
+  if(replyDom&&fromDom&&rootDomain(replyDom)!==fromRoot)flags.push({k:'DANGER',t:`<b>Reply-To points elsewhere</b> — From is <code>${esc(fromDom||'?')}</code> but replies would go to <code>${esc(replyDom)}</code>. A favorite phishing trick.`});
+  if(authFound&&auth.dmarc==='none'&&auth.spf==='pass'&&auth.dkim!=='pass')flags.push({k:'NOTE',t:'Only SPF passed; DMARC alignment unproven. Fine for small servers, worth a glance for money-related mail.'});
+  if(!authFound&&!dkimSigned)flags.push({k:'NOTE',t:'No <code>Authentication-Results</code> / <code>DKIM-Signature</code> found — header stripped by a relay, or this is a hand-crafted sample.'});
+  if(rpDom&&fromRoot&&rpRoot!==fromRoot)flags.push({k:'NOTE',t:`Return-Path domain <code>${esc(rpDom)}</code> differs from From domain <code>${esc(fromDom||'?')}</code> — normal for newsletters/lists, odd for personal mail.`});
+
+  /* hop-level checks */
+  let privateHops=0,totalGap=0,gapCount=0,futureHop=false;
+  for(let i=0;i<hops.length;i++){
+    const h=hops[i];
+    if(h.ip&&isPrivateIp(h.ip))privateHops++;
+    if(h.date&&dateVal&&!isNaN(dateVal)){
+      const skew=h.date.getTime()-dateVal.getTime();
+      if(skew>10*60000)futureHop=true;
+    }
+    if(i<hops.length-1&&h.date&&hops[i+1].date){
+      const gap=h.date.getTime()-hops[i+1].date.getTime();
+      totalGap+=Math.max(0,gap);gapCount++;
+      if(gap<-600000)flags.push({k:'WARN',t:`<b>Time runs backwards</b> between hop ${i+1} and ${i+2} (${humanGap(gap)} negative) — a spoofed or clock-broken relay sits on this path.`});
+      else if(gap>3600000)flags.push({k:'WARN',t:`<b>Long stall</b> between hop ${i+1} and ${i+2}: ${humanGap(gap)} in transit. Greylisting, queues — or a detour you didn't expect.`});
+    }
+  }
+  if(futureHop)flags.push({k:'WARN',t:'A Received timestamp is <b>later than the Date header</b> — spoofed headers or badly wrong clocks.'});
+  if(privateHops>0)flags.push({k:'NOTE',t:`${privateHops} hop${privateHops>1?'s':''} use private IPs (RFC1918) — normal internal relaying, but it means this header block <b>leaks internal hostnames</b>. One more reason to only analyze it locally.`});
+  if(hops.length>=6)flags.push({k:'NOTE',t:`${hops.length} hops is a long chain — more relays, more places to intercept or inject.`});
+  if(!hops.length)flags.push({k:'NOTE',t:'No parsable <code>Received</code> chain found — can\'t draw a route.'});
+
+  /* verdict */
+  const dangers=flags.filter(f=>f.k==='DANGER').length;
+  const warns=flags.filter(f=>f.k==='WARN').length;
+  let verdict,label,vsig,vcls;
+  if(dangers){verdict='danger';label='DANGEROUS — do not trust';vsig='☠';vcls='v-bad';}
+  else if(warns){verdict='susp';label='SUSPICIOUS — inspect before acting';vsig='⚠';vcls='v-susp';}
+  else{verdict='clean';label='NO RED FLAGS';vsig='✓';vcls='v-clean';}
+
+  return{hops,flags,auth,authFound,dkimSigned,verdict,label,vsig,vcls,
+    fromAddr,fromDom,replyDom,subject,dateVal,totalGap,gapCount,privateHops};
+}
+
+/* ---------- render ---------- */
+function render(a){
+  const out=$('out');
+  if(a.error){out.innerHTML=`<div class="empty" style="border-color:rgba(224,108,108,.5)"><span class="big">🤔</span>${a.error}</div>`;return;}
+  const badge=(k,v)=>{
+    const cls=v==='pass'?'pass':(v==='fail'?'fail':(v==='none'?'none':'soft'));
+    return `<span class="badge ${cls}">${k.toUpperCase()}<b>${v}</b></span>`;
+  };
+  let html='';
+  html+=`<div class="verdict ${a.vcls}"><span class="sigil">${a.vsig}</span><div><div class="vtitle">${a.label}</div><div class="vsub">${
+    a.subject?`subject: ${esc(a.subject.slice(0,70))}`:'subject not in pasted block'}</div></div></div>`;
+  html+=`<div class="badges">${badge('spf',a.auth.spf)}${badge('dkim',a.auth.dkim)}${badge('dmarc',a.auth.dmarc)}${
+    (!a.authFound&&a.dkimSigned)?'<span class="badge">auth-results absent — dkim signature present</span>':''}</div>`;
+
+  if(a.flags.length){
+    html+='<ul class="flags">'+a.flags.map(f=>`<li class="f-${f.k.toLowerCase()}"><span class="fk">${f.k}</span><span class="ft">${f.t}</span></li>`).join('')+'</ul>';
+  }else{
+    html+='<ul class="flags"><li class="f-note"><span class="fk">OK</span><span class="ft">Nothing suspicious found in this header block.</span></li></ul>';
+  }
+
+  if(a.hops.length){
+    const secs=a.gapCount?Math.round(a.totalGap/1000):null;
+    html+=`<div class="strip">
+      <div class="cell"><div class="cv" style="color:var(--cyan)">${a.hops.length}</div><div class="ck">hops</div></div>
+      <div class="cell"><div class="cv" style="color:var(--violet)">${secs===null?'—':humanGap(a.totalGap)}</div><div class="ck">total transit</div></div>
+      <div class="cell"><div class="cv" style="color:${a.flags.length?'var(--amber)':'var(--green)'}">${a.flags.length}</div><div class="ck">signals</div></div>
+    </div>`;
+    html+='<h2 style="margin-top:4px">Delivery route (newest → oldest)</h2><div class="timeline">';
+    a.hops.forEach((h,i)=>{
+      const cls=(i===0?'first ':'')+(i===a.hops.length-1?'last':'');
+      let gap='';
+      if(i<a.hops.length-1&&h.date&&a.hops[i+1].date){
+        const g=h.date.getTime()-a.hops[i+1].date.getTime();
+        const ok=g>=0&&g<=3600000;
+        gap=`<span class="hgap ${ok?'ok':''}">${g<0?'⟲ back '+humanGap(g):'⏱ '+humanGap(g)+' in transit'}</span>`;
+      }
+      html+=`<div class="hop ${cls}">
+        <div class="hidx">HOP ${i+1}${i===0?' · LAST TOUCH':(i===a.hops.length-1?' · ORIGIN':'')}</div>
+        <div class="hfrom">from ${esc(h.from||'?')}${h.ip?` <span class="hip">[${esc(h.ip)}]</span>`:''}</div>
+        ${h.by?`<div class="hby">by ${esc(h.by)}</div>`:''}
+        <div class="hmeta">${h.with?esc(h.with)+' · ':''}${h.forAddr?'for '+esc(h.forAddr)+' · ':''}${h.date?esc(h.date.toUTCString().replace(' GMT',' UTC')):'date unparsable'}</div>
+        ${gap}
+      </div>`;
+    });
+    html+='</div>';
+  }
+
+  html+=`<div class="btnrow"><button id="copyReport" class="primary">⧉ Copy Markdown report</button></div>`;
+  out.innerHTML=html;
+  $('copyReport').addEventListener('click',()=>{navigator.clipboard.writeText(markdownReport(a)).then(()=>toast('report copied ✓'));});
+}
+
+function markdownReport(a){
+  const L=[];
+  L.push('# HOPTRACE report');
+  L.push('');
+  L.push(`- **Verdict**: ${a.vsig} ${a.label}`);
+  L.push(`- **From**: ${a.fromAddr||'—'}`);
+  if(a.subject)L.push(`- **Subject**: ${a.subject}`);
+  L.push(`- **SPF/DKIM/DMARC**: ${a.auth.spf} / ${a.auth.dkim} / ${a.auth.dmarc}`);
+  L.push(`- **Hops**: ${a.hops.length}${a.gapCount?` · total transit ≈ ${humanGap(a.totalGap)}`:''}`);
+  L.push('');
+  if(a.flags.length){
+    L.push('## Signals');
+    for(const f of a.flags)L.push(`- **${f.k}**: ${f.t.replace(/<[^>]+>/g,'')}`);
+    L.push('');
+  }
+  if(a.hops.length){
+    L.push('## Route (newest → oldest)');
+    a.hops.forEach((h,i)=>{
+      L.push(`${i+1}. from ${h.from||'?'}${h.ip?` [${h.ip}]`:''}${h.by?` by ${h.by}`:''}${h.date?` @ ${h.date.toISOString()}`:''}`);
+    });
+    L.push('');
+  }
+  L.push('_Generated locally by HOPTRACE — no header data left this browser._');
+  return L.join('\n');
+}
+
+/* ---------- samples ---------- */
+const SAMPLE_CLEAN=[
+'From: Inventory Bot <alerts@shipfast.io>',
+'To: me@example.com',
+'Subject: [shipfast] Daily digest — 42 shipments',
+'Date: Fri, 25 Sep 2026 21:14:03 +0000',
+'Message-ID: <dig-8841@shipfast.io>',
+'Return-Path: <bounces@bounce.shipfast.io>',
+'DKIM-Signature: v=1; a=rsa-sha256; d=shipfast.io; s=2026; b=me0w...',
+'Authentication-Results: mx.example.com; dkim=pass header.d=shipfast.io; spf=pass smtp.mailfrom=bounce.shipfast.io; dmarc=pass header.from=shipfast.io',
+'Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41]) by mx1.example.com with SMTPS id 9ab7c1; Fri, 25 Sep 2026 21:14:52 +0000',
+'Received: from mail-out.shipfast.io (mail-out.shipfast.io. [52.12.94.7]) by mail-sor-f41.google.com with HTTPS id 77q1; Fri, 25 Sep 2026 21:14:46 +0000',
+'Received: from mail-out.shipfast.io (localhost [127.0.0.1]) by mail-out.shipfast.io with ESMTPS id q81x2; Fri, 25 Sep 2026 21:14:38 +0000'
+].join('\n');
+
+const SAMPLE_PHISH=[
+'From: IT Helpdesk <it-helpdesk@corp-secure-login.net>',
+'To: me@example.com',
+'Subject: URGENT — your mailbox quota is full, verify within 24h',
+'Date: Fri, 25 Sep 2026 20:02:11 +0000',
+'Message-ID: <verify-99@corp-secure-login.net>',
+'Reply-To: mailroom.clerk@fastmail-support.ru',
+'Received: from mx1.example.com by mx1.example.com with ESMTPS id zz01; Sat, 26 Sep 2026 02:40:00 +0000',
+'Received: from vps-44123.hostwinds.net (unknown [104.168.99.66]) by mx1.example.com with ESMTP id 112a; Sat, 26 Sep 2026 02:39:41 +0000',
+'Received: from localhost (unknown [192.168.1.55]) by vps-44123.hostwinds.net with SMTP id 88zz; Fri, 25 Sep 2026 19:59:02 +0000'
+].join('\n');
+
+/* ---------- wiring ---------- */
+$('in').addEventListener('input',()=>{$('count').textContent=$('in').value.length+' chars';});
+$('go').addEventListener('click',()=>{
+  const raw=$('in').value.trim();
+  if(!raw){$('out').innerHTML='<div class="empty"><span class="big">✉️</span>Nothing to trace yet — paste headers first.</div>';return;}
+  render(analyze(raw));
+});
+$('sampleClean').addEventListener('click',()=>{$('in').value=SAMPLE_CLEAN;$('in').dispatchEvent(new Event('input'));render(analyze(SAMPLE_CLEAN));});
+$('samplePhish').addEventListener('click',()=>{$('in').value=SAMPLE_PHISH;$('in').dispatchEvent(new Event('input'));render(analyze(SAMPLE_PHISH));});
+$('clear').addEventListener('click',()=>{
+  $('in').value='';$('count').textContent='0 chars';
+  $('out').innerHTML='<div class="empty"><span class="big">✉️</span>Paste headers (or load a sample) and hit <b>TRACE</b>.<br>Nothing you paste ever leaves this tab.</div>';
+});
+</script>
+</body>
+</html>
