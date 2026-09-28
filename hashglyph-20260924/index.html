@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HASHGLYPH — every text has a face</title>
+<meta name="description" content="Paste any text, get its SHA-256 fingerprint drawn as a symmetric color glyph. Spot identical text at a glance, watch the avalanche effect. 100% local.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cg fill='%234ade80'%3E%3Crect x='6' y='6' width='5' height='5'/%3E%3Crect x='21' y='6' width='5' height='5'/%3E%3Crect x='11' y='11' width='10' height='5'/%3E%3Crect x='6' y='16' width='5' height='10'/%3E%3Crect x='21' y='16' width='5' height='10'/%3E%3Crect x='13' y='21' width='6' height='5'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel2: #1c2330;
+    --border: #2d3644;
+    --text: #e6edf3;
+    --dim: #8b98a9;
+    --accent: #4ade80;
+    --accent2: #38bdf8;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 20px 16px calc(24px + env(safe-area-inset-bottom)); }
+
+  header { text-align: center; padding: 14px 0 6px; }
+  header h1 { font-size: clamp(1.5rem, 4vw, 2.1rem); letter-spacing: 0.12em; }
+  header h1 .g { color: var(--accent); }
+  header p { color: var(--dim); margin-top: 6px; font-size: 0.95rem; }
+  .badge-row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+  .badge {
+    font-size: 0.72rem; color: var(--dim); border: 1px solid var(--border);
+    border-radius: 999px; padding: 3px 10px; background: var(--panel);
+  }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .card h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); font-weight: 600; }
+
+  textarea {
+    width: 100%; min-height: 130px; resize: vertical;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px; font-family: var(--mono); font-size: 0.86rem;
+  }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  textarea::placeholder { color: #55606f; }
+
+  .glyph-stage {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px; min-height: 128px;
+  }
+  canvas.glyph {
+    width: 100px; height: 100px; border-radius: 10px; flex: 0 0 auto;
+    background: transparent;
+  }
+  .meta { min-width: 0; flex: 1; }
+  .digest {
+    font-family: var(--mono); font-size: 0.72rem; color: var(--accent2);
+    word-break: break-all; line-height: 1.45;
+  }
+  .stat-line { color: var(--dim); font-size: 0.78rem; margin-top: 6px; }
+  .stat-line b { color: var(--text); font-weight: 600; }
+
+  .hint { color: var(--dim); font-size: 0.85rem; text-align: center; padding: 30px 10px; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 0.84rem; cursor: pointer;
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 9px;
+    padding: 8px 14px; transition: border-color .15s, transform .05s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:hover { border-color: var(--accent); }
+  button:active { transform: scale(0.97); }
+  button.primary { background: #14532d33; border-color: #22694a; color: var(--accent); font-weight: 600; }
+
+  .verdict {
+    text-align: center; font-weight: 700; letter-spacing: 0.06em;
+    border-radius: 10px; padding: 10px; font-size: 0.95rem;
+    border: 1px solid var(--border); background: var(--panel2); color: var(--dim);
+  }
+  .verdict.same { color: var(--accent); border-color: #22694a; background: #14532d26; }
+  .verdict.diff { color: var(--warn); border-color: #7a5b12; background: #78350f26; }
+
+  .duel { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; }
+  .duel .side { text-align: center; }
+  .duel canvas { width: 84px; height: 84px; border-radius: 10px; }
+  .duel .vs { color: var(--dim); font-size: 0.8rem; font-weight: 700; }
+  .duel .lbl { font-size: 0.7rem; color: var(--dim); margin-top: 4px; }
+
+  .flip-bar { height: 10px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--border); overflow: hidden; }
+  .flip-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent2), var(--warn)); transition: width .4s; }
+  .flip-note { font-size: 0.78rem; color: var(--dim); }
+  .flip-note b { color: var(--warn); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom));
+    transform: translateX(-50%) translateY(20px);
+    background: #22694a; color: #eafff3; font-size: 0.85rem;
+    padding: 9px 18px; border-radius: 999px; opacity: 0;
+    pointer-events: none; transition: opacity .25s, transform .25s; z-index: 9;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  footer { margin-top: 26px; text-align: center; color: var(--dim); font-size: 0.78rem; }
+  footer a { color: var(--accent2); text-decoration: none; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>HASH<span class="g">GLYPH</span></h1>
+    <p>Every text has a face. Paste anything — get its SHA-256 fingerprint as a symmetric glyph you can recognize at a glance.</p>
+    <div class="badge-row">
+      <span class="badge">100% local</span>
+      <span class="badge">no upload</span>
+      <span class="badge">zero dependency</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- ============ INPUT & GLYPH ============ -->
+    <section class="card">
+      <h2>Your text → its glyph</h2>
+      <textarea id="inputA" placeholder="Type or paste anything — a license key, a config blob, a poem…&#10;Even one letter gets a unique face." spellcheck="false"></textarea>
+      <div class="glyph-stage" id="stageA">
+        <canvas id="glyphA" class="glyph" width="200" height="200" aria-label="glyph of your text"></canvas>
+        <div class="meta">
+          <div class="digest" id="digestA">—</div>
+          <div class="stat-line" id="statsA">waiting for input…</div>
+        </div>
+      </div>
+      <div class="row">
+        <button id="btnCopyA" class="primary">Copy digest</button>
+        <button id="btnPngA">Save glyph as PNG</button>
+        <button id="btnSampleA">Try a sample</button>
+      </div>
+    </section>
+
+    <!-- ============ COMPARE ============ -->
+    <section class="card">
+      <h2>Compare — are they the same?</h2>
+      <textarea id="inputB" placeholder="Paste a second text here.&#10;If both glyphs look alike, the texts are byte-identical." spellcheck="false"></textarea>
+      <div class="verdict" id="verdict">Paste a second text to compare</div>
+      <div class="duel">
+        <div class="side">
+          <canvas id="glyphA2" width="168" height="168" aria-label="glyph A"></canvas>
+          <div class="lbl">A</div>
+        </div>
+        <div class="vs">VS</div>
+        <div class="side">
+          <canvas id="glyphB" width="168" height="168" aria-label="glyph B"></canvas>
+          <div class="lbl">B</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============ AVALANCHE DEMO ============ -->
+  <section class="card" style="margin-top:16px;">
+    <h2>Avalanche effect — change one letter, change everything</h2>
+    <div class="row">
+      <button id="btnFlip" class="primary">Flip the last character ↯</button>
+      <button id="btnFlipReset">Reset</button>
+    </div>
+    <div class="flip-bar" style="margin-top:4px;"><div class="flip-fill" id="flipFill"></div></div>
+    <div class="duel" style="margin-top:10px;">
+      <div class="side">
+        <canvas id="glyphOld" width="168" height="168" aria-label="glyph before flip"></canvas>
+        <div class="lbl" id="lblOld">before</div>
+      </div>
+      <div class="vs">→</div>
+      <div class="side">
+        <canvas id="glyphNew" width="168" height="168" aria-label="glyph after flip"></canvas>
+        <div class="lbl" id="lblNew">after</div>
+      </div>
+    </div>
+    <div class="flip-note" id="flipNote">Good hashes flip ~50% of all 256 bits when a single input bit changes. Try it on your own text above.</div>
+  </section>
+
+  <footer>
+    SHA-256 computed in your browser — nothing ever leaves this page. Works offline, doubles as a teaching demo for hash functions.<br>
+    Part of <a href="https://github.com/xiangjianan/daily-creative-tools">daily creative tools</a> · issue 12
+  </footer>
+</div>
+<div class="toast" id="toast">Copied ✓</div>
+
+<script>
+"use strict";
+/* ================================================================
+ *  SHA-256 — uses WebCrypto when available (https / file://),
+ *  falls back to a compact pure-JS implementation elsewhere,
+ *  so double-clicking index.html always works.
+ * ================================================================ */
+function sha256Pure(bytes) {
+  var K = [
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+  ];
+  var H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  var l = bytes.length;
+  var bitLen = l * 8;
+  var padded = new Uint8Array((((l + 8) >> 6) + 1) << 6);
+  padded.set(bytes);
+  padded[l] = 0x80;
+  var dv = new DataView(padded.buffer);
+  dv.setUint32(padded.length - 4, bitLen >>> 0);
+  dv.setUint32(padded.length - 8, Math.floor(bitLen / 0x100000000));
+  var w = new Array(64);
+  function rr(x, n) { return (x >>> n) | (x << (32 - n)); }
+  for (var i = 0; i < padded.length; i += 64) {
+    for (var t = 0; t < 16; t++) w[t] = dv.getUint32(i + t * 4);
+    for (var t2 = 16; t2 < 64; t2++) {
+      var s0 = rr(w[t2-15],7) ^ rr(w[t2-15],18) ^ (w[t2-15] >>> 3);
+      var s1 = rr(w[t2-2],17) ^ rr(w[t2-2],19) ^ (w[t2-2] >>> 10);
+      w[t2] = (w[t2-16] + s0 + w[t2-7] + s1) | 0;
+    }
+    var a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+    for (var j = 0; j < 64; j++) {
+      var S1 = rr(e,6) ^ rr(e,11) ^ rr(e,25);
+      var ch = (e & f) ^ (~e & g);
+      var t1 = (h + S1 + ch + K[j] + w[j]) | 0;
+      var S0 = rr(a,2) ^ rr(a,13) ^ rr(a,22);
+      var mj = (a & b) ^ (a & c) ^ (b & c);
+      var t2b = (S0 + mj) | 0;
+      h=g; g=f; f=e; e=(d+t1)|0; d=c; c=b; b=a; a=(t1+t2b)|0;
+    }
+    H[0]=(H[0]+a)|0; H[1]=(H[1]+b)|0; H[2]=(H[2]+c)|0; H[3]=(H[3]+d)|0;
+    H[4]=(H[4]+e)|0; H[5]=(H[5]+f)|0; H[6]=(H[6]+g)|0; H[7]=(H[7]+h)|0;
+  }
+  var out = new Uint8Array(32);
+  var odv = new DataView(out.buffer);
+  for (var k = 0; k < 8; k++) odv.setUint32(k * 4, H[k] >>> 0);
+  return out;
+}
+function toHex(u8) {
+  var s = "";
+  for (var i = 0; i < u8.length; i++) s += (u8[i] >>> 4).toString(16) + (u8[i] & 15).toString(16);
+  return s;
+}
+var subtleOK = (typeof crypto !== "undefined" && crypto.subtle && typeof crypto.subtle.digest === "function");
+function textToBytes(str) { return new TextEncoder().encode(str); }
+function sha256(bytes) {
+  if (subtleOK) return crypto.subtle.digest("SHA-256", bytes).then(function (buf) { return new Uint8Array(buf); });
+  return Promise.resolve(sha256Pure(bytes));
+}
+
+/* ================================================================
+ *  Glyph renderer — first 32 bits set cells on a mirrored 4x8 grid
+ *  (so the stamp is horizontally symmetric, like a face/monogram),
+ *  color scheme derived from bytes 4-6 of the digest.
+ * ================================================================ */
+function glyphSpec(digest) {
+  var cells = [];           // [x,y] on a 4-wide half-grid
+  for (var y = 0; y < 8; y++) {
+    for (var x = 0; x < 4; x++) {
+      var bit = (digest[y >> 1] >>> (y % 2 * 4 + x)) & 1;
+      if (bit) cells.push([x, y]);
+    }
+  }
+  var hue = digest[4] * 1.42;                     // 0..360
+  var sat = 62 + (digest[5] & 31);                // 62..93
+  var lit = 55 + (digest[6] & 15);                // 55..70
+  var bg = "hsl(" + Math.round(hue) + " " + sat + "% 12%)";
+  var fg = "hsl(" + Math.round(hue) + " " + sat + "% " + lit + "%)";
+  var fgDim = "hsl(" + Math.round(hue) + " " + sat + "% " + Math.max(30, lit - 24) + "%)";
+  return { cells: cells, bg: bg, fg: fg, fgDim: fgDim };
+}
+function drawGlyph(canvas, digest) {
+  var ctx = canvas.getContext("2d");
+  var W = canvas.width, H = canvas.height;
+  var spec = glyphSpec(digest);
+  ctx.fillStyle = spec.bg;
+  ctx.fillRect(0, 0, W, H);
+  var cols = 8, rows = 8;
+  var cw = W / cols, ch = H / rows;
+  var pad = Math.max(1, cw * 0.08);
+  for (var i = 0; i < spec.cells.length; i++) {
+    var x = spec.cells[i][0], y = spec.cells[i][1];
+    var shade = ((x + y) % 2 === 0) ? spec.fg : spec.fgDim;
+    ctx.fillStyle = shade;
+    ctx.fillRect(x * cw + pad, y * ch + pad, cw - pad * 2, ch - pad * 2);
+    if (x !== 3) ctx.fillRect((7 - x) * cw + pad, y * ch + pad, cw - pad * 2, ch - pad * 2); // mirror
+  }
+}
+function clearGlyph(canvas) {
+  var ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+/* ================================================================
+ *  App state & DOM
+ * ================================================================ */
+var $ = function (id) { return document.getElementById(id); };
+var state = {
+  digestA: null,   // Uint8Array
+  hexA: "",
+  digestB: null,
+  hexB: "",
+  flipBase: null,  // string to flip from
+  flipOld: null, flipNew: null, flipOldHex: "", flipNewHex: ""
+};
+var SAMPLE = "The quick brown fox jumps over the lazy dog";
+
+function toast(msg) {
+  var t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast._h);
+  toast._h = setTimeout(function () { t.classList.remove("show"); }, 1600);
+}
+function copyText(text, okMsg) {
+  function fallback() {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); toast(okMsg); }
+    catch (e) { toast("Copy failed — select it manually"); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { toast(okMsg); }, fallback);
+  } else fallback();
+}
+function fmtBytes(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1048576).toFixed(2) + " MB";
+}
+
+/* ---------- input A: live glyph ---------- */
+var debA = null;
+$("inputA").addEventListener("input", function () {
+  clearTimeout(debA);
+  debA = setTimeout(updateA, 120);
+});
+function updateA() {
+  var raw = $("inputA").value;
+  var emptyState = raw.length === 0;
+  $("digestA").textContent = emptyState ? "—" : "";
+  $("statsA").textContent = emptyState ? "waiting for input…" : "hashing…";
+  if (emptyState) {
+    state.digestA = null; state.hexA = "";
+    clearGlyph($("glyphA")); clearGlyph($("glyphA2"));
+    updateVerdict();
+    return;
+  }
+  var bytes = textToBytes(raw);
+  sha256(bytes).then(function (dg) {
+    // guard against out-of-order resolves
+    if ($("inputA").value !== raw) return;
+    state.digestA = dg; state.hexA = toHex(dg);
+    drawGlyph($("glyphA"), dg);
+    drawGlyph($("glyphA2"), dg);
+    $("digestA").textContent = state.hexA;
+    var uniq = new Set(raw.split("")).size;
+    $("statsA").innerHTML = "<b>" + fmtBytes(bytes.length) + "</b> · " +
+      "<b>" + raw.length + "</b> chars · <b>" + uniq + "</b> unique · 256 bits set in stone";
+    updateVerdict();
+  });
+}
+
+/* ---------- input B: compare ---------- */
+var debB = null;
+$("inputB").addEventListener("input", function () {
+  clearTimeout(debB);
+  debB = setTimeout(updateB, 120);
+});
+function updateB() {
+  var raw = $("inputB").value;
+  if (raw.length === 0) {
+    state.digestB = null; state.hexB = "";
+    clearGlyph($("glyphB"));
+    updateVerdict();
+    return;
+  }
+  sha256(textToBytes(raw)).then(function (dg) {
+    if ($("inputB").value !== raw) return;
+    state.digestB = dg; state.hexB = toHex(dg);
+    drawGlyph($("glyphB"), dg);
+    updateVerdict();
+  });
+}
+function updateVerdict() {
+  var v = $("verdict");
+  if (state.digestA === null && state.digestB === null) {
+    v.textContent = "Paste a second text to compare";
+    v.className = "verdict";
+  } else if (state.digestA === null || state.digestB === null) {
+    v.textContent = "Waiting for both sides…";
+    v.className = "verdict";
+  } else if (state.hexA === state.hexB) {
+    v.textContent = "✓ IDENTICAL — same bytes, same face";
+    v.className = "verdict same";
+  } else {
+    v.textContent = "✗ DIFFERENT — different faces";
+    v.className = "verdict diff";
+  }
+}
+
+/* ---------- buttons ---------- */
+$("btnCopyA").addEventListener("click", function () {
+  if (!state.hexA) { toast("Nothing to copy yet — type something first"); return; }
+  copyText(state.hexA, "Digest copied ✓");
+});
+$("btnPngA").addEventListener("click", function () {
+  if (!state.digestA) { toast("Nothing to save yet — type something first"); return; }
+  var a = document.createElement("a");
+  a.download = "hashglyph-" + state.hexA.slice(0, 12) + ".png";
+  a.href = $("glyphA").toDataURL("image/png");
+  a.click();
+  toast("PNG saved ✓");
+});
+$("btnSampleA").addEventListener("click", function () {
+  $("inputA").value = SAMPLE;
+  updateA();
+});
+
+/* ---------- avalanche demo ---------- */
+function flipLast(str) {
+  var bytes = textToBytes(str);
+  if (bytes.length === 0) return "";
+  bytes[bytes.length - 1] ^= 1;             // flip the lowest bit of last byte
+  return new TextDecoder().decode(bytes);   // may become a weird char — that's the point
+}
+function bitsDiff(a, b) {
+  var n = 0;
+  for (var i = 0; i < a.length; i++) {
+    var x = a[i] ^ b[i];
+    while (x) { n += x & 1; x >>= 1; }
+  }
+  return n;
+}
+$("btnFlip").addEventListener("click", function () {
+  var base = $("inputA").value;
+  if (!base.length) { toast("Type something in the left panel first"); return; }
+  state.flipBase = base;
+  runFlip(base);
+});
+$("btnFlipReset").addEventListener("click", function () {
+  state.flipBase = null; state.flipOld = null; state.flipNew = null;
+  clearGlyph($("glyphOld")); clearGlyph($("glyphNew"));
+  $("flipFill").style.width = "0%";
+  $("lblOld").textContent = "before";
+  $("lblNew").textContent = "after";
+  $("flipNote").innerHTML = "Good hashes flip ~50% of all 256 bits when a single input bit changes. Try it on your own text above.";
+});
+function runFlip(base) {
+  var flipped = flipLast(base);
+  sha256(textToBytes(base)).then(function (dOld) {
+    return sha256(textToBytes(flipped)).then(function (dNew) {
+      if ($("inputA").value !== base) return;
+      state.flipOld = dOld; state.flipNew = dNew;
+      state.flipOldHex = toHex(dOld); state.flipNewHex = toHex(dNew);
+      drawGlyph($("glyphOld"), dOld);
+      drawGlyph($("glyphNew"), dNew);
+      var diff = bitsDiff(dOld, dNew);
+      var pct = Math.round(diff / 256 * 100);
+      $("flipFill").style.width = pct + "%";
+      $("lblOld").textContent = JSON.stringify(base.slice(-6));
+      $("lblNew").textContent = JSON.stringify(flipped.slice(-6));
+      $("flipNote").innerHTML = "One bit in, <b>" + diff + " of 256 bits</b> (" + pct + "%) flipped. " +
+        (state.flipOldHex === state.flipNewHex ? "impossible!" : "Faces totally unrelated — that's the avalanche.");
+    });
+  });
+}
+
+/* ---------- init ---------- */
+updateA();
+updateB();
+</script>
+</body>
+</html>
