@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>KEYHEAT — paste text, see your keyboard on fire</title>
+<meta name="description" content="Paste any text and watch a QWERTY heatmap of your keystrokes: finger load, hand balance and how far your fingers would travel. 100% local, nothing uploaded.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230e1116'/%3E%3Crect x='5' y='8' width='6' height='6' rx='1.5' fill='%23ffb454'/%3E%3Crect x='13' y='8' width='6' height='6' rx='1.5' fill='%23ff5c39'/%3E%3Crect x='21' y='8' width='6' height='6' rx='1.5' fill='%23333d4d'/%3E%3Crect x='5' y='16' width='6' height='6' rx='1.5' fill='%23333d4d'/%3E%3Crect x='13' y='16' width='14' height='6' rx='1.5' fill='%23ffb454'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c232e; --line:#2a3441;
+    --txt:#e6edf3; --dim:#8b98a9; --dim2:#5c6a7d;
+    --amber:#ffb454; --hot:#ff5c39; --cool:#58a6ff; --ok:#3fb950;
+    --key:#232b36; --keyline:#333d4d;
+    font-size:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--txt);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+    line-height:1.5; min-height:100vh;
+    padding:calc(env(safe-area-inset-top) + 20px) 16px calc(env(safe-area-inset-bottom) + 32px);
+  }
+  .wrap{max-width:1060px;margin:0 auto}
+  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+  h1{font-size:1.55rem;letter-spacing:.04em;font-weight:800}
+  h1 .fire{color:var(--hot)}
+  .tagline{color:var(--dim);font-size:.92rem}
+  .privacy{display:inline-flex;align-items:center;gap:6px;color:var(--ok);font-size:.8rem;border:1px solid rgba(63,185,80,.35);border-radius:999px;padding:2px 10px;margin-left:auto}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;margin-top:14px}
+  @media (max-width:860px){ .grid{grid-template-columns:minmax(0,1fr)} }
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .panel h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.12em;color:var(--dim2);margin-bottom:10px;font-weight:700}
+  textarea{
+    width:100%;min-height:130px;resize:vertical;
+    background:var(--panel2);color:var(--txt);
+    border:1px solid var(--line);border-radius:8px;
+    padding:10px 12px;font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  textarea:focus{outline:2px solid rgba(255,180,84,.4);border-color:var(--amber)}
+  textarea::placeholder{color:var(--dim2)}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  button{
+    background:var(--panel2);color:var(--txt);border:1px solid var(--keyline);
+    border-radius:8px;padding:7px 14px;font-size:.85rem;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  button:hover{border-color:var(--amber);color:var(--amber)}
+  button.primary{background:var(--amber);border-color:var(--amber);color:#1a1206;font-weight:700}
+  button.primary:hover{background:#ffc472;color:#1a1206}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .hint{color:var(--dim2);font-size:.78rem;margin-top:8px}
+  /* keyboard */
+  .kbdbox{background:#0b0e13;border:1px solid var(--line);border-radius:10px;padding:14px 10px;overflow:hidden}
+  .kbdscaler{transform-origin:top left}
+  .kbrow{display:flex;gap:4px;margin-bottom:4px}
+  .key{
+    height:44px;border-radius:6px;background:var(--key);border:1px solid var(--keyline);
+    display:flex;align-items:center;justify-content:center;
+    font:600 12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--dim);
+    position:relative;user-select:none;
+  }
+  .key .cnt{
+    position:absolute;bottom:2px;right:4px;font-size:9px;color:var(--dim2);font-weight:400;
+  }
+  .key.hot0{color:var(--dim)}
+  .key.spacer{background:transparent;border:none}
+  .legend{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:.75rem;color:var(--dim)}
+  .legend .bar{flex:0 0 140px;height:8px;border-radius:4px;background:linear-gradient(90deg,#232b36,#6e4a1a,#ffb454,#ff5c39)}
+  /* stats */
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width:420px){ .cards{grid-template-columns:1fr 1fr} }
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .card .num{font-size:1.35rem;font-weight:800;font-variant-numeric:tabular-nums}
+  .card .lbl{font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
+  .card.hot .num{color:var(--amber)}
+  .handbar{display:flex;height:14px;border-radius:7px;overflow:hidden;margin-top:8px;border:1px solid var(--line)}
+  .handbar .l{background:var(--cool)}
+  .handbar .r{background:var(--amber)}
+  .handlegend{display:flex;justify-content:space-between;font-size:.75rem;color:var(--dim);margin-top:4px}
+  .fingers{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+  .frow{display:grid;grid-template-columns:86px 1fr 44px;align-items:center;gap:8px;font-size:.78rem;color:var(--dim)}
+  .fbar{height:10px;background:var(--panel2);border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+  .fbar i{display:block;height:100%;background:linear-gradient(90deg,var(--cool),var(--amber),var(--hot));border-radius:5px;transition:width .25s}
+  .frow .pct{text-align:right;font-variant-numeric:tabular-nums;color:var(--txt)}
+  .note{margin-top:12px;font-size:.78rem;color:var(--dim2)}
+  .empty{
+    color:var(--dim2);font-size:.85rem;text-align:center;padding:26px 10px;
+  }
+  .toast{
+    position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 18px);transform:translateX(-50%) translateY(8px);
+    background:#22303f;color:var(--txt);border:1px solid var(--keyline);
+    padding:8px 18px;border-radius:8px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .25s, transform .25s;z-index:50;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  footer{margin-top:22px;color:var(--dim2);font-size:.75rem;text-align:center}
+  footer a{color:var(--dim)}
+  /* mobile: bigger touch targets for keys not needed (no key interaction), rows fine */
+  @media (max-width:520px){
+    h1{font-size:1.25rem}
+    .privacy{margin-left:0}
+    .key{height:38px}
+    .key .cnt{font-size:8px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>KEY<span class="fire">HEAT</span></h1>
+    <span class="tagline">paste text — watch your keyboard catch fire</span>
+    <span class="privacy"><span class="dot"></span>100% local · nothing uploaded</span>
+  </header>
+
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <h2>Your text</h2>
+        <textarea id="input" placeholder="Paste anything — code, an essay, a README, your group chat…&#10;Every keystroke it takes to type is computed right here, in your browser." spellcheck="false"></textarea>
+        <div class="btnrow">
+          <button id="btnSample" type="button">Load sample</button>
+          <button id="btnClear" type="button">Clear</button>
+          <button id="btnCopy" type="button" class="primary" disabled>Copy stats (Markdown)</button>
+          <button id="btnPng" type="button" disabled>Save keyboard PNG</button>
+        </div>
+        <div class="hint" id="hint">Tip: uppercase &amp; symbols count a Shift press. CJK/emoji land in “off-layout”.</div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <h2>Keystroke heatmap — QWERTY</h2>
+        <div class="kbdbox">
+          <div class="kbdscaler" id="scaler"><div id="keyboard" aria-label="QWERTY heatmap"></div></div>
+        </div>
+        <div class="legend">
+          <span>cold</span><span class="bar"></span><span>on fire</span>
+          <span style="margin-left:auto" id="offnote"></span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h2>Vitals</h2>
+        <div class="cards">
+          <div class="card"><div class="num" id="stKeys">0</div><div class="lbl">keystrokes</div></div>
+          <div class="card hot"><div class="num" id="stDist">0 m</div><div class="lbl">finger travel</div></div>
+          <div class="card"><div class="num" id="stChars">0</div><div class="lbl">characters</div></div>
+          <div class="card"><div class="num" id="stOff">0</div><div class="lbl">off-layout</div></div>
+        </div>
+        <div class="handbar" id="handbar"><div class="l" style="width:50%"></div><div class="r" style="width:50%"></div></div>
+        <div class="handlegend"><span id="handL">L 0%</span><span id="handR">0% R</span></div>
+        <div class="fingers" id="fingers"></div>
+        <div class="note" id="note">Type or paste text above — the keyboard and stats update live.</div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <h2>How it works</h2>
+        <div class="note" style="margin-top:0">
+          Each character is mapped to its physical QWERTY key. Uppercase and shifted symbols add a visit to a Shift key.
+          Travel distance walks your fingers along real key positions (1u = 19.05 mm) in typed order.
+          It's a model of touch typing, not a recording — nothing ever leaves this page.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>KEYHEAT · a daily-creative-tool experiment · <a href="https://github.com/xiangjianan/daily-tools/tree/main/keyheat-20260928">source</a></footer>
+</div>
+<div class="toast" id="toast">Copied ✓</div>
+
+<script>
+'use strict';
+/* ============ layout data (QWERTY, units in "u", 1u = 19.05mm) ============ */
+var U = 19.05; // mm per key unit
+var FINGERS = ['L pinky','L ring','L middle','L index','R index','R ring','R pinky','Thumb'];
+// per-key: [label(s), width u, finger idx, hand]  finger: 0..3 left, 7 thumb, 4..6 right
+var ROWS = [
+  [['`',1,0],['1',1,0],['2',1,0],['3',1,1],['4',1,2],['5',1,3],['6',1,4],['7',1,4],['8',1,5],['9',1,6],['0',1,6],['-',1,7],['=',1,7],['⌫',1.8,7]],
+  [['Tab',1.5,0],['q',1,0],['w',1,1],['e',1,2],['r',1,3],['t',1,3],['y',1,4],['u',1,4],['i',1,5],['o',1,5],['p',1,6],['[',1,7],[']',1,7],['\\',1.4,7]],
+  [['Caps',1.8,0],['a',1,0],['s',1,1],['d',1,2],['f',1,3],['g',1,3],['h',1,4],['j',1,4],['k',1,5],['l',1,5],[';',1,6],["'",1,7],['⏎',2.1,7]],
+  [['⇧',2.2,0],['z',1,0],['x',1,1],['c',1,2],['v',1,3],['b',1,3],['n',1,4],['m',1,4],[',',1,5],['.',1,5],['/',1,6],['⇧',2.7,7]],
+  [['Ctrl',1.4,0],['Alt',1.3,2],[' ',7.2,7],['Alt',1.3,4],['Ctrl',1.4,7]]
+];
+var SHIFT_KEY = {row:3, col:0}; // left shift is our shift proxy for travel
+
+/* char -> base key + needsShift */
+var CHAR_MAP = (function(){
+  var m = {};
+  var rows = [
+    ['`1234567890-=', 0],
+    ['qwertyuiop[]\\', 1],
+    ['asdfghjkl;\'', 2],
+    ['zxcvbnm,./', 3]
+  ];
+  rows.forEach(function(r){
+    var chars = r[0], ri = r[1];
+    for (var i=0;i<ROWS[ri].length;i++){
+      if (ROWS[ri][i][0].length>1) continue; // skip wide keys
+      var keyDef = ROWS[ri][i];
+      m[keyDef[0]] = {row:ri, col:i, shift:false};
+      // shifted variant
+      var shifted = {'`':'~','1':'!','2':'@','3':'#','4':'$','5':'%','6':'^','7':'&','8':'*','9':'(','0':')','-':'_','=':'+',
+        '[':'{',']':'}','\\':'|',';':':','\'':'"',',':'<','.':'>','/':'?'}[keyDef[0]];
+      if (shifted) m[shifted] = {row:ri, col:i, shift:true};
+    }
+  });
+  // letters
+  var lrow1='qwertyuiop', lrow2='asdfghjkl', lrow3='zxcvbnm';
+  for (var i=0;i<26;i++){
+    var ch = String.fromCharCode(97+i);
+    var row = lrow1.indexOf(ch)>=0?1:(lrow2.indexOf(ch)>=0?2:3);
+    var col = (row===1?lrow1:row===2?lrow2:lrow3).indexOf(ch);
+    var mcol = row===1?col+1:row===2?col+1:col+1; // +1 for the wide leading key
+    m[ch] = {row:row, col:mcol, shift:false};
+    m[ch.toUpperCase()] = {row:row, col:mcol, shift:true};
+  }
+  m[' '] = {row:4, col:2, shift:false};
+  m['\n'] = {row:2, col:12, shift:false}; // Enter
+  m['\t'] = {row:1, col:0, shift:false};  // Tab
+  return m;
+})();
+
+/* key center position in mm */
+function keyCenter(row, col){
+  var x = 0, def = null;
+  for (var i=0;i<=col;i++){
+    def = ROWS[row][i];
+    if (i<col) x += def[1];
+  }
+  return { x:(x + def[1]/2) * U, y:(row + 0.5) * U };
+}
+
+/* ============ core analysis (pure) ============ */
+function analyze(text){
+  var counts = {};            // "row:col" -> presses
+  var offLayout = 0;
+  var chars = text.length;
+  var total = 0;
+  var travel = 0;
+  var finger = [0,0,0,0,0,0,0,0];
+  var hand = {L:0,R:0};
+  var prev = null; // {x,y} mm of last key visited
+  var visit = function(pos, fidx){
+    total++;
+    var id = pos.row+'_'+pos.col;
+    counts[id] = (counts[id]||0)+1;
+    finger[fidx]++;
+    // hand attribution: fingers 0-3 = left, 4-6 = right, 7 = thumb (excluded from balance)
+    if (fidx<=3) hand.L++;
+    else if (fidx<=6) hand.R++;
+    var c = keyCenter(pos.row, pos.col);
+    if (prev) travel += Math.hypot(c.x-prev.x, c.y-prev.y);
+    prev = c;
+  };
+  for (var i=0;i<text.length;i++){
+    var ch = text[i];
+    var m = CHAR_MAP[ch];
+    if (!m){ offLayout++; prev=null; continue; }      // off-layout breaks the walk (IME input)
+    var def = ROWS[m.row][m.col];
+    if (m.shift){
+      visit(SHIFT_KEY, ROWS[SHIFT_KEY.row][SHIFT_KEY.col][2]);
+    }
+    visit({row:m.row,col:m.col}, def[2]);
+  }
+  return {counts:counts, offLayout:offLayout, chars:chars, total:total,
+          travel:travel, finger:finger, hand:hand};
+}
+function fmtDist(mm){
+  if (mm < 1000) return Math.round(mm) + ' mm';
+  if (mm < 100000) return (mm/1000).toFixed(2) + ' m';
+  return (mm/1000/1000).toFixed(2) + ' km';
+}
+function heatColor(t){ // t 0..1
+  if (t<=0) return null;
+  // dark -> #6e4a1a -> amber -> hot red
+  var stops = [[35,43,54],[110,74,26],[255,180,84],[255,92,57]];
+  var p = t*3, i = Math.min(2, Math.floor(p)), f = p-i;
+  var a = stops[i], b = stops[i+1];
+  return 'rgb('+Math.round(a[0]+(b[0]-a[0])*f)+','+Math.round(a[1]+(b[1]-a[1])*f)+','+Math.round(a[2]+(b[2]-a[2])*f)+')';
+}
+function sampleText(){
+  return 'The quick brown fox jumps over the lazy dog.\n\nfunction keyheat(text) {\n  const v = analyze(text);\n  return render(v); // paste & burn\n}\n\nQ: How far do fingers travel to type 1000 words?\nA: Roughly 84 meters of tiny sprints.';
+}
+/* ============ state & dom ============ */
+var $ = function(id){ return document.getElementById(id); };
+var DESIGN_W = 920; // px design width of keyboard
+var lastStats = null;
+function buildKeyboard(){
+  var kb = $('keyboard');
+  kb.innerHTML = '';
+  kb.style.width = DESIGN_W+'px';
+  ROWS.forEach(function(row, ri){
+    var r = document.createElement('div');
+    r.className = 'kbrow';
+    row.forEach(function(k, ci){
+      var d = document.createElement('div');
+      d.className = 'key hot0';
+      d.style.flex = '0 0 '+(k[1]* (DESIGN_W/15.4) - 4)+'px';
+      if (k[0]===' '){ d.style.flex = '0 0 '+(k[1]*(DESIGN_W/15.4)-4)+'px'; }
+      d.id = 'k'+ri+'_'+ci;
+      d.innerHTML = '<span class="lb">'+k[0]+'</span><span class="cnt"></span>';
+      d.title = k[0];
+      r.appendChild(d);
+    });
+    kb.appendChild(r);
+  });
+}
+function render(st){
+  var max = 0;
+  Object.keys(st.counts).forEach(function(id){ if (st.counts[id]>max) max = st.counts[id]; });
+  // reset all
+  document.querySelectorAll('.key').forEach(function(k){
+    k.classList.add('hot0');
+    k.style.background = ''; k.style.borderColor = ''; k.querySelector('.cnt').textContent='';
+  });
+  if (max>0){
+    Object.keys(st.counts).forEach(function(id){
+      var el = document.getElementById('k'+id);
+      if (!el) return;
+      var t = Math.log(1+st.counts[id]) / Math.log(1+max); // log scale
+      var c = heatColor(t);
+      if (c){ el.style.background = c; el.style.borderColor = c; }
+      if (t>0.55) el.querySelector('.lb').style.color = '#14100a';
+      else el.querySelector('.lb').style.color = '';
+      el.querySelector('.cnt').textContent = st.counts[id];
+    });
+  }
+  $('stKeys').textContent = st.total.toLocaleString();
+  $('stChars').textContent = st.chars.toLocaleString();
+  $('stOff').textContent = st.offLayout.toLocaleString();
+  $('stDist').textContent = st.total? fmtDist(st.travel) : '0 m';
+  var tot = st.hand.L + st.hand.R;
+  var lp = tot? Math.round(st.hand.L/tot*100) : 50;
+  $('handbar').children[0].style.width = lp+'%';
+  $('handbar').children[1].style.width = (100-lp)+'%';
+  $('handL').textContent = 'L '+lp+'%';
+  $('handR').textContent = (100-lp)+'% R';
+  // fingers
+  var fmap = $('fingers'); fmap.innerHTML='';
+  var fmax = Math.max.apply(null, st.finger.concat([1]));
+  var ftot = st.finger.reduce(function(a,b){return a+b;},0) || 1;
+  FINGERS.forEach(function(name, i){
+    var row = document.createElement('div'); row.className='frow';
+    var lab = document.createElement('span'); lab.textContent = name;
+    var bar = document.createElement('div'); bar.className='fbar';
+    var fill = document.createElement('i'); fill.style.width = (st.finger[i]/fmax*100)+'%';
+    bar.appendChild(fill);
+    var pct = document.createElement('span'); pct.className='pct';
+    pct.textContent = Math.round(st.finger[i]/ftot*100)+'%';
+    row.appendChild(lab); row.appendChild(bar); row.appendChild(pct);
+    fmap.appendChild(row);
+  });
+  $('note').textContent = st.total
+    ? (st.offLayout? st.offLayout+' characters were not on a US QWERTY key (CJK/emoji/etc.) and are excluded from travel.' :
+       'Every keystroke accounted for. Shift presses included in travel.')
+    : 'Type or paste text above — the keyboard and stats update live.';
+  $('offnote').textContent = st.offLayout? ('⌨ '+st.offLayout+' off-layout') : '';
+  $('btnCopy').disabled = !st.total;
+  $('btnPng').disabled = !st.total;
+  lastStats = st;
+}
+function scaleKeyboard(){
+  var box = document.querySelector('.kbdbox');
+  var w = box.clientWidth - 20;
+  var s = Math.min(1, w / DESIGN_W);
+  $('scaler').style.transform = 'scale('+s+')';
+  $('scaler').style.height = ($('keyboard').clientHeight * s)+'px';
+}
+function markdownReport(st){
+  var lines = [];
+  lines.push('# KEYHEAT report');
+  lines.push('');
+  lines.push('- Keystrokes: **'+st.total+'**');
+  lines.push('- Characters: '+st.chars+(st.offLayout? ' ('+st.offLayout+' off-layout, excluded)':''));
+  lines.push('- Finger travel: **'+fmtDist(st.travel)+'**');
+  var tot = st.hand.L+st.hand.R;
+  lines.push('- Hand balance: L '+(tot?Math.round(st.hand.L/tot*100):50)+'% / R '+(tot?100-Math.round(st.hand.L/tot*100):50)+'%');
+  lines.push('');
+  lines.push('| Finger | Share |');
+  lines.push('|---|---|');
+  var ftot = st.finger.reduce(function(a,b){return a+b;},0)||1;
+  FINGERS.forEach(function(n,i){ lines.push('| '+n+' | '+Math.round(st.finger[i]/ftot*100)+'% |'); });
+  lines.push('');
+  lines.push('Computed locally with [KEYHEAT](https://xiangjianan.github.io/daily-tools/keyheat-20260928//).');
+  return lines.join('\n');
+}
+var toastTimer = null;
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 1600);
+}
+function copyText(txt, okMsg){
+  function fb(){
+    var ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast(okMsg); }
+    catch(e){ toast('Copy failed — select manually'); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){ toast(okMsg); }, fb);
+  } else fb();
+}
+function exportPNG(){
+  if (!lastStats || !lastStats.total){ toast('Nothing to export yet'); return; }
+  var scale = 2, pad = 16, rowH = 46, gap = 4;
+  var kw = (DESIGN_W/15.4);
+  var H = ROWS.length*(rowH+gap)+pad*2, W = DESIGN_W+pad*2;
+  var cv = document.createElement('canvas');
+  cv.width = W*scale; cv.height = H*scale;
+  var ctx = cv.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#0b0e13'; ctx.fillRect(0,0,W,H);
+  var max = 0;
+  Object.keys(lastStats.counts).forEach(function(id){ if(lastStats.counts[id]>max) max=lastStats.counts[id]; });
+  ROWS.forEach(function(row, ri){
+    var x = pad;
+    row.forEach(function(k, ci){
+      var w = k[1]*kw - gap;
+      var id = ri+'_'+ci;
+      var cnt = lastStats.counts[id]||0;
+      var t = max? Math.log(1+cnt)/Math.log(1+max) : 0;
+      ctx.fillStyle = heatColor(t) || '#232b36';
+      ctx.beginPath();
+      var r=6, xx=x, yy=pad+ri*(rowH+gap);
+      ctx.moveTo(xx+r,yy);
+      ctx.arcTo(xx+w,yy,xx+w,yy+rowH,r); ctx.arcTo(xx+w,yy+rowH,xx,yy+rowH,r);
+      ctx.arcTo(xx,yy+rowH,xx,yy,r); ctx.arcTo(xx,yy,xx+w,yy,r);
+      ctx.fill();
+      ctx.fillStyle = t>0.55? '#14100a' : '#8b98a9';
+      ctx.font = '600 12px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(k[0], xx+w/2, yy+rowH/2 - 4);
+      if (cnt){ ctx.font='9px monospace'; ctx.fillStyle = t>0.55? '#14100a':'#5c6a7d'; ctx.fillText(cnt, xx+w/2, yy+rowH/2+11); }
+      x += k[1]*kw;
+    });
+  });
+  ctx.fillStyle='#5c6a7d'; ctx.font='11px sans-serif'; ctx.textAlign='right';
+  ctx.fillText('KEYHEAT · '+lastStats.total+' keystrokes · '+fmtDist(lastStats.travel)+' finger travel', W-pad, H-6);
+  var a = document.createElement('a');
+  a.download = 'keyheat.png';
+  a.href = cv.toDataURL('image/png');
+  a.click();
+  toast('PNG saved ✓');
+}
+/* ============ wire up ============ */
+buildKeyboard();
+var ta = $('input');
+ta.addEventListener('input', function(){ render(analyze(ta.value)); });
+$('btnSample').addEventListener('click', function(){
+  ta.value = sampleText();
+  render(analyze(ta.value));
+});
+$('btnClear').addEventListener('click', function(){
+  ta.value=''; render(analyze('')); ta.focus();
+});
+$('btnCopy').addEventListener('click', function(){
+  if (lastStats && lastStats.total) copyText(markdownReport(lastStats), 'Stats copied ✓');
+});
+$('btnPng').addEventListener('click', exportPNG);
+window.addEventListener('resize', scaleKeyboard);
+scaleKeyboard();
+</script>
+</body>
+</html>
