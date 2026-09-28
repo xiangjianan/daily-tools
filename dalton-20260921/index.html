@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DALTON — see your colors through colorblind eyes</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23000'/%3E%3Ccircle cx='11' cy='16' r='6' fill='%23ff5555'/%3E%3Ccircle cx='21' cy='16' r='6' fill='%2355cc88' fill-opacity='0.85'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b24; --panel2:#1c2330; --line:#2a3345;
+    --text:#e8edf5; --dim:#8b98ad; --accent:#ffb454; --accent2:#5fd4c4;
+    --danger:#ff6b6b; --radius:12px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    min-height:100vh; display:flex; flex-direction:column;
+  }
+  header{
+    padding:18px 20px 10px; text-align:center;
+  }
+  header h1{
+    font-size:clamp(20px,3.5vw,28px); letter-spacing:2px; font-weight:800;
+  }
+  header h1 .dot{color:var(--accent);}
+  header p{color:var(--dim); font-size:13px; margin-top:4px;}
+  main{
+    flex:1; width:100%; max-width:1080px; margin:0 auto;
+    padding:10px 16px 26px; display:flex; flex-direction:column; gap:14px;
+  }
+  /* drop zone */
+  #drop{
+    border:2px dashed var(--line); border-radius:var(--radius);
+    padding:26px 16px; text-align:center; color:var(--dim);
+    cursor:pointer; transition:border-color .15s, background .15s;
+    background:var(--panel);
+  }
+  #drop.over{border-color:var(--accent); background:#1f2530;}
+  #drop strong{color:var(--text);}
+  #drop .sub{font-size:12px; margin-top:6px;}
+  #fileInput{display:none;}
+  /* controls */
+  .controls{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:14px; display:flex; flex-direction:column; gap:12px;
+  }
+  .controls[hidden]{display:none;}
+  .chips{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip{
+    border:1px solid var(--line); background:var(--panel2); color:var(--text);
+    border-radius:999px; padding:7px 13px; font-size:13px; cursor:pointer;
+    transition:all .12s; line-height:1.2;
+  }
+  .chip small{display:block; color:var(--dim); font-size:10.5px; margin-top:2px;}
+  .chip.active{border-color:var(--accent); background:#2a2418; box-shadow:0 0 0 1px var(--accent);}
+  .chip.active small{color:var(--accent);}
+  .chip:focus-visible{outline:2px solid var(--accent2);}
+  .row{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  .row label{font-size:13px; color:var(--dim); min-width:150px;}
+  input[type=range]{
+    flex:1; min-width:160px; accent-color:var(--accent); height:28px; cursor:pointer;
+  }
+  #sevVal{color:var(--accent); font-weight:700; min-width:44px; text-align:right; font-variant-numeric:tabular-nums;}
+  .btns{display:flex; gap:8px; flex-wrap:wrap;}
+  button.act{
+    background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:8px; padding:8px 14px; font-size:13px; cursor:pointer; transition:all .12s;
+  }
+  button.act:hover{border-color:var(--accent2); color:var(--accent2);}
+  button.act.primary{background:var(--accent); color:#14100a; border-color:var(--accent); font-weight:700;}
+  button.act.primary:hover{filter:brightness(1.1); color:#14100a;}
+  /* viewer */
+  .viewer{display:flex; gap:14px; align-items:stretch;}
+  .pane{
+    flex:1; min-width:0; background:var(--panel); border:1px solid var(--line);
+    border-radius:var(--radius); padding:10px; display:flex; flex-direction:column; gap:8px;
+  }
+  .pane h2{font-size:13px; font-weight:600; color:var(--dim); letter-spacing:.5px; text-transform:uppercase;}
+  .pane h2 b{color:var(--accent);}
+  .canvasWrap{
+    position:relative; border-radius:8px; overflow:hidden; background:
+    repeating-conic-gradient(#20242c 0% 25%, #191d24 0% 50%) 50% / 20px 20px;
+    min-height:120px; display:flex; align-items:center; justify-content:center;
+  }
+  canvas{max-width:100%; max-height:52vh; display:block; image-rendering:auto;}
+  .pane .meta{font-size:12px; color:var(--dim);}
+  .toast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
+    background:#233047; color:var(--text); border:1px solid var(--accent2);
+    padding:10px 18px; border-radius:10px; font-size:13px; opacity:0;
+    pointer-events:none; transition:all .25s; z-index:50; max-width:88vw; text-align:center;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  .empty-note{color:var(--dim); font-size:13px; padding:30px 10px; text-align:center;}
+  footer{
+    text-align:center; color:var(--dim); font-size:12px; padding:12px;
+    border-top:1px solid var(--line);
+  }
+  footer a{color:var(--accent2); text-decoration:none;}
+  @media (max-width:720px){
+    .viewer{flex-direction:column;}
+    canvas{max-height:38vh;}
+    .row label{min-width:110px;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>DALTON<span class="dot">.</span></h1>
+  <p>Drop an image — see it through 8 kinds of colorblind eyes. 100% local, nothing uploaded.</p>
+</header>
+<main>
+  <div id="drop" role="button" tabindex="0" aria-label="Upload or drop an image">
+    <strong>Drop / paste / click to choose an image</strong>
+    <div class="sub">PNG · JPG · WebP — processed entirely in your browser</div>
+    <div style="margin-top:12px;"><button class="act primary" id="demoBtn">Try demo image</button></div>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+
+  <div class="controls" id="controls" hidden>
+    <div class="chips" id="chips"></div>
+    <div class="row">
+      <label for="sev">Severity <span id="sevName"></span></label>
+      <input type="range" id="sev" min="0" max="100" value="100" aria-label="Severity">
+      <span id="sevVal">100%</span>
+    </div>
+    <div class="row btns">
+      <button class="act" id="dlBtn">Download simulated PNG</button>
+      <button class="act" id="resetBtn">Clear</button>
+    </div>
+  </div>
+
+  <div class="viewer">
+    <div class="pane">
+      <h2>Normal vision</h2>
+      <div class="canvasWrap"><canvas id="cOrig"></canvas><div class="empty-note" id="noteOrig">No image yet</div></div>
+      <div class="meta" id="metaOrig"></div>
+    </div>
+    <div class="pane">
+      <h2 id="simTitle">Simulated — <b>Deuteranopia</b></h2>
+      <div class="canvasWrap"><canvas id="cSim"></canvas><div class="empty-note" id="noteSim">No image yet</div></div>
+      <div class="meta" id="metaSim"></div>
+    </div>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+<footer>
+  DALTON — a tribute to John Dalton (1794, first paper on color blindness). ·
+  Simulation via Viénot/Brettel dichromacy matrices in linear RGB · <a href="https://github.com/xiangjianan" target="_blank" rel="noopener">@xiangjianan</a>
+</footer>
+<script>
+"use strict";
+/* ================= CVD simulation core ================= */
+// sRGB -> linear
+function srgbToLin(c){ c/=255; return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
+function linToSrgb(c){
+  c = c<=0.0031308 ? c*12.92 : 1.055*Math.pow(c,1/2.4)-0.055;
+  return Math.max(0, Math.min(255, Math.round(c*255)));
+}
+// Viénot/Brettel-style dichromacy matrices (linear RGB)
+const MATS = {
+  protanopia:  [[0.11238,0.88762,0],[0.11238,0.88762,0],[0.00405,-0.00405,1]],
+  deuteranopia:[[0.29275,0.70725,0],[0.29275,0.70725,0],[-0.02234,0.02234,1]],
+  tritanopia:  [[1,0.14461,-0.14461],[0,0.85924,0.14076],[0,0.85924,0.14076]],
+  achromatopsia:null // handled as luminance
+};
+const TYPES = [
+  {id:"deuteranopia", name:"Deuteranopia",  group:"red-green",  pop:"~1% of men · green-blind"},
+  {id:"protanopia",   name:"Protanopia",    group:"red-green",  pop:"~1% of men · red-blind"},
+  {id:"tritanopia",   name:"Tritanopia",    group:"blue-yellow",pop:"~0.01% · blue-blind"},
+  {id:"achromatopsia",name:"Achromatopsia", group:"none",       pop:"~0.003% · no color at all"},
+  {id:"deuteranomaly",name:"Deuteranomaly", group:"red-green",  pop:"~5% of men · green-weak"},
+  {id:"protanomaly",  name:"Protanomaly",   group:"red-green",  pop:"~1% of men · red-weak"},
+  {id:"tritanomaly",  name:"Tritanomaly",   group:"blue-yellow",pop:"~0.01% · blue-weak"},
+  {id:"normal",       name:"Normal (baseline)", group:"none",   pop:"majority trichromat"}
+];
+function simPixel(r,g,b, typeId, sev){ // sev 0..1 ; r,g,b are 0..255
+  if (typeId==="normal" || sev===0) return [r,g,b];
+  const lr=srgbToLin(r), lg=srgbToLin(g), lb=srgbToLin(b);
+  let out;
+  if (typeId==="achromatopsia"){
+    const y = 0.2126*lr + 0.7152*lg + 0.0722*lb;
+    out = [y,y,y];
+  } else if (typeId==="tritanomaly" || typeId==="protanomaly" || typeId==="deuteranomaly"){
+    const base = typeId.replace("anomaly","anopia");
+    const full = dichromat(lr,lg,lb, MATS[base]);
+    // anomaly = partial shift toward the dichromat response (approximation)
+    out = [ lr+(full[0]-lr)*sev, lg+(full[1]-lg)*sev, lb+(full[2]-lb)*sev ];
+  } else {
+    const full = dichromat(lr,lg,lb, MATS[typeId]);
+    out = [ lr+(full[0]-lr)*sev, lg+(full[1]-lg)*sev, lb+(full[2]-lb)*sev ];
+  }
+  return [linToSrgb(out[0]), linToSrgb(out[1]), linToSrgb(out[2])];
+}
+function dichromat(lr,lg,lb,m){
+  return [
+    m[0][0]*lr + m[0][1]*lg + m[0][2]*lb,
+    m[1][0]*lr + m[1][1]*lg + m[1][2]*lb,
+    m[2][0]*lr + m[2][1]*lg + m[2][2]*lb
+  ];
+}
+/* ================= state & dom ================= */
+const $ = id => document.getElementById(id);
+const drop=$("drop"), fileInput=$("fileInput"), chipsBox=$("chips");
+const sev=$("sev"), sevVal=$("sevVal"), sevName=$("sevName");
+const cOrig=$("cOrig"), cSim=$("cSim"), simTitle=$("simTitle");
+const noteOrig=$("noteOrig"), noteSim=$("noteSim"), metaOrig=$("metaOrig"), metaSim=$("metaSim");
+const controls=$("controls"), toast=$("toast");
+let curType="deuteranopia", imgBitmap=null, srcCanvas=null, toastTimer=null;
+
+TYPES.forEach(t=>{
+  const b=document.createElement("button");
+  b.className="chip"+(t.id===curType?" active":"");
+  b.dataset.id=t.id;
+  b.innerHTML = t.name + "<small>"+t.pop+"</small>";
+  b.addEventListener("click",()=>{ curType=t.id;
+    chipsBox.querySelectorAll(".chip").forEach(c=>c.classList.toggle("active",c.dataset.id===t.id));
+    render();
+  });
+  chipsBox.appendChild(b);
+});
+sev.addEventListener("input",()=>{ sevVal.textContent = sev.value+"%"; render(); });
+
+function showToast(msg,isErr){
+  toast.textContent=msg;
+  toast.style.borderColor = isErr ? "var(--danger)" : "var(--accent2)";
+  toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>toast.classList.remove("show"),2600);
+}
+/* ================= image loading ================= */
+const MAX_DIM=1400;
+function loadFromBlob(blob){
+  if(!blob) return;
+  if(!blob.type || !blob.type.startsWith("image/")){
+    showToast("That doesn't look like an image file — try PNG / JPG / WebP.", true); return;
+  }
+  const url=URL.createObjectURL(blob);
+  const img=new Image();
+  img.onload=()=>{
+    URL.revokeObjectURL(url);
+    let w=img.naturalWidth, h=img.naturalHeight;
+    if(!w||!h){ showToast("Could not read image dimensions.",true); return; }
+    const scale=Math.min(1, MAX_DIM/Math.max(w,h));
+    w=Math.round(w*scale); h=Math.round(h*scale);
+    srcCanvas=document.createElement("canvas"); srcCanvas.width=w; srcCanvas.height=h;
+    srcCanvas.getContext("2d").drawImage(img,0,0,w,h);
+    imgBitmap=true;
+    cOrig.width=w; cOrig.height=h;
+    cOrig.getContext("2d").drawImage(srcCanvas,0,0);
+    noteOrig.style.display="none"; noteSim.style.display="none";
+    metaOrig.textContent = (img.naturalWidth===w&&img.naturalHeight===h) ?
+      w+" × "+h+" px" : img.naturalWidth+" × "+img.naturalHeight+" px → resized to "+w+" × "+h;
+    controls.hidden=false;
+    render();
+    showToast("Image loaded — comparing below.");
+  };
+  img.onerror=()=>{ URL.revokeObjectURL(url); showToast("Failed to decode this image.",true); };
+  img.src=url;
+}
+drop.addEventListener("click",()=>fileInput.click());
+drop.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); fileInput.click(); }});
+fileInput.addEventListener("change",()=>{ loadFromBlob(fileInput.files[0]); fileInput.value=""; });
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
+drop.addEventListener("drop",e=>{
+  const f=e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  loadFromBlob(f);
+});
+window.addEventListener("paste",e=>{
+  const items=e.clipboardData && e.clipboardData.items; if(!items) return;
+  for(const it of items){ if(it.type && it.type.startsWith("image/")){ loadFromBlob(it.getAsFile()); return; } }
+});
+/* ================= demo image (procedural, offline) ================= */
+function makeDemo(){
+  const w=640,h=400,c=document.createElement("canvas"); c.width=w;c.height=h;
+  const x=c.getContext("2d");
+  x.fillStyle="#ffffff"; x.fillRect(0,0,w,h);
+  // fake dashboard with classic bad-pairing colors
+  x.fillStyle="#e74c3c"; x.fillRect(30,30,170,120);      // red card
+  x.fillStyle="#2ecc71"; x.fillRect(220,30,170,120);     // green card
+  x.fillStyle="#3498db"; x.fillRect(410,30,200,120);     // blue card
+  x.fillStyle="#f1c40f"; x.fillRect(30,170,280,90);      // yellow banner
+  x.fillStyle="#e67e22"; x.fillRect(330,170,280,90);     // orange banner
+  // status dots row
+  const dots=["#d63031","#00b894","#0984e3","#fdcb6e","#e17055","#6c5ce7"];
+  dots.forEach((col,i)=>{ x.fillStyle=col; x.beginPath(); x.arc(60+i*90,310,24,0,7); x.fill(); });
+  x.fillStyle="#2d3436"; x.font="bold 20px sans-serif"; x.fillText("Sales",50,80);
+  x.fillText("Growth",240,80); x.fillText("Traffic",440,80);
+  x.font="13px sans-serif"; x.fillText("warning banner",50,205); x.fillText("notice banner",350,205);
+  x.fillText("status indicators ↓",50,365);
+  return c;
+}
+$("demoBtn").addEventListener("click",()=>{
+  const c=makeDemo();
+  srcCanvas=c; imgBitmap=true;
+  cOrig.width=c.width; cOrig.height=c.height;
+  cOrig.getContext("2d").drawImage(c,0,0);
+  noteOrig.style.display="none"; noteSim.style.display="none";
+  metaOrig.textContent=c.width+" × "+c.height+" px · demo";
+  controls.hidden=false; render();
+  showToast("Demo image loaded — notice how red/green cards collide.");
+});
+/* ================= render simulated ================= */
+function render(){
+  if(!imgBitmap||!srcCanvas) return;
+  const w=srcCanvas.width,h=srcCanvas.height;
+  cSim.width=w; cSim.height=h;
+  const sctx=srcCanvas.getContext("2d");
+  const d=sctx.getImageData(0,0,w,h);
+  const px=d.data;
+  const typeId=curType, s=sev.value/100;
+  for(let i=0;i<px.length;i+=4){
+    const out=simPixel(px[i],px[i+1],px[i+2],typeId,s);
+    px[i]=out[0]; px[i+1]=out[1]; px[i+2]=out[2];
+  }
+  cSim.getContext("2d").putImageData(d,0,0);
+  const t=TYPES.find(t=>t.id===typeId);
+  simTitle.innerHTML="Simulated — <b>"+t.name+"</b>";
+  metaSim.textContent = sev.value==="100" ? t.pop.replace("· ","")+" · full severity" : t.pop.replace("· ","")+" · "+sev.value+"% severity";
+}
+/* ================= export & reset ================= */
+$("dlBtn").addEventListener("click",()=>{
+  if(!imgBitmap){ showToast("Nothing to download yet.",true); return; }
+  try{
+    const a=document.createElement("a");
+    a.download="dalton-"+curType+"-"+sev.value+"pct.png";
+    a.href=cSim.toDataURL("image/png");
+    a.click();
+    showToast("PNG downloaded.");
+  }catch(err){ showToast("Export failed: "+err.message,true); }
+});
+$("resetBtn").addEventListener("click",()=>{
+  imgBitmap=null; srcCanvas=null;
+  cOrig.width=cSim.width=300; cOrig.height=cSim.height=150;
+  metaOrig.textContent=""; metaSim.textContent="";
+  noteOrig.style.display=""; noteSim.style.display="";
+  controls.hidden=true;
+  showToast("Cleared.");
+});
+/* boot */
+sevVal.textContent=sev.value+"%";
+</script>
+</body>
+</html>
