@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MASKER — paste-log privacy scrubber</title>
+<meta name="description" content="Paste logs, JSON or CSV and get a format-preserving sanitized twin. Emails, IPs, UUIDs, tokens, phones and card numbers swapped for deterministic lookalike fakes. 100% in your browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M16 5l9 4v7c0 6-4 9.5-9 11-5-1.5-9-5-9-11V9l9-4z' fill='none' stroke='%23f5a623' stroke-width='2.4'/%3E%3Ccircle cx='16' cy='15' r='3.2' fill='%23f5a623'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0d1117; --panel:#151b24; --panel2:#1a2230; --line:#28324a;
+    --text:#dbe4f0; --dim:#8b98ad; --faint:#5b6778;
+    --amber:#f5a623; --green:#3fb984; --red:#ef5b6b; --cyan:#4cc2e0; --violet:#a78bfa;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font:15px/1.55 ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+    min-height:100vh; padding:20px 16px 48px;
+  }
+  .wrap{max-width:1100px; margin:0 auto}
+  header{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px}
+  h1{font-size:22px; letter-spacing:2px; color:var(--amber)}
+  h1 .shield{font-size:18px}
+  .tag{color:var(--dim); font-size:13px}
+  .sub{color:var(--dim); font-size:13px; margin-bottom:16px}
+  .sub b{color:var(--text)}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+  @media (max-width:820px){ .grid{grid-template-columns:1fr} }
+  .pane{display:flex; flex-direction:column; min-width:0}
+  .pane h2{font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); margin-bottom:8px}
+  textarea{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    color:var(--text); font:inherit; font-size:13.5px; padding:12px;
+    width:100%; height:340px; resize:vertical; outline:none;
+  }
+  textarea:focus{border-color:var(--amber)}
+  textarea::placeholder{color:var(--faint)}
+  .out{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    font-size:13.5px; padding:12px; width:100%; height:340px;
+    overflow:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  .out .hit{border-radius:4px; padding:0 2px}
+  .out .hit.email{background:rgba(245,166,35,.22); color:#ffd07a; border-bottom:1px solid var(--amber)}
+  .out .hit.ipv4{background:rgba(76,194,224,.20); color:#8adcf2; border-bottom:1px solid var(--cyan)}
+  .out .hit.uuid{background:rgba(167,139,250,.20); color:#c9b8fc; border-bottom:1px solid var(--violet)}
+  .out .hit.token{background:rgba(239,91,107,.18); color:#ff9aa5; border-bottom:1px solid var(--red)}
+  .out .hit.bearer{background:rgba(239,91,107,.28); color:#ff9aa5; border-bottom:1px solid var(--red)}
+  .out .hit.phone{background:rgba(63,185,132,.18); color:#7fdcae; border-bottom:1px solid var(--green)}
+  .out .hit.card{background:rgba(245,166,35,.30); color:#ffd07a; border-bottom:1px solid var(--amber)}
+  .bar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px}
+  button{
+    background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:8px; font:inherit; font-size:13px; padding:7px 13px; cursor:pointer;
+  }
+  button:hover{border-color:var(--amber); color:var(--amber)}
+  button.primary{background:var(--amber); border-color:var(--amber); color:#151000; font-weight:700}
+  button.primary:hover{filter:brightness(1.1); color:#151000}
+  button:disabled{opacity:.45; cursor:not-allowed}
+  .chips{display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 4px}
+  .chip{
+    display:inline-flex; align-items:center; gap:6px; font-size:12.5px;
+    border:1px solid var(--line); border-radius:99px; padding:4px 12px;
+    background:var(--panel); cursor:pointer; user-select:none; color:var(--dim);
+  }
+  .chip .dot{width:8px; height:8px; border-radius:50%; background:var(--line)}
+  .chip .n{background:var(--panel2); border-radius:99px; padding:0 7px; font-size:11.5px}
+  .chip.on{color:var(--text); border-color:currentColor}
+  .chip.on .dot{background:currentColor}
+  .chip.off{opacity:.5}
+  .chip.t-email.on{color:var(--amber)} .chip.t-ipv4.on{color:var(--cyan)}
+  .chip.t-uuid.on{color:var(--violet)} .chip.t-token.on{color:var(--red)}
+  .chip.t-bearer.on{color:var(--red)} .chip.t-phone.on{color:var(--green)}
+  .chip.t-card.on{color:#ffd07a}
+  .seedrow{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px}
+  .seedrow label{font-size:12.5px; color:var(--dim)}
+  input#seed{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    color:var(--amber); font:inherit; font-size:13px; padding:7px 10px; width:150px; outline:none;
+  }
+  input#seed:focus{border-color:var(--amber)}
+  .status{font-size:13px; margin:14px 0 4px; color:var(--dim)}
+  .status .big{color:var(--text); font-weight:700}
+  .status.ok{color:var(--green)}
+  .status.empty{color:var(--dim)}
+  details.map{margin-top:14px; background:var(--panel); border:1px solid var(--line); border-radius:10px}
+  details.map summary{cursor:pointer; padding:10px 14px; font-size:13px; color:var(--dim); user-select:none}
+  details.map summary:hover{color:var(--amber)}
+  details.map table{width:100%; border-collapse:collapse; font-size:12.5px}
+  details.map td, details.map th{padding:6px 14px; text-align:left; border-top:1px solid var(--line); word-break:break-all}
+  details.map th{color:var(--dim); font-weight:400; font-size:11px; letter-spacing:1px; text-transform:uppercase}
+  details.map td.t{color:var(--dim); white-space:nowrap}
+  .note{margin-top:18px; font-size:12px; color:var(--faint); line-height:1.6}
+  .note a{color:var(--dim)}
+  .toast{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+    background:var(--green); color:#06251a; font-weight:700; font-size:13px;
+    border-radius:99px; padding:8px 20px; opacity:0; pointer-events:none; transition:opacity .25s;
+  }
+  .toast.show{opacity:1}
+  [hidden]{display:none !important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="shield">🛡</span> MASKER</h1>
+    <span class="tag">paste-log privacy scrubber</span>
+  </header>
+  <p class="sub">Paste logs / JSON / CSV → get a <b>format-preserving sanitized twin</b>. Emails, IPs, UUIDs, tokens, phones, card numbers become deterministic lookalikes. Same seed → same output, so cross-references stay consistent. <b>Nothing ever leaves your browser.</b></p>
+
+  <div class="chips" id="chips"></div>
+
+  <div class="grid">
+    <div class="pane">
+      <h2>Original (stays local)</h2>
+      <textarea id="input" placeholder="Paste anything: an error log, an API response, a config dump, a CSV row set…" spellcheck="false"></textarea>
+      <div class="bar">
+        <button id="sampleBtn">Load sample</button>
+        <button id="clearBtn">Clear</button>
+      </div>
+      <div class="seedrow">
+        <label for="seed">seed</label>
+        <input id="seed" value="mask-2026" spellcheck="false">
+        <button id="rerollBtn" title="New random seed">🎲 reroll</button>
+      </div>
+    </div>
+    <div class="pane">
+      <h2>Masked twin (safe to paste)</h2>
+      <div class="out" id="output" aria-live="polite"></div>
+      <div class="bar">
+        <button id="copyBtn" class="primary">Copy masked text</button>
+        <button id="dlBtn">Download .txt</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="status" id="status"></p>
+
+  <details class="map" id="mapBox" hidden>
+    <summary>Mapping table (original → fake) — for your eyes only, verify before sharing</summary>
+    <table><thead><tr><th>type</th><th>original</th><th>masked</th></tr></thead><tbody id="mapBody"></tbody></table>
+  </details>
+
+  <p class="note">
+    Runs 100% offline in your browser — no upload, no account, no analytics. Detection is regex-based
+    and deliberately conservative: phones require a leading <code>+</code> country code, card numbers
+    must pass the Luhn checksum, long tokens must look like hex or base64. It is a helper, not an
+    auditor — always skim the result before posting. Names and free-text identities are out of scope.
+    <br>MASKER · a daily-creative-tool project · <a href="https://github.com/xiangjianan/daily-tools/tree/main/masker-20260922">source on GitHub</a>
+  </p>
+</div>
+<div class="toast" id="toast">Copied ✓</div>
+
+<script>
+'use strict';
+/* ================= state & dom ================= */
+var els = {
+  input: document.getElementById('input'),
+  output: document.getElementById('output'),
+  chips: document.getElementById('chips'),
+  seed: document.getElementById('seed'),
+  status: document.getElementById('status'),
+  mapBox: document.getElementById('mapBox'),
+  mapBody: document.getElementById('mapBody'),
+  copyBtn: document.getElementById('copyBtn'),
+  dlBtn: document.getElementById('dlBtn'),
+  sampleBtn: document.getElementById('sampleBtn'),
+  clearBtn: document.getElementById('clearBtn'),
+  rerollBtn: document.getElementById('rerollBtn'),
+  toast: document.getElementById('toast')
+};
+
+var TYPES = [
+  {id:'email',  label:'emails',  colorClass:'t-email'},
+  {id:'ipv4',   label:'IPv4',    colorClass:'t-ipv4'},
+  {id:'uuid',   label:'UUIDs',   colorClass:'t-uuid'},
+  {id:'bearer', label:'bearers', colorClass:'t-bearer'},
+  {id:'token',  label:'tokens',  colorClass:'t-token'},
+  {id:'phone',  label:'phones',  colorClass:'t-phone'},
+  {id:'card',   label:'cards',   colorClass:'t-card'}
+];
+var enabled = {}; TYPES.forEach(function(t){ enabled[t.id] = true; });
+
+/* ================= deterministic PRNG ================= */
+function xmur3(str){
+  var h = 1779033703 ^ str.length;
+  for (var i = 0; i < str.length; i++){
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return function(){
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    return (h ^= h >>> 16) >>> 0;
+  };
+}
+function mulberry32(a){
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function rngFor(seed, original){
+  var gen = xmur3(seed + '\u0000' + original);
+  return mulberry32(gen());
+}
+function pick(rng, arr){ return arr[Math.floor(rng() * arr.length)]; }
+function digits(rng, n){
+  var s = '';
+  for (var i = 0; i < n; i++) s += Math.floor(rng() * 10);
+  if (s[0] === '0') s = '1' + s.slice(1);
+  return s;
+}
+function hexStr(rng, n){
+  var s = '';
+  for (var i = 0; i < n; i++) s += '0123456789abcdef'[Math.floor(rng() * 16)];
+  return s;
+}
+function b64Str(rng, n){
+  var abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+  var s = '';
+  for (var i = 0; i < n; i++) s += abc[Math.floor(rng() * abc.length)];
+  return s;
+}
+
+/* ================= fake generators (format-preserving) ================= */
+var WORDS = ['blue','ember','quartz','moss','drift','pine','nova','fern','cobalt','reed','ash','lumen','brook','onyx','sorrel','delta','crane','flint','harbor','iris','juniper','kestrel','maple','nimbus'];
+
+function fakeEmail(orig, rng){
+  return pick(rng, WORDS) + digits(rng, 4) + '@example.com';
+}
+function fakeIpv4(orig, rng){
+  return '203.0.113.' + Math.floor(rng() * 254 + 1); /* RFC 5737 documentation range */
+}
+function fakeUuid(orig, rng){
+  var h = hexStr(rng, 32).split('');
+  h[12] = '4';                       /* version 4 */
+  h[16] = '89ab'[Math.floor(rng() * 4)];
+  var s = h.join('');
+  return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20);
+}
+function fakeBearer(orig, rng){
+  var m = orig.match(/^(\s*Bearer\s+)(.+)$/i);
+  var body = m ? m[2] : orig;
+  return (m ? m[1] : '') + b64Str(rng, body.length);
+}
+function fakeTokenHex(orig, rng){ return hexStr(rng, orig.length); }
+function fakeTokenB64(orig, rng){ return b64Str(rng, orig.length); }
+function fakePhone(orig, rng){
+  var m = orig.match(/^(\+\d{1,3})([\d \-]+)$/);
+  var cc = m[1], rest = m[2];
+  return cc + rest.replace(/\d/g, function(){ return String(Math.floor(rng() * 10)); });
+}
+function luhnValid(numStr){
+  var sum = 0, alt = false;
+  for (var i = numStr.length - 1; i >= 0; i--){
+    var d = numStr.charCodeAt(i) - 48;
+    if (d < 0 || d > 9) return false;
+    if (alt){ d *= 2; if (d > 9) d -= 9; }
+    sum += d; alt = !alt;
+  }
+  return sum % 10 === 0;
+}
+function fakeCard(orig, rng){
+  var n = orig.length;
+  var body = digits(rng, n - 1);
+  if (luhnValid(orig)){
+    /* make checksum digit so the fake also passes Luhn */
+    var sum = 0, alt = true;
+    for (var i = body.length - 1; i >= 0; i--){
+      var d = body.charCodeAt(i) - 48;
+      if (alt){ d *= 2; if (d > 9) d -= 9; }
+      sum += d; alt = !alt;
+    }
+    var check = (10 - (sum % 10)) % 10;
+    return body + check;
+  }
+  return body + digits(rng, 1);
+}
+
+var FAKE = {
+  email: fakeEmail, ipv4: fakeIpv4, uuid: fakeUuid, bearer: fakeBearer,
+  hex: fakeTokenHex, b64: fakeTokenB64, phone: fakePhone, card: fakeCard
+};
+
+/* ================= detectors (single pass, priority order) ================= */
+var RE = new RegExp([
+  '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}',                 /* 1 email   */
+  '\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b', /* 2 uuid */
+  '\\bBearer\\s+[A-Za-z0-9._\\-+=/]{16,}',                            /* 3 bearer  */
+  '\\b\\d{13,19}\\b(?![.\\d])',                                       /* 4 card (luhn-checked later) */
+  '\\b(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\b', /* 5 ipv4 */
+  '\\+\\d{1,3}[- ]?\\d{2,4}[- ]?\\d{3,4}(?:[- ]?\\d{3,4})?\\b',        /* 6 phone (needs +cc) */
+  '\\b[0-9a-fA-F]{16,}\\b',                                           /* 7 hex token */
+  '\\b(?=[A-Za-z0-9_\\-]{24,}\\b)(?=[A-Za-z0-9_\\-]*\\d)[A-Za-z0-9_\\-]{24,}\\b' /* 8 b64 token: ≥24, must contain a digit */
+].join('|'), 'g');
+
+/* decide which kind a raw match is (priority matters: email > uuid > bearer > card > ipv4 > phone > hex > b64) */
+function classify(raw){
+  if (/@/.test(raw) && /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(raw)) return 'email';
+  if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(raw)) return 'uuid';
+  if (/^Bearer\s+/i.test(raw)) return 'bearer';
+  if (/^\d{13,19}$/.test(raw)) return luhnValid(raw) ? 'card' : null; /* conservative: non-Luhn numeric IDs stay untouched */
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(raw)) return 'ipv4';
+  if (/^\+\d/.test(raw)) return 'phone';
+  if (/^[0-9a-fA-F]{16,}$/.test(raw)) return 'hex';
+  if (/^[A-Za-z0-9_\-]{24,}$/.test(raw)) return 'b64';
+  return null;
+}
+function bucketOf(kind){ /* detection-type → chip id */
+  if (kind === 'hex' || kind === 'b64') return 'token';
+  return kind;
+}
+
+/* ================= core scan (pure) ================= */
+function scan(text, seed, on){
+  var hits = [];
+  var counts = {}; TYPES.forEach(function(t){ counts[t.id] = 0; });
+  var mapping = [];
+  var seen = {}; /* dedupe identical originals for mapping table */
+  RE.lastIndex = 0;
+  var out = '';
+  var last = 0, m;
+  while ((m = RE.exec(text)) !== null){
+    var raw = m[0];
+    var kind = classify(raw);
+    var bucket = kind ? bucketOf(kind) : null;
+    if (!kind || !on[bucket]){ continue; }
+    var rng = rngFor(seed, raw);
+    var fake = FAKE[kind](raw, rng);
+    counts[bucket]++;
+    if (!seen[raw]){ seen[raw] = 1; mapping.push({type:bucket, from:raw, to:fake}); }
+    hits.push({start:m.index, end:m.index + raw.length, from:raw, to:fake, bucket:bucket});
+    out += text.slice(last, m.index) + fake;
+    last = m.index + raw.length;
+    if (RE.lastIndex === m.index) RE.lastIndex++; /* safety against zero-length */
+  }
+  out += text.slice(last);
+  /* build highlighted html */
+  var html = '', pos = 0;
+  for (var i = 0; i < hits.length; i++){
+    var h = hits[i];
+    html += esc(text.slice(pos, h.start));
+    html += '<span class="hit ' + h.bucket + '" title="' + esc(h.from) + '">' + esc(h.to) + '</span>';
+    pos = h.end;
+  }
+  html += esc(text.slice(pos));
+  return {counts:counts, total:hits.length, text:out, html:html, mapping:mapping};
+}
+function esc(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ================= render ================= */
+function renderChips(){
+  els.chips.innerHTML = '';
+  TYPES.forEach(function(t){
+    var c = document.createElement('span');
+    c.className = 'chip ' + t.colorClass + (enabled[t.id] ? ' on' : ' off');
+    c.setAttribute('data-type', t.id);
+    c.setAttribute('role', 'switch');
+    c.setAttribute('aria-checked', enabled[t.id] ? 'true' : 'false');
+    c.innerHTML = '<span class="dot"></span>' + t.label + ' <span class="n" data-n="' + t.id + '">0</span>';
+    c.addEventListener('click', function(){
+      enabled[t.id] = !enabled[t.id];
+      render();
+    });
+    els.chips.appendChild(c);
+  });
+}
+function render(){
+  var text = els.input.value;
+  var seed = els.seed.value || 'mask';
+  var res = scan(text, seed, enabled);
+  TYPES.forEach(function(t){
+    var n = els.chips.querySelector('[data-n="' + t.id + '"]');
+    if (n) n.textContent = res.counts[t.id];
+  });
+  if (!text.trim()){
+    els.output.innerHTML = '<span style="color:var(--faint)">← paste something on the left. The masked twin appears here instantly.</span>';
+    els.status.className = 'status empty';
+    els.status.textContent = 'Waiting for input…';
+    els.mapBox.hidden = true;
+    els.copyBtn.disabled = true; els.dlBtn.disabled = true;
+    return;
+  }
+  els.output.innerHTML = res.html;
+  els.copyBtn.disabled = false; els.dlBtn.disabled = false;
+  if (res.total === 0){
+    els.status.className = 'status ok';
+    els.status.textContent = '✓ No recognizable sensitive patterns found — output equals input.';
+    els.mapBox.hidden = true;
+  } else {
+    var parts = TYPES.filter(function(t){ return res.counts[t.id] > 0; })
+      .map(function(t){ return res.counts[t.id] + ' ' + t.label.toLowerCase(); });
+    els.status.className = 'status';
+    els.status.innerHTML = '🔒 <span class="big">' + res.total + '</span> value' + (res.total > 1 ? 's' : '') +
+      ' masked: ' + parts.join(', ') + '.';
+    els.mapBox.hidden = false;
+    els.mapBody.innerHTML = res.mapping.map(function(r){
+      return '<tr><td class="t">' + r.type + '</td><td>' + esc(r.from) + '</td><td>' + esc(r.to) + '</td></tr>';
+    }).join('');
+  }
+}
+
+/* ================= actions ================= */
+function toast(msg){
+  els.toast.textContent = msg;
+  els.toast.classList.add('show');
+  setTimeout(function(){ els.toast.classList.remove('show'); }, 1400);
+}
+function copyOut(){
+  var text = els.output.textContent || '';
+  if (!text.trim()) return;
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ toast('Copied ✓'); }, function(){ fallbackCopy(text); });
+  } else fallbackCopy(text);
+}
+function fallbackCopy(text){
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); toast('Copied ✓'); }
+  catch (e) { toast('Copy failed — select manually'); }
+  document.body.removeChild(ta);
+}
+function downloadOut(){
+  var text = els.output.textContent || '';
+  var blob = new Blob([text], {type:'text/plain;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'masked-' + Date.now() + '.txt';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 3000);
+}
+var SAMPLE = [
+  '{',
+  '  "user": "jane.doe@acme-corp.com",',
+  '  "ip": "192.168.4.21",',
+  '  "session": "3f8a2c1e-9b4d-4e77-a1c3-5f8d2b6e9a04",',
+  '  "auth": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9P",',
+  '  "api_key": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",',
+  '  "phone": "+86 138 0013 8000",',
+  '  "card": "4222222222222220",',
+  '  "note": "retry after 500ms failed 3 times"',
+  '}'
+].join('\n');
+
+els.input.addEventListener('input', render);
+els.seed.addEventListener('input', render);
+els.copyBtn.addEventListener('click', copyOut);
+els.dlBtn.addEventListener('click', downloadOut);
+els.rerollBtn.addEventListener('click', function(){
+  var words = ['mask','veil','ghost','fog','cloak','shade','blur','hush'];
+  els.seed.value = pick(mulberry32((Math.random() * 4294967296) >>> 0), words) + '-' + Math.floor(Math.random() * 9000 + 1000);
+  render();
+});
+els.sampleBtn.addEventListener('click', function(){ els.input.value = SAMPLE; render(); });
+els.clearBtn.addEventListener('click', function(){ els.input.value = ''; render(); els.input.focus(); });
+
+renderChips();
+render();
+</script>
+</body>
+</html>
