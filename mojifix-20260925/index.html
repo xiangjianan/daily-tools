@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MOJIFIX — unscramble mojibake, restore your text</title>
+<meta name="description" content="Paste garbled text (mojibake), see what broke it and restore the original in one click. 100% local.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='%23f7c948'%3E%E9%8D%9F%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#2d333b;
+    --text:#e6edf3; --dim:#8b949e; --accent:#f7c948; --good:#3fb950; --bad:#f85149; --info:#58a6ff;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--text); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;
+    min-height:100vh; padding-bottom:env(safe-area-inset-bottom);
+  }
+  .wrap{max-width:860px; margin:0 auto; padding:20px 16px 40px;}
+  header{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px;}
+  h1{font-size:1.6rem; letter-spacing:.06em;}
+  h1 .fx{color:var(--accent);}
+  .tag{color:var(--dim); font-size:.9rem;}
+  .local-badge{margin-left:auto; font-size:.72rem; color:var(--good); border:1px solid var(--good); border-radius:99px; padding:2px 10px; white-space:nowrap;}
+  .sub{color:var(--dim); font-size:.92rem; margin-bottom:16px; line-height:1.5;}
+  label.small{display:block; font-size:.78rem; color:var(--dim); margin:0 0 6px; text-transform:uppercase; letter-spacing:.08em;}
+  textarea{
+    width:100%; min-height:120px; background:var(--panel); color:var(--text);
+    border:1px solid var(--border); border-radius:10px; padding:12px 14px; font-size:1rem; line-height:1.55;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; resize:vertical;
+  }
+  textarea:focus{outline:none; border-color:var(--accent);}
+  .samples{display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 4px;}
+  .chip{
+    background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:99px;
+    padding:6px 14px; font-size:.85rem; cursor:pointer; font-family:inherit;
+  }
+  .chip:hover{border-color:var(--accent); color:var(--accent);}
+  .chip:active{transform:scale(.96);}
+  .empty{color:var(--dim); font-size:.95rem; text-align:center; padding:34px 10px; border:1px dashed var(--border); border-radius:10px; margin-top:16px;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; margin-top:16px; overflow:hidden;}
+  .card-head{display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--border); flex-wrap:wrap;}
+  .verdict{font-weight:600; font-size:.98rem;}
+  .verdict.ok{color:var(--good);} .verdict.bad{color:var(--bad);} .verdict.warn{color:var(--accent);}
+  .conf{font-size:.78rem; color:var(--dim);}
+  .chain{display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:.85rem;}
+  .step{background:var(--panel2); border:1px solid var(--border); border-radius:6px; padding:3px 9px;}
+  .step:first-child{border-color:var(--info); color:var(--info);}
+  .arr{color:var(--dim);}
+  .actions{margin-left:auto; display:flex; gap:8px;}
+  .btn{
+    background:var(--accent); color:#111; border:none; border-radius:8px; padding:7px 16px;
+    font-size:.88rem; font-weight:600; cursor:pointer; font-family:inherit;
+  }
+  .btn.ghost{background:transparent; color:var(--dim); border:1px solid var(--border);}
+  .btn.ghost:hover{color:var(--text); border-color:var(--dim);}
+  .btn:active{transform:scale(.96);}
+  .out{
+    padding:14px 16px; font-size:1.02rem; line-height:1.6; white-space:pre-wrap; word-break:break-word;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; min-height:52px; max-height:40vh; overflow:auto;
+  }
+  .notes{padding:10px 16px 14px; border-top:1px solid var(--border); font-size:.84rem; color:var(--dim); line-height:1.6;}
+  .notes b{color:var(--text);}
+  .notes .egg{color:var(--accent);}
+  .candidates{margin-top:12px; border:1px solid var(--border); border-radius:12px; overflow:hidden;}
+  .candidates summary{
+    padding:10px 16px; cursor:pointer; color:var(--dim); font-size:.85rem; background:var(--panel);
+    list-style:none;
+  }
+  .candidates summary::before{content:"▸ "; }
+  .candidates[open] summary::before{content:"▾ ";}
+  .cand-row{display:flex; gap:10px; align-items:baseline; padding:8px 16px; border-top:1px solid var(--border); background:var(--panel); font-size:.85rem;}
+  .cand-score{color:var(--info); font-family:ui-monospace,monospace; white-space:nowrap;}
+  .cand-text{white-space:pre-wrap; word-break:break-all; max-height:3.2em; overflow:hidden; flex:1;}
+  footer{margin-top:26px; color:var(--dim); font-size:.78rem; text-align:center; line-height:1.7;}
+  footer a{color:var(--info); text-decoration:none;}
+  .toast{
+    position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom)); transform:translateX(-50%);
+    background:var(--good); color:#08110a; font-weight:600; font-size:.9rem; padding:9px 20px;
+    border-radius:99px; opacity:0; pointer-events:none; transition:opacity .25s;
+  }
+  .toast.show{opacity:1;}
+  @media (max-width:560px){
+    .wrap{padding:14px 12px 32px;}
+    h1{font-size:1.3rem;}
+    .actions{margin-left:0; width:100%;}
+    .btn{flex:1; padding:9px 0;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>MOJI<span class="fx">FIX</span></h1>
+    <span class="tag">mojibake autopsies &amp; rescue</span>
+    <span class="local-badge">100% local · nothing leaves your browser</span>
+  </header>
+  <p class="sub">Paste garbled text — like <b>娴嬭瘯</b> or <b>æ–‡å­—</b> — and MOJIFIX figures out which encoding misread it, then restores the original. Detects classics like <b>锟斤拷</b> and <b>烫烫烫</b> too.</p>
+
+  <label class="small" for="inp">Garbled input</label>
+  <textarea id="inp" placeholder="paste mojibake here, e.g. 娴嬭瘯鐜板満 or ç¼–ç …" spellcheck="false"></textarea>
+  <div class="samples">
+    <button class="chip" data-s="1">锟斤拷</button>
+    <button class="chip" data-s="2">娴嬭瘯鐜板満锛岃</button>
+    <button class="chip" data-s="3">ç¼–ç¨‹çŽ°</button>
+    <button class="chip" data-s="4">烫烫烫</button>
+    <button class="chip" data-s="5">æ£€æµ‹æ–‡</button>
+  </div>
+
+  <div id="result"></div>
+
+  <footer>
+    MOJIFIX · single-file tool · all decoding happens in your browser via TextDecoder — no upload, no network.<br>
+    <a href="https://github.com/xiangjianan/daily-tools/tree/main/mojifix-20260925">source on GitHub</a>
+  </footer>
+</div>
+<div class="toast" id="toast">Copied ✓</div>
+
+<script src="gbk-rev.js"></script>
+<script>
+"use strict";
+/* ===== reverse codecs: string -> raw bytes it was misread from ===== */
+var CP1252_HI = {"\u20AC":0x80,"\u201A":0x82,"\u0192":0x83,"\u201E":0x84,"\u2026":0x85,"\u2020":0x86,
+  "\u2021":0x87,"\u02C6":0x88,"\u2030":0x89,"\u0160":0x8A,"\u2039":0x8B,"\u0152":0x8C,"\u017D":0x8E,
+  "\u2018":0x91,"\u2019":0x92,"\u201C":0x93,"\u201D":0x94,"\u2022":0x95,"\u2013":0x96,"\u2014":0x97,
+  "\u02DC":0x98,"\u2122":0x99,"\u0161":0x9A,"\u203A":0x9B,"\u0153":0x9C,"\u017E":0x9E,"\u0178":0x9F};
+
+function bytesFromLatin1(s){
+  var out = new Uint8Array(s.length);
+  for (var i=0;i<s.length;i++){
+    var c = s.charCodeAt(i);
+    if (c > 0xFF) return null;
+    out[i] = c;
+  }
+  return out;
+}
+function bytesFromCP1252(s){
+  var out = new Uint8Array(s.length);
+  for (var i=0;i<s.length;i++){
+    var ch = s[i], c = s.charCodeAt(i);
+    if (c <= 0xFF && !(c >= 0x80 && c <= 0x9F)) { out[i]=c; continue; }
+    if (CP1252_HI[ch] !== undefined) { out[i]=CP1252_HI[ch]; continue; }
+    if (c >= 0x81 && c <= 0x9F) { out[i]=c; continue; } // WHATWG maps undefined cp1252 slots to same codepoint
+    return null;
+  }
+  return out;
+}
+function bytesFromGBK(s){
+  var rev = (typeof window!=="undefined" && window.GBK_REV) || (typeof globalThis!=="undefined" && globalThis.GBK_REV);
+  if (!rev) return null;
+  var buf = [];
+  for (var i=0;i<s.length;i++){
+    var ch = s[i], c = s.charCodeAt(i);
+    if (c < 0x80) { buf.push(c); continue; }
+    if (c === 0xFFFD) continue; // decoder already lost bytes here; skip and restore the rest
+    var hex = rev[ch];
+    if (hex === undefined) return null;
+    buf.push(parseInt(hex.slice(0,2),16), parseInt(hex.slice(2,4),16));
+  }
+  return new Uint8Array(buf);
+}
+var REVERSE = [
+  {id:"gbk",        label:"GBK / GB2312",  fn:bytesFromGBK},
+  {id:"cp1252",     label:"Windows-1252",  fn:bytesFromCP1252},
+  {id:"latin1",     label:"Latin-1",       fn:bytesFromLatin1}
+];
+var utf8Dec = new TextDecoder("utf-8");
+
+/* ===== readability scoring: how "normal" does restored text look ===== */
+function cjkWeight(ch){
+  var rev = (typeof globalThis !== "undefined" && globalThis.GBK_REV);
+  var hex = rev && rev[ch];
+  if (!hex) return 1.5;                          // outside GBK: neutral-positive
+  var lead = parseInt(hex.slice(0,2),16);
+  if (lead >= 0xB0 && lead <= 0xD7) return 3;    // GB2312 level-1: high-frequency hanzi
+  if (lead >= 0xD8 && lead <= 0xF7) return 1.2;  // GB2312 level-2: common
+  return 0.2;                                    // GBK-only rare glyph (mojibake territory)
+}
+function scoreText(s){
+  if (!s) return -1e9;
+  var sc = 0;
+  for (var i=0;i<s.length;i++){
+    var c = s.charCodeAt(i), ch = s[i];
+    if (c === 0xFFFD) sc -= 8;
+    else if (c === 10 || c === 9 || c === 13) sc += 1;
+    else if (c >= 0x20 && c <= 0x7E) sc += 1.2;
+    else if (c >= 0x4E00 && c <= 0x9FA5) sc += cjkWeight(ch); // hanzi, frequency-tiered
+    else if (c >= 0x3000 && c <= 0x303F) sc += 1;             // CJK punctuation
+    else if (c >= 0x3040 && c <= 0x30FF) sc += 1.5;           // kana
+    else if (c >= 0xAC00 && c <= 0xD7AF) sc += 1.5;           // hangul
+    else if (c >= 0xFF00 && c <= 0xFFEF) sc += 1;             // fullwidth forms
+    else if (c >= 0xC0 && c <= 0xFF) sc += 0.6;               // accented latin (plausible)
+    else if (c >= 0x80 && c <= 0xBF) sc -= 3;                 // stray continuation-range chars
+    else if (c >= 0x3400 && c <= 0x4DBF) sc += 0.2;           // CJK ext-A rare
+    else if (c >= 0xE000 && c <= 0xF8FF) sc -= 6;             // private use
+    else if (c < 0x20 || (c >= 0x7F && c <= 0x9F)) sc -= 5;   // control chars
+    else if (c >= 0x100 && c < 0x300) sc -= 0.5;              // odd latin/ext
+    else if (c >= 0x2500 && c <= 0x27BF) sc -= 1.5;           // box-draw/dingbat noise
+    else sc -= 1;
+  }
+  return sc / s.length;
+}
+var cleanRe = /[\uFFFD\uE000-\uF8FF]/;
+function badCount(s){
+  var n=0;
+  for (var i=0;i<s.length;i++){
+    var c=s.charCodeAt(i);
+    if (c===0xFFFD || (c>=0xE000&&c<=0xF8FF) || (c<0x20&&c!==9&&c!==10&&c!==13)) n++;
+  }
+  return n;
+}
+
+/* ===== diagnosis ===== */
+function diagnose(input){
+  var orig = scoreText(input);
+  var cands = [];
+  for (var r=0;r<REVERSE.length;r++){
+    var R = REVERSE[r];
+    var bytes = R.fn(input);
+    if (!bytes) continue;
+    var fixed;
+    try { fixed = utf8Dec.decode(bytes); } catch(e){ continue; }
+    if (fixed === input) continue;               // decoding produced no change
+    var sc = scoreText(fixed);
+    cands.push({chain:[R.label], text:fixed, score:sc, gains:sc-orig});
+    // try a second layer for double-mangled text
+    if (sc < 1.2){
+      for (var r2=0;r2<REVERSE.length;r2++){
+        var R2 = REVERSE[r2];
+        var b2 = R2.fn(fixed);
+        if (!b2) continue;
+        var fixed2;
+        try { fixed2 = utf8Dec.decode(b2); } catch(e){ continue; }
+        if (fixed2 === fixed) continue;
+        var sc2 = scoreText(fixed2);
+        if (sc2 > sc) cands.push({chain:[R.label, R2.label], text:fixed2, score:sc2, gains:sc2-orig});
+      }
+    }
+  }
+  cands.sort(function(a,b){ return b.score - a.score; });
+  return {orig:orig, cands:cands};
+}
+
+/* ===== easter-egg detectors (Chinese programming folklore) ===== */
+function detectEggs(s){
+  var out = [];
+  if (s.indexOf("锟斤拷") !== -1 || s.indexOf("锟斤拷锟斤拷") !== -1)
+    out.push('<span class="egg">锟斤拷 detected</span> — UTF-8 replacement chars (U+FFFD) re-read as GBK. The original bytes were already lost before this mangling; those spots are unrecoverable.');
+  if (s.indexOf("烫烫烫") !== -1)
+    out.push('<span class="egg">烫烫烫 detected</span> — 0xCC stack fill written by the MSVC debug runtime on uninitialized <b>stack</b> memory.');
+  if (s.indexOf("屯屯屯") !== -1)
+    out.push('<span class="egg">屯屯屯 detected</span> — 0xCD heap fill written by the MSVC debug runtime on uninitialized <b>heap</b> memory.');
+  return out;
+}
+
+/* ===== rendering ===== */
+var $ = function(id){ return document.getElementById(id); };
+var inp = $("inp"), res = $("result"), toast = $("toast");
+var emptyTpl = '<div class="empty">Waiting for mojibake…<br>Paste garbled text above, or tap a classic sample.</div>';
+
+function esc(s){
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function confLabel(gain){
+  if (gain > 1.2) return "high confidence";
+  if (gain > 0.5) return "likely";
+  return "uncertain";
+}
+function render(){
+  var v = inp.value;
+  if (!v.trim()){ res.innerHTML = emptyTpl; return; }
+  var eggs = detectEggs(v);
+  var d = diagnose(v);
+  var best = d.cands[0];
+  var html = "";
+  var fffdRate = best ? (best.text.match(/\uFFFD/g) || []).length / Math.max(best.text.length, 1) : 1;
+  var goodCard = !!(best && best.gains > 0.05 && fffdRate < 0.1);
+  var unrecoverable = badCount(v) > 0 && (!best || best.gains < 0.4);
+
+  if (goodCard){
+    var cls = best.gains > 1.2 ? "ok" : "warn";
+    html += '<div class="card"><div class="card-head">'
+      + '<span class="verdict '+cls+'">✓ Restorable</span>'
+      + '<span class="chain">'
+      +   '<span class="step">'+esc(best.chain[0])+' misread it</span>';
+    if (best.chain.length > 1) html += '<span class="arr">→</span><span class="step">'+esc(best.chain[1])+' again</span>';
+    html +=   '<span class="arr">→</span><span class="step">UTF-8 original</span>'
+      + '</span>'
+      + '<span class="conf">'+confLabel(best.gains)+'</span>'
+      + '<span class="actions">'
+      +   '<button class="btn" id="copy">Copy</button>'
+      +   '<button class="btn ghost" id="dl">.txt</button>'
+      + '</span></div>'
+      + '<div class="out" id="out"></div>';
+    if (eggs.length) html += '<div class="notes">'+eggs.join("<br>")+'</div>';
+    html += '</div>';
+  } else {
+    html += '<div class="card"><div class="card-head">'
+      + '<span class="verdict bad">'+(unrecoverable ? "✗ Not recoverable" : "? No better decoding found")+'</span>'
+      + '</div><div class="notes">';
+    if (unrecoverable)
+      html += 'This text contains <b>replacement characters (U+FFFD)</b> or private-use codepoints — the original bytes were destroyed <i>before</i> the mojibake you see. No byte sequence can be reconstructed.';
+    else
+      html += 'Tried GBK, Windows-1252 and Latin-1 reverse chains (including double mangling) — nothing scored better than the text as-is. It may already be clean text, or damaged by an exotic encoding MOJIFIX doesn\u2019t know.';
+    if (eggs.length) html += '<br>'+eggs.join("<br>");
+    html += '</div></div>';
+  }
+
+  if (d.cands.length > 1){
+    html += '<details class="candidates"><summary>All '+d.cands.length+' candidate decodings, ranked</summary>';
+    for (var i=0;i<Math.min(d.cands.length,8);i++){
+      var c = d.cands[i];
+      html += '<div class="cand-row"><span class="cand-score">'+c.score.toFixed(2)+' '+esc(c.chain.join("→"))+'</span><span class="cand-text">'+esc(c.text.slice(0,200))+'</span></div>';
+    }
+    html += '</details>';
+  }
+  res.innerHTML = html;
+
+  if (goodCard){
+    $("out").textContent = best.text;
+    var copyBtn = $("copy");
+    if (copyBtn) copyBtn.addEventListener("click", function(){
+      var t = $("out").textContent;
+      function done(){ showToast("Copied ✓"); }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, function(){ legacyCopy(t); done(); });
+      else legacyCopy(t), done();
+    });
+    var dlBtn = $("dl");
+    if (dlBtn) dlBtn.addEventListener("click", function(){
+      var blob = new Blob([$("out").textContent], {type:"text/plain;charset=utf-8"});
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "mojifix-restored.txt";
+      document.body.appendChild(a); a.click(); a.remove();
+    });
+  }
+}
+function legacyCopy(t){
+  var ta = document.createElement("textarea");
+  ta.value = t; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); } catch(e){}
+  ta.remove();
+}
+var toastTimer = null;
+function showToast(msg){
+  toast.textContent = msg;
+  toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ toast.classList.remove("show"); }, 1600);
+}
+
+var deb = null;
+inp.addEventListener("input", function(){
+  clearTimeout(deb);
+  deb = setTimeout(render, 180);
+});
+document.querySelectorAll(".chip").forEach(function(b){
+  b.addEventListener("click", function(){
+    inp.value = SAMPLES[b.getAttribute("data-s")];
+    render();
+  });
+});
+
+var SAMPLES = {
+  "1":"锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷",
+  "2":"娴嬭瘯鐜板満锛岃皟璇曞埌娣卞",
+  "3":"ç¼–ç¨‹çŽ°åœºï¼Œæ‰“å°ç”Ÿå‘½ä¹‹æž¶",
+  "4":"烫烫烫烫烫烫烫烫烫烫",
+  "5":"æ£€æµ‹æ–‡æœ¬ç¼–ç çŽ¯å¢ƒ"
+};
+render();
+</script>
+</body>
+</html>
