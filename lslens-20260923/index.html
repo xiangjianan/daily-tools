@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LSLENS — paste ls -l, see permissions as X-ray</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1117'/%3E%3Ctext x='16' y='23' font-size='18' text-anchor='middle' fill='%2356d4dd' font-family='monospace' font-weight='bold'%3El%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#2d3748;
+  --text:#d8dee6; --dim:#8b949e; --mono:'SF Mono',Consolas,Menlo,monospace;
+  --cyan:#56d4dd; --amber:#e3b341; --red:#f85149; --green:#3fb950;
+  --purple:#bc8cff; --orange:#f0883e; --mag:#db61a2;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',Roboto,sans-serif;line-height:1.55;min-height:100vh}
+.wrap{max-width:980px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:1.5rem;letter-spacing:.5px}
+h1 .lens{color:var(--cyan)}
+.tag{color:var(--dim);font-size:.92rem;margin:4px 0 20px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px}
+.card h2{font-size:.8rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:10px}
+textarea{width:100%;min-height:150px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:.85rem;padding:12px;resize:vertical}
+textarea:focus{outline:none;border-color:var(--cyan)}
+.btnrow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+button{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:.85rem;cursor:pointer;transition:border-color .15s}
+button:hover{border-color:var(--cyan)}
+button.primary{background:var(--cyan);color:#0d1117;border-color:var(--cyan);font-weight:600}
+button.danger{border-color:var(--red);color:var(--red)}
+.hint{color:var(--dim);font-size:.78rem;margin-top:8px}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 16px;min-width:86px}
+.stat .n{font-size:1.35rem;font-weight:700}
+.stat .l{font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.stat.r-high .n{color:var(--red)} .stat.r-med .n{color:var(--amber)}
+.stat.r-ok .n{color:var(--green)} .stat.r-skip .n{color:var(--purple)}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;color:var(--dim);font-size:.7rem;text-transform:uppercase;letter-spacing:1px;padding:6px 8px;border-bottom:1px solid var(--border)}
+td{padding:8px;border-bottom:1px solid #21262d;vertical-align:middle}
+tr.row{cursor:pointer;transition:background .12s}
+tr.row:hover{background:var(--panel2)}
+tr.risk-high td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+tr.risk-med td:first-child{box-shadow:inset 3px 0 0 var(--amber)}
+tr.open{background:var(--panel2)}
+.fname{font-family:var(--mono);font-size:.85rem;word-break:break-all}
+.ficon{margin-right:6px}
+.ptype{font-size:.72rem;color:var(--dim);font-family:var(--mono)}
+.perm{display:inline-flex;gap:2px;font-family:var(--mono);font-size:.78rem}
+.perm span{display:inline-block;width:17px;height:22px;line-height:22px;text-align:center;border-radius:4px;background:#21262d;color:#4a5361;font-weight:700}
+.perm .r{background:rgba(86,212,221,.16);color:var(--cyan)}
+.perm .w{background:rgba(227,179,65,.16);color:var(--amber)}
+.perm .x{background:rgba(219,97,162,.16);color:var(--mag)}
+.perm .s{background:rgba(188,140,255,.22);color:var(--purple)}
+.perm .t{background:rgba(240,136,62,.22);color:var(--orange)}
+.perm .bad{background:rgba(248,81,73,.25);color:var(--red)}
+.octal{font-family:var(--mono);color:var(--green);font-weight:700}
+.size{font-family:var(--mono);color:var(--dim);white-space:nowrap}
+.badge{display:inline-block;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:.5px;white-space:nowrap}
+.badge.high{background:rgba(248,81,73,.18);color:var(--red);border:1px solid var(--red)}
+.badge.med{background:rgba(227,179,65,.15);color:var(--amber);border:1px solid var(--amber)}
+.badge.ok{background:rgba(63,185,80,.14);color:var(--green);border:1px solid var(--green)}
+.detail{background:var(--bg);border-radius:8px;padding:10px 14px;margin:4px 0 8px;font-size:.8rem}
+.detail .sent{color:var(--dim);margin-bottom:8px}
+.detail code{font-family:var(--mono);background:#21262d;padding:2px 7px;border-radius:5px;color:var(--cyan);font-size:.78rem;display:inline-block;margin:3px 4px 3px 0}
+.detail .fix{color:var(--amber)}
+.detail .fix code{color:var(--amber)}
+.empty{color:var(--dim);text-align:center;padding:30px 10px;font-size:.9rem}
+.builder{display:flex;gap:22px;flex-wrap:wrap}
+.bgroup{flex:1;min-width:200px}
+.bgroup h3{font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+.toggles{display:flex;gap:6px}
+.tog{width:42px;height:42px;border-radius:8px;border:1px solid var(--border);background:#21262d;color:#4a5361;font-family:var(--mono);font-size:1rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.tog.on.r{background:rgba(86,212,221,.2);color:var(--cyan);border-color:var(--cyan)}
+.tog.on.w{background:rgba(227,179,65,.2);color:var(--amber);border-color:var(--amber)}
+.tog.on.x{background:rgba(219,97,162,.2);color:var(--mag);border-color:var(--mag)}
+.tog.on.s{background:rgba(188,140,255,.2);color:var(--purple);border-color:var(--purple)}
+.bout{margin-top:14px;font-family:var(--mono);font-size:.85rem;background:var(--bg);border-radius:8px;padding:12px 14px;overflow-x:auto}
+.bout .l{color:var(--dim);font-size:.72rem;text-transform:uppercase;letter-spacing:1px;margin:8px 0 3px;font-family:sans-serif}
+.bout .cmd{color:var(--green)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.75rem;color:var(--dim);margin-top:8px}
+.legend b{font-family:var(--mono)}
+.legend .cr{color:var(--cyan)}.legend .cw{color:var(--amber)}.legend .cx{color:var(--mag)}
+.legend .cs{color:var(--purple)}.legend .ct{color:var(--orange)}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--cyan);color:#0d1117;font-weight:600;padding:10px 22px;border-radius:10px;transition:transform .25s;z-index:9}
+.toast.show{transform:translateX(-50%) translateY(0)}
+footer{color:var(--dim);font-size:.75rem;text-align:center;margin-top:26px}
+footer a{color:var(--dim)}
+@media(max-width:640px){
+  .wrap{padding:18px 10px 40px}
+  td:nth-child(3),th:nth-child(3){display:none}
+  .builder{gap:12px}
+  .tog{width:36px;height:36px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔍 LS<span class="lens">LENS</span></h1>
+  <p class="tag">Paste <code>ls -l</code> output — get an instant visual permission matrix + a security lint. 100% local, nothing leaves your browser.</p>
+
+  <div class="card">
+    <h2>Input — paste ls -l / ls -la / ls -lah output</h2>
+    <textarea id="input" placeholder="$ ls -la&#10;drwxr-xr-x  5 dev staff   160 Sep 23 10:12 .&#10;-rw-r--r--  1 dev staff  4218 Sep 23 09:30 app.py&#10;-rwsr-xr-x  1 root staff  8896 Sep 20 14:02 deploy.sh&#10;-rw-rw-rw-  1 dev staff   212 Sep 22 18:44 notes.txt&#10;..." spellcheck="false"></textarea>
+    <div class="btnrow">
+      <button id="sampleBtn" class="primary">Load sample</button>
+      <button id="clearBtn" class="danger">Clear</button>
+      <button id="copyBtn">Copy report</button>
+    </div>
+    <p class="hint">Supports Linux &amp; macOS ls variants (incl. <code>-h</code> sizes, symlinks with <code>-&gt;</code>). Lines that don't parse are counted, never guessed.</p>
+  </div>
+
+  <div id="stats" class="stats" hidden></div>
+
+  <div class="card" id="resultsCard" hidden>
+    <h2>X-ray — click a row for details &amp; fixes</h2>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>File</th><th>Permission chips</th><th>Size</th><th>Octal</th><th>Risk</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    </div>
+    <div class="legend">
+      <span><b class="cr">r</b> read</span><span><b class="cw">w</b> write</span><span><b class="cx">x</b> execute</span>
+      <span><b class="cs">s/S</b> setuid/setgid</span><span><b class="ct">t/T</b> sticky</span><span>red chip = risky bit</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>chmod builder — click bits, get the command</h2>
+    <div class="builder">
+      <div class="bgroup"><h3>Special</h3><div class="toggles" id="tgSpecial"></div></div>
+      <div class="bgroup"><h3>Owner</h3><div class="toggles" id="tgOwner"></div></div>
+      <div class="bgroup"><h3>Group</h3><div class="toggles" id="tgGroup"></div></div>
+      <div class="bgroup"><h3>Others</h3><div class="toggles" id="tgOther"></div></div>
+    </div>
+    <div class="bout" id="bout"></div>
+  </div>
+
+  <footer>LSLENS · one file, zero deps, zero network · <a href="https://github.com/xiangjianan/daily-tools/tree/main/lslens-20260923">source</a></footer>
+</div>
+<div class="toast" id="toast">Copied ✓</div>
+
+<script>
+'use strict';
+var TYPE_ICONS = {d:'📁', l:'🔗', '-':'📄', b:'🧱', c:'🔌', p:'🚰', s:'🛳'};
+var KEY_EXTS = ['.pem', '.key', '.env', '.p12', '.pfx', 'id_rsa', 'id_ed25519', 'id_ecdsa'];
+
+/* ---------- parsing ---------- */
+function parseLS(text) {
+  var entries = [], skipped = [];
+  var lines = text.split('\n');
+  var re = /^([-dlbcps])([rwxsStT-]{9})\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d+(?:\.\d+)?[BKMGTP]?|[0-9]+)\s+([A-Z][a-z]{2}\s+\d{1,2}\s+(?:\d{4}|\d{2}:\d{2}))\s+(.+)$/;
+  for (var i = 0; i < lines.length; i++) {
+    var raw = lines[i];
+    if (!raw.trim()) continue;
+    if (/^total\b/i.test(raw.trim())) continue;
+    var m = raw.match(re);
+    if (!m) { skipped.push(raw); continue; }
+    var name = m[8];
+    var linkTarget = null;
+    var arrow = name.indexOf(' -> ');
+    if (m[1] === 'l' && arrow !== -1) {
+      linkTarget = name.slice(arrow + 4);
+      name = name.slice(0, arrow);
+    }
+    entries.push({
+      raw: raw, type: m[1], perm: m[2], links: +m[3],
+      owner: m[4], group: m[5], size: m[6], date: m[7],
+      name: name, linkTarget: linkTarget
+    });
+  }
+  return { entries: entries, skipped: skipped };
+}
+
+/* ---------- permission decode ---------- */
+function decodePerm(type, perm) {
+  // perm: 9 chars, positions 0-2 owner, 3-5 group, 6-8 other
+  // chars r w x s S t T -
+  var who = ['owner', 'group', 'others'];
+  var parts = [];
+  var risks = [];
+  var octal = '';
+  var setuid = perm[2] === 's' || perm[2] === 'S';
+  var setgid = perm[5] === 's' || perm[5] === 'S';
+  var sticky = perm[8] === 't' || perm[8] === 'T';
+  var special = 0;
+  if (setuid) special += 4;
+  if (setgid) special += 2;
+  if (sticky) special += 1;
+  octal = String(special);
+
+  for (var g = 0; g < 3; g++) {
+    var base = g * 3;
+    var rc = perm[base + 2];
+    var r = perm[base] === 'r', w = perm[base + 1] === 'w';
+    var x = rc === 'x' || rc === 's' || rc === 't'; // s/t (lowercase) imply exec; S/T do NOT
+    var o = 4 * (r ? 1 : 0) + 2 * (w ? 1 : 0) + (x ? 1 : 0);
+    octal += o;
+    var descs = [];
+    if (r) descs.push('read');
+    if (w) descs.push('write');
+    if (x) descs.push(type === 'd' ? 'enter' : 'execute');
+    parts.push(who[g] + ': ' + (descs.length ? descs.join(', ') : 'no access'));
+    // risk: others writable
+    if (g === 2 && w) risks.push({
+      level: sticky ? 'med' : 'high',
+      msg: (type === 'd' ? 'World-writable directory' : 'World-writable') +
+           (sticky ? ' (sticky bit set — accepted /tmp-style shared dir)' : ' — anyone can modify or delete'),
+      fix: sticky ? null : 'chmod o-w <name>'
+    });
+  }
+  // special bits
+  if (perm[2] === 'S') risks.push({level:'med', msg:'setuid bit set but owner-executable bit is OFF (capital S) — usually a mistake', fix:'chmod u+x, or chmod u-s <name>'});
+  if (perm[2] === 's') risks.push({level:'high', msg:'setuid: runs with OWNER\'s privileges (e.g. root) — audit it', fix:null});
+  if (perm[5] === 's') risks.push({level:'med', msg:'setgid' + (type === 'd' ? ' directory: new files inherit the group' : ': runs with GROUP privileges'), fix:null});
+  if (perm[8] === 'T') risks.push({level:'med', msg:'sticky bit set but others-executable OFF (capital T) — usually meaningless', fix:null});
+  // key files readable by others/group
+  return { octal: octal, parts: parts, risks: risks, special: {setuid: setuid, setgid: setgid, sticky: sticky} };
+}
+
+function keyFileRisk(name, perm) {
+  var lower = name.toLowerCase();
+  for (var i = 0; i < KEY_EXTS.length; i++) {
+      if (lower.endsWith(KEY_EXTS[i])) {
+        if (perm[6] === 'r' || perm[3] === 'r') { // others or group can read
+        return {level:'high', msg:'Private key / secret readable by group or others', fix:'chmod 600 <name>'};
+      }
+    }
+  }
+  if (perm[7] === 'w' && name.toLowerCase() !== '.') return null;
+  return null;
+}
+
+function worstLevel(risks) {
+  var worst = 'ok';
+  for (var i = 0; i < risks.length; i++) if (risks[i].level === 'high') return 'high';
+  for (i = 0; i < risks.length; i++) if (risks[i].level === 'med') worst = 'med';
+  return worst;
+}
+
+function humanSize(s) {
+  if (/^[0-9.]+[BKMGTP]$/.test(s)) return s;
+  var n = parseInt(s, 10);
+  if (isNaN(n)) return s;
+  if (n < 1024) return n + 'B';
+  var u = ['K', 'M', 'G', 'T'], v = n;
+  for (var i = 0; i < u.length; i++) { v /= 1024; if (v < 1024 || i === u.length - 1) return v.toFixed(1) + u[i]; }
+  return s;
+}
+
+/* ---------- chip rendering ---------- */
+function chipHTML(perm) {
+  // positions: 0r 1w 2x/s 3r 4w 5x/s 6r 7w 8x/t ; class 'bad' when risky bit
+  var out = '';
+  for (var i = 0; i < 9; i++) {
+    var c = perm[i];
+    var cls = '';
+    if (c === 'r') cls = 'r';
+    else if (c === 'w') cls = 'w';
+    else if (c === 'x') cls = 'x';
+    else if (c === 's') cls = (i === 2) ? 's' : ((i === 5) ? 's' : 'x');
+    else if (c === 'S') cls = 's bad';
+    else if (c === 't') cls = 't';
+    else if (c === 'T') cls = 't bad';
+    else if (c === 'w') cls = 'w';
+    // others-writable chip gets flagged red
+    if (c === 'w' && i >= 6) cls = 'w bad';
+    out += '<span class="' + cls + '">' + c + '</span>';
+  }
+  return '<span class="perm">' + out + '</span>';
+}
+
+/* ---------- main render ---------- */
+var parsed = {entries: [], skipped: []};
+var openRow = -1;
+
+function render() {
+  var input = document.getElementById('input').value;
+  parsed = parseLS(input);
+  var statsEl = document.getElementById('stats');
+  var resCard = document.getElementById('resultsCard');
+  var tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+  openRow = -1;
+
+  var nHigh = 0, nMed = 0, nOk = 0;
+  for (var i = 0; i < parsed.entries.length; i++) {
+    var e = parsed.entries[i];
+    var d = decodePerm(e.type, e.perm);
+    var kr = keyFileRisk(e.name, e.perm);
+    if (kr) d.risks.push(kr);
+    var wl = worstLevel(d.risks);
+    if (wl === 'high') nHigh++; else if (wl === 'med') nMed++; else nOk++;
+  }
+
+  if (!input.trim()) { statsEl.hidden = true; resCard.hidden = true; return; }
+
+  var skips = parsed.skipped.length;
+  statsEl.innerHTML =
+    stat(parsed.entries.length, 'files', 'r-ok') +
+    stat(nHigh, 'high risk', 'r-high') +
+    stat(nMed, 'note', 'r-med') +
+    stat(skips, 'skipped', 'r-skip');
+  statsEl.hidden = false;
+
+  if (!parsed.entries.length) {
+    resCard.hidden = false;
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty">No <code>ls -l</code> lines recognized. Expected format: <code>drwxr-xr-x 2 user group 4096 Sep 23 10:12 name</code></div></td></tr>';
+    return;
+  }
+
+  for (i = 0; i < parsed.entries.length; i++) renderRow(parsed.entries[i], i);
+  resCard.hidden = false;
+}
+
+function stat(n, label, cls) {
+  return '<div class="stat ' + cls + '"><div class="n">' + n + '</div><div class="l">' + label + '</div></div>';
+}
+
+function renderRow(e, idx) {
+  var d = decodePerm(e.type, e.perm);
+  var kr = keyFileRisk(e.name, e.perm);
+  if (kr) d.risks.push(kr);
+  var wl = worstLevel(d.risks);
+  var tbody = document.getElementById('tbody');
+  var tr = document.createElement('tr');
+  tr.className = 'row' + (wl === 'high' ? ' risk-high' : wl === 'med' ? ' risk-med' : '');
+  tr.dataset.idx = idx;
+  var icon = TYPE_ICONS[e.type] || '📄';
+  var badge = wl === 'high' ? '<span class="badge high">HIGH</span>'
+            : wl === 'med' ? '<span class="badge med">NOTE</span>'
+            : '<span class="badge ok">OK</span>';
+  tr.innerHTML =
+    '<td><span class="ficon">' + icon + '</span><span class="fname">' + esc(e.name) + '</span>' +
+    (e.linkTarget ? '<br><span class="ptype">→ ' + esc(e.linkTarget) + '</span>' : '') +
+    '<br><span class="ptype">' + esc(e.owner) + ':' + esc(e.group) + ' · ' + esc(e.date) + '</span></td>' +
+    '<td>' + chipHTML(e.perm) + '</td>' +
+    '<td class="size">' + humanSize(e.size) + '</td>' +
+    '<td><span class="octal">' + d.octal + '</span></td>' +
+    '<td>' + badge + '</td>';
+  tr.addEventListener('click', function () { toggleRow(idx); });
+  tbody.appendChild(tr);
+}
+
+function toggleRow(idx) {
+  var tbody = document.getElementById('tbody');
+  var old = tbody.querySelector('tr.detail-tr');
+  if (old) old.remove();
+  var rows = tbody.querySelectorAll('tr.row');
+  for (var i = 0; i < rows.length; i++) rows[i].classList.remove('open');
+  if (openRow === idx) { openRow = -1; return; }
+  openRow = idx;
+  rows[idx].classList.add('open');
+  var e = parsed.entries[idx];
+  var d = decodePerm(e.type, e.perm);
+  var kr = keyFileRisk(e.name, e.perm);
+  if (kr) d.risks.push(kr);
+  var tr = document.createElement('tr');
+  tr.className = 'detail-tr';
+  var td = document.createElement('td');
+  td.colSpan = 5;
+  var html = '<div class="detail"><div class="sent">' + esc(e.name) + ' — ' + d.parts.join(' · ') + '</div>';
+  if (!d.risks.length) html += '<span class="badge ok">no issues found</span>';
+  for (var i = 0; i < d.risks.length; i++) {
+    var r = d.risks[i];
+    html += '<div class="' + (r.level === 'high' ? 'fix' : 'sent') + '">' +
+      (r.level === 'high' ? '🚩 ' : '· ') + esc(r.msg) +
+      (r.fix ? ' <code>' + esc(r.fix).replace('&lt;name&gt;', esc(shortName(e.name))) + '</code>' : '') + '</div>';
+  }
+  html += '<div style="margin-top:6px"><code>chmod ' + d.octal.slice(-3) + ' ' + esc(shortName(e.name)) + '</code>' +
+    (d.octal[0] !== '0' ? ' <code>chmod ' + d.octal + ' ' + esc(shortName(e.name)) + '</code>' : '') + '</div></div>';
+  td.innerHTML = html;
+  tr.appendChild(td);
+  rows[idx].after(tr);
+}
+
+function shortName(n) {
+  return /[\s'"\\$;&|<>`]/.test(n) ? "'" + n.replace(/'/g, "'\\''") + "'" : n;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ---------- chmod builder ---------- */
+var bState = { suid: 0, sgid: 0, sticky: 0, o: [1, 1, 0], g: [1, 0, 0], t: [1, 0, 0] };
+var TOGGLES = [
+  { id: 'tgSpecial', key: null, labels: ['s', 's', 't'], kinds: ['s', 's', 't'], fields: ['suid', 'sgid', 'sticky'] },
+  { id: 'tgOwner', key: 'o', labels: ['r', 'w', 'x'], kinds: ['r', 'w', 'x'] },
+  { id: 'tgGroup', key: 'g', labels: ['r', 'w', 'x'], kinds: ['r', 'w', 'x'] },
+  { id: 'tgOther', key: 't', labels: ['r', 'w', 'x'], kinds: ['r', 'w', 'x'] }
+];
+
+function buildBuilder() {
+  for (var g = 0; g < TOGGLES.length; g++) {
+    var grp = TOGGLES[g];
+    var host = document.getElementById(grp.id);
+    host.innerHTML = '';
+    for (var i = 0; i < 3; i++) {
+      (function (grp, i) {
+        var b = document.createElement('button');
+        b.className = 'tog ' + grp.kinds[i];
+        b.textContent = grp.labels[i];
+        if (grp.key) { if (bState[grp.key][i]) b.classList.add('on'); }
+        else if (bState[grp.fields[i]]) b.classList.add('on');
+        b.addEventListener('click', function () {
+          if (grp.key) bState[grp.key][i] = bState[grp.key][i] ? 0 : 1;
+          else bState[grp.fields[i]] = bState[grp.fields[i]] ? 0 : 1;
+          buildBuilder(); renderBout();
+        });
+        host.appendChild(b);
+      })(grp, i);
+    }
+  }
+  renderBout();
+}
+
+function permString() {
+  var s = '';
+  var who = [['o', 'g', 't']];
+  var sets = ['o', 'g', 't'];
+  var chars = [
+    [bState.o[0] ? 'r' : '-', bState.o[1] ? 'w' : '-', (bState.o[2] ? 'x' : '-') + (bState.suid ? 's' : '')],
+    [bState.g[0] ? 'r' : '-', bState.g[1] ? 'w' : '-', (bState.g[2] ? 'x' : '-') + (bState.sgid ? 's' : '')],
+    [bState.t[0] ? 'r' : '-', bState.t[1] ? 'w' : '-', (bState.t[2] ? 'x' : '-') + (bState.sticky ? 't' : '')]
+  ];
+  var p = '';
+  p += chars[0][0] + chars[0][1] + (chars[0][2][0] === 'x' && bState.suid ? 's' : chars[0][2][0] === '-' && bState.suid ? 'S' : chars[0][2]);
+  p += chars[1][0] + chars[1][1] + (chars[1][2][0] === 'x' && bState.sgid ? 's' : chars[1][2][0] === '-' && bState.sgid ? 'S' : chars[1][2]);
+  p += chars[2][0] + chars[2][1] + (chars[2][2][0] === 'x' && bState.sticky ? 't' : chars[2][2][0] === '-' && bState.sticky ? 'T' : chars[2][2]);
+  return p;
+}
+
+function renderBout() {
+  var sp = (bState.suid ? 4 : 0) + (bState.sgid ? 2 : 0) + (bState.sticky ? 1 : 0);
+  var tri = function (a) { return String(a[0] * 4 + a[1] * 2 + a[2]); };
+  var oct = String(sp) + tri(bState.o) + tri(bState.g) + tri(bState.t);
+  var p = permString();
+  var sym = 'u=' + bits(bState.o) + ',g=' + bits(bState.g) + ',o=' + bits(bState.t) +
+    (bState.suid ? ',u+s' : '') + (bState.sgid ? ',g+s' : '') + (bState.sticky ? ',+t' : '');
+  document.getElementById('bout').innerHTML =
+    '<div class="l">ls -l would show</div>-rwx' + p + '  (type - for file, d for dir)' +
+    '<div class="l">octal</div>' + oct +
+    '<div class="l">command</div><span class="cmd">chmod ' + (sp ? oct : oct.slice(-3)) + ' &lt;file&gt;</span>' +
+    '<div class="l">symbolic</div><span class="cmd">chmod ' + sym + ' &lt;file&gt;</span>';
+}
+
+function bits(a) {
+  var s = '';
+  if (a[0]) s += 'r';
+  if (a[1]) s += 'w';
+  if (a[2]) s += 'x';
+  return s || '-';
+}
+
+/* ---------- actions ---------- */
+var SAMPLE = [
+  'total 88',
+  'drwxr-xr-x 12 dev staff   384 Sep 23 10:12 .',
+  'drwxr-xr-x  5 dev staff   160 Sep 20 08:55 ..',
+  '-rw-r--r--  1 dev staff  4218 Sep 23 09:30 app.py',
+  '-rw-r--r--  1 dev staff   312 Sep 22 18:44 notes.txt',
+  '-rw-rw-rw-  1 dev staff   212 Sep 22 18:44 shared-notes.txt',
+  '-rwsr-xr-x  1 root staff  8896 Sep 20 14:02 deploy.sh',
+  '-rw-r--r--  1 dev staff  1679 Sep 19 11:02 id_rsa',
+  '-rw-r-----  1 dev staff   512 Sep 19 11:02 server.key',
+  'drwxrwxrwt  8 dev staff   256 Sep 23 09:14 tmp',
+  'drwxrwxrwx  4 dev staff   128 Sep 21 16:30 uploads',
+  'lrwxr-xr-x  1 dev staff    11 Sep 18 10:00 latest -> app.py',
+  'this line is not ls output',
+  'rw-r--r-- 1 dev staff 100 Sep 1 1:00 broken'
+].join('\n');
+
+document.getElementById('sampleBtn').addEventListener('click', function () {
+  document.getElementById('input').value = SAMPLE;
+  render();
+});
+document.getElementById('clearBtn').addEventListener('click', function () {
+  document.getElementById('input').value = '';
+  render();
+});
+document.getElementById('copyBtn').addEventListener('click', function () {
+  if (!parsed.entries.length) { toast('Nothing to copy — paste ls output first'); return; }
+  var md = '| File | Perms | Octal | Size | Risk |\n|---|---|---|---|---|\n';
+  for (var i = 0; i < parsed.entries.length; i++) {
+    var e = parsed.entries[i];
+    var d = decodePerm(e.type, e.perm);
+    var kr = keyFileRisk(e.name, e.perm);
+    if (kr) d.risks.push(kr);
+    var wl = worstLevel(d.risks);
+    md += '| ' + e.name + ' | ' + e.perm + ' | ' + d.octal + ' | ' + humanSize(e.size) + ' | ' +
+      (d.risks.map(function (r) { return r.msg; }).join('; ') || 'ok') + ' |\n';
+  }
+  if (parsed.skipped.length) md += '\n(' + parsed.skipped.length + ' line(s) skipped — not ls -l format)\n';
+  copyText(md);
+  toast('Report copied ✓');
+});
+
+function copyText(t) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(t).catch(function () { fallbackCopy(t); });
+  } else fallbackCopy(t);
+}
+function fallbackCopy(t) {
+  var ta = document.createElement('textarea');
+  ta.value = t; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+var toastTimer = null;
+function toast(msg) {
+  var el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.classList.remove('show'); }, 1800);
+}
+
+var deb = null;
+document.getElementById('input').addEventListener('input', function () {
+  if (deb) clearTimeout(deb);
+  deb = setTimeout(render, 220);
+});
+
+render();
+buildBuilder();
+</script>
+</body>
+</html>
