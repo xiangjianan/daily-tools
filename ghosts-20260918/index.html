@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GHOSTS — invisible character scanner &amp; exorcist</title>
+<meta name="description" content="Paste text, expose every hidden Unicode ghost: zero-width chars, bidi attacks, weird spaces, homoglyphs. One-click exorcism. 100% local.">
+<style>
+  :root{
+    --bg:#0d0f14; --panel:#151823; --panel2:#1b1f2e; --line:#2a3046;
+    --text:#dfe3f0; --dim:#8a91ad; --faint:#565d7a;
+    --acc:#9d7bff; --acc2:#5ee6c8;
+    --c-zero:#ff6b9d; --c-bidi:#ff5252; --c-space:#ffb84d; --c-ctrl:#4dc3ff; --c-conf:#b8ff5e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:ui-monospace,'Cascadia Code','JetBrains Mono',Menlo,Consolas,monospace;min-height:100vh;display:flex;flex-direction:column}
+  header{padding:22px 20px 10px;text-align:center}
+  h1{font-size:1.7rem;letter-spacing:.35em;font-weight:800}
+  h1 .gh{color:var(--acc)}
+  .tag{color:var(--dim);font-size:.78rem;margin-top:6px;letter-spacing:.06em}
+  main{flex:1;display:flex;flex-direction:column;gap:14px;max-width:1080px;width:100%;margin:0 auto;padding:12px 16px 30px}
+  .inputzone{position:relative}
+  textarea{width:100%;height:150px;background:var(--panel);border:1px solid var(--line);border-radius:12px;color:var(--text);font:inherit;font-size:.92rem;padding:14px 16px;resize:vertical;outline:none;line-height:1.5}
+  textarea:focus{border-color:var(--acc)}
+  textarea::placeholder{color:var(--faint)}
+  .drop{outline:2px dashed var(--acc2);outline-offset:-6px}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
+  button{font:inherit;font-size:.85rem;padding:9px 16px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;transition:.15s}
+  button:hover{border-color:var(--acc);color:var(--acc)}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#14101f;font-weight:700}
+  button.primary:hover{filter:brightness(1.12);color:#14101f}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  .statline{margin-left:auto;color:var(--dim);font-size:.78rem}
+  .duo{display:grid;grid-template-columns:300px 1fr;gap:14px}
+  @media(max-width:820px){.duo{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .panel h2{font-size:.8rem;letter-spacing:.2em;color:var(--dim);margin-bottom:12px;text-transform:uppercase}
+  .verdict{font-size:1.25rem;font-weight:800;letter-spacing:.08em;padding:10px 14px;border-radius:10px;text-align:center;margin-bottom:14px}
+  .v-clean{background:rgba(94,230,200,.12);color:var(--acc2);border:1px solid rgba(94,230,200,.4)}
+  .v-susp{background:rgba(255,184,77,.1);color:var(--c-space);border:1px solid rgba(255,184,77,.4)}
+  .v-danger{background:rgba(255,82,82,.12);color:var(--c-bidi);border:1px solid rgba(255,82,82,.5);animation:pulse 1.2s infinite}
+  @keyframes pulse{50%{background:rgba(255,82,82,.25)}}
+  .cat{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:.83rem}
+  .cat:last-child{border-bottom:none}
+  .cat .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .cat .nm{flex:1;color:var(--dim)}
+  .cat .ct{font-weight:700}
+  .cat .ct.z{color:var(--faint);font-weight:400}
+  .hint{font-size:.75rem;color:var(--faint);margin-top:12px;line-height:1.6}
+  .map{min-height:120px;max-height:340px;overflow:auto;line-height:2.1;font-size:.95rem;white-space:pre-wrap;word-break:break-all}
+  .ghost{display:inline-block;position:relative;cursor:help;border-radius:5px;padding:0 3px;margin:0 1px;font-size:.68rem;vertical-align:middle;line-height:1.6;user-select:none}
+  .g-zero{background:rgba(255,107,157,.18);color:var(--c-zero);border:1px solid rgba(255,107,157,.45)}
+  .g-bidi{background:rgba(255,82,82,.2);color:var(--c-bidi);border:1px solid rgba(255,82,82,.6);font-weight:700}
+  .g-space{background:rgba(255,184,77,.15);color:var(--c-space);border:1px solid rgba(255,184,77,.4)}
+  .g-ctrl{background:rgba(77,195,255,.15);color:var(--c-ctrl);border:1px solid rgba(255,195,255,.35);border-color:rgba(77,195,255,.4)}
+  .g-conf{background:rgba(184,255,94,.13);color:var(--c-conf);border:1px solid rgba(184,255,94,.4)}
+  .tip{position:fixed;background:#05060a;border:1px solid var(--acc);border-radius:8px;padding:8px 11px;font-size:.72rem;color:var(--text);pointer-events:none;z-index:9;display:none;max-width:260px;line-height:1.5;box-shadow:0 6px 24px rgba(0,0,0,.6)}
+  .tip b{color:var(--acc)}
+  .empty{color:var(--faint);font-size:.85rem;padding:30px 0;text-align:center}
+  .outzone{margin-top:4px;display:none}
+  .outzone.show{display:block}
+  .out{background:#0a0c11;border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-height:70px;max-height:220px;overflow:auto;font-size:.9rem;white-space:pre-wrap;word-break:break-all;color:var(--acc2);line-height:1.55}
+  .outmeta{color:var(--dim);font-size:.76rem;margin:8px 0 0}
+  footer{text-align:center;color:var(--faint);font-size:.72rem;padding:14px}
+  footer a{color:var(--dim)}
+  .samples{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .samples span{color:var(--faint);font-size:.75rem;align-self:center}
+  .samples button{font-size:.72rem;padding:5px 10px}
+  #filebtn-wrap{position:relative;overflow:hidden}
+  #filebtn-wrap input{position:absolute;inset:0;opacity:0;cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="gh">👻 GHOSTS</span></h1>
+  <div class="tag">invisible character scanner &amp; exorcist — zero-width · bidi attacks · weird spaces · homoglyphs</div>
+</header>
+<main>
+  <div class="inputzone">
+    <textarea id="in" placeholder="Paste text here — a token, a code snippet, a password, a sentence copied from a PDF or chat app… every hidden Unicode ghost lights up instantly." spellcheck="false"></textarea>
+    <div class="actions">
+      <button class="primary" id="exorcise">⚡ EXORCISE</button>
+      <button id="clear">Clear</button>
+      <div id="filebtn-wrap"><button id="filebtn">📂 Drop / open file</button><input type="file" id="file"></div>
+      <span class="statline" id="statline"></span>
+    </div>
+    <div class="samples">
+      <span>haunted samples:</span>
+      <button data-s="zw">zero-width token</button>
+      <button data-s="bidi">bidi trojan code</button>
+      <button data-s="conf">homoglyph URL</button>
+      <button data-s="space">nbsp paragraph</button>
+    </div>
+  </div>
+
+  <div class="duo">
+    <div class="panel">
+      <h2>Threat report</h2>
+      <div class="verdict v-clean" id="verdict">✦ CLEAN — no ghosts</div>
+      <div id="cats"></div>
+      <div class="hint" id="hint">Everything runs locally in your browser. Nothing is uploaded — paste passwords freely.<br><br>Ghost colors:<br>🩷 zero-width · 🟥 bidi/stealth · 🟧 odd spaces · 🩵 control · 🟩 confusable</div>
+    </div>
+    <div class="panel">
+      <h2>Ghost map</h2>
+      <div class="map" id="map"><div class="empty">The map is empty. Paste haunted text above…</div></div>
+    </div>
+  </div>
+
+  <div class="outzone" id="outzone">
+    <div class="panel">
+      <h2>Exorcised output</h2>
+      <div class="out" id="out"></div>
+      <div class="outmeta" id="outmeta"></div>
+      <div class="actions" style="margin-top:10px">
+        <button class="primary" id="copyout">📋 Copy clean text</button>
+        <button id="dlout">⬇ Save .txt</button>
+      </div>
+    </div>
+  </div>
+</main>
+<footer>👻 GHOSTS — 100% local, zero upload, zero dependency · a <a href="https://xiangjianan.github.io/">daily creative tool</a> · <span id="issue">Issue #6 · 2026-09-18</span></footer>
+<div class="tip" id="tip"></div>
+
+<script>
+'use strict';
+/* ---------------- ghost taxonomy ---------------- */
+const CATS = {
+  zero: { name:'Zero-width / invisible joiners', color:'var(--c-zero)',  cls:'g-zero', fix:'delete' },
+  bidi: { name:'Bidi / direction overrides (Trojan Source)', color:'var(--c-bidi)', cls:'g-bidi', fix:'delete' },
+  space:{ name:'Suspicious spaces (NBSP, thin, ideographic…)', color:'var(--c-space)', cls:'g-space', fix:'space' },
+  ctrl: { name:'Control / format chars (soft hyphen, variation selectors…)', color:'var(--c-ctrl)', cls:'g-ctrl', fix:'delete' },
+  conf: { name:'Confusables — look like ASCII, are not (homoglyphs)', color:'var(--c-conf)', cls:'g-conf', fix:'ascii' },
+};
+
+/* zero-width & invisible joiners */
+const ZERO = new Map([
+  [0x200B,'ZWSP · zero-width space'],[0x200C,'ZWNJ · zero-width non-joiner'],
+  [0x200D,'ZWJ · zero-width joiner'],[0xFEFF,'BOM / zero-width no-break space'],
+  [0x2060,'WJ · word joiner'],[0x180E,'Mongolian vowel separator'],
+]);
+/* bidi / direction stealth (Trojan Source set) */
+const BIDI = new Map([
+  [0x202A,'LRE · left-to-right embedding'],[0x202B,'RLE · right-to-left embedding'],
+  [0x202C,'PDF · pop directional formatting'],[0x202D,'LRO · left-to-right override'],
+  [0x202E,'RLO · right-to-left override ⚠'],[0x2066,'LRI · isolate'],[0x2067,'RLI · isolate'],
+  [0x2068,'FSI · first-strong isolate'],[0x2069,'PDI · pop isolate'],
+]);
+/* spaces that are not the space you think */
+const SPACE = new Map([
+  [0x00A0,'NBSP · no-break space'],[0x1680,'Ogham space mark'],
+  [0x2000,'en quad'],[0x2001,'em quad'],[0x2002,'en space'],[0x2003,'em space'],
+  [0x2004,'three-per-em'],[0x2005,'four-per-em'],[0x2006,'six-per-em'],
+  [0x2007,'figure space'],[0x2008,'punctuation space'],[0x2009,'thin space'],
+  [0x200A,'hair space'],[0x202F,'narrow NBSP'],[0x205F,'medium math space'],[0x3000,'ideographic space'],
+]);
+/* controls & other invisibles */
+function classifyCtrl(cp){
+  if (cp === 0x0A || cp === 0x09 || cp === 0x0D) return null;      /* keep newline/tab */
+  if (cp < 0x20) return 'C0 control (U+' + cp.toString(16).toUpperCase().padStart(4,'0') + ')';
+  if (cp === 0x7F) return 'DEL · delete';
+  if (cp === 0xAD) return 'SHY · soft hyphen';
+  if (cp >= 0xFE00 && cp <= 0xFE0F) return 'variation selector VS' + (cp-0xFE00+1);
+  if (cp >= 0xE0100 && cp <= 0xE01EF) return 'variation selector supplement';
+  if (cp >= 0xE0000 && cp <= 0xE007F) return 'tag character (invisible emoji tag)';
+  if (cp >= 0xFFF9 && cp <= 0xFFFB) return 'interlinear annotation';
+  return null;
+}
+/* common homoglyphs that mimic ASCII */
+const CONF = new Map([
+  [0x0430,'a'],[0x0410,'A'],[0x0435,'e'],[0x0415,'E'],
+  [0x043E,'o'],[0x041E,'O'],[0x0440,'p'],[0x0420,'P'],[0x0441,'c'],[0x0421,'C'],
+  [0x0445,'x'],[0x0425,'X'],[0x0456,'i'],[0x0406,'I'],
+  [0x0455,'s'],[0x0405,'S'],[0x04BB,'h'],[0x04A1,'j'],[0x03BF,'o'],
+  [0x039F,'O'],[0x03B1,'a'],[0x0391,'A'],[0x03B5,'e'],[0x0395,'E'],[0x03C1,'p'],
+  [0x03A1,'P'],[0x03C4,'t'],[0x03C5,'u'],[0x03C7,'x'],[0x03A7,'X'],[0x0451,'e'],
+  [0x2010,'-'],[0x2011,'-'],[0x2012,'-'],[0x2013,'-'],[0x2014,'~em dash'],[0x2212,'-'],
+  [0x2018,'\''],[0x2019,'\''],[0x201C,'"'],[0x201D,'"'],[0xFF0C,','],[0xFF1A,':'],
+  [0xFF1B,';'],[0xFF01,'!'],[0xFF1F,'?'],[0xFF08,'('],[0xFF09,')'],
+]);
+const CONF_FIX = new Map([
+  [0x0430,'a'],[0x0410,'A'],[0x0435,'e'],[0x0415,'E'],[0x043E,'o'],[0x041E,'O'],
+  [0x0440,'p'],[0x0420,'P'],[0x0441,'c'],[0x0421,'C'],[0x0443,'y'],[0x0423,'Y'],
+  [0x0445,'x'],[0x0425,'X'],[0x0456,'i'],[0x0406,'I'],[0x0455,'s'],[0x0405,'S'],
+  [0x04BB,'h'],[0x04A1,'j'],[0x03BF,'o'],[0x039F,'O'],[0x03B1,'a'],[0x0391,'A'],
+  [0x03B5,'e'],[0x0395,'E'],[0x03C1,'p'],[0x03A1,'P'],[0x03C4,'t'],[0x03C5,'u'],
+  [0x03C7,'x'],[0x03A7,'X'],[0x0451,'e'],[0x0401,'E'],[0x2212,'-'],[0x2010,'-'],
+  [0x2011,'-'],[0x2012,'-'],[0x2013,'-'],[0x2018,'\''],[0x2019,'\''],[0x201C,'"'],[0x201D,'"'],
+]);
+
+function classify(cp){
+  const hex = 'U+' + cp.toString(16).toUpperCase().padStart(4,'0');
+  if (ZERO.has(cp)) return {cat:'zero', label:'ZW', name:ZERO.get(cp), hex, fix:'delete'};
+  if (BIDI.has(cp)) return {cat:'bidi', label:'BIDI', name:BIDI.get(cp), hex, fix:'delete'};
+  if (SPACE.has(cp)) return {cat:'space', label:'␣', name:SPACE.get(cp), hex, fix:'space'};
+  const c = classifyCtrl(cp);
+  if (c) return {cat:'ctrl', label:'CTRL', name:c, hex, fix:(cp===0xAD?'delete':'delete')};
+  if (CONF.has(cp)) {
+    const fix = CONF_FIX.get(cp);
+    const nm = CONF.get(cp);
+    const legit = nm.startsWith('~');
+    return {cat:'conf', label: legit ? '~'+nm.slice(1) : '≠'+(fix||nm),
+            name: legit ? nm.slice(1)+' (usually legit — not auto-fixed)' : 'looks like "'+(fix||nm)+'" but is a lookalike',
+            hex, fix: legit ? null : (fix?'ascii':null)};
+  }
+  return null;
+}
+
+/* ---------------- state & dom ---------------- */
+const $ = id => document.getElementById(id);
+const inEl=$('in'), mapEl=$('map'), tip=$('tip'), verdictEl=$('verdict'), catsEl=$('cats'),
+      statEl=$('statline'), outzone=$('outzone'), outEl=$('out'), outmeta=$('outmeta');
+let ghosts=[], cleanText='', dirty=false;
+
+function scan(){
+  ghosts=[]; const text=inEl.value;
+  for (let i=0;i<text.length;i++){
+    const cp=text.codePointAt(i);
+    const g=classify(cp);
+    if (g){ g.i=i; g.ch=String.fromCodePoint(cp); ghosts.push(g); }
+    if (cp>0xFFFF) i++; /* surrogate pair */
+  }
+  render();
+}
+
+function render(){
+  const counts={zero:0,bidi:0,space:0,ctrl:0,conf:0};
+  ghosts.forEach(g=>counts[g.cat]++);
+  const total=ghosts.length;
+
+  /* verdict */
+  verdictEl.className='verdict ';
+  if (!inEl.value){ verdictEl.classList.add('v-clean'); verdictEl.textContent='✦ awaiting haunted text…'; }
+  else if (counts.bidi){ verdictEl.classList.add('v-danger'); verdictEl.textContent='☠ DANGEROUS — bidi attack pattern'; }
+  else if (total>0){ verdictEl.classList.add('v-susp'); verdictEl.textContent='⚠ HAUNTED — '+total+' ghost'+(total>1?'s':'')+' found'; }
+  else { verdictEl.classList.add('v-clean'); verdictEl.textContent='✦ CLEAN — no ghosts'; }
+
+  /* category rows */
+  catsEl.innerHTML='';
+  Object.keys(CATS).forEach(k=>{
+    const c=CATS[k], n=counts[k];
+    const row=document.createElement('div'); row.className='cat';
+    row.innerHTML='<span class="dot" style="background:'+c.color+'"></span><span class="nm">'+c.name+'</span><span class="ct'+(n?'':' z')+'">'+(n||'—')+'</span>';
+    catsEl.appendChild(row);
+  });
+
+  /* statline */
+  const chars=inEl.value.length;
+  statEl.textContent = chars ? chars.toLocaleString()+' chars · '+total+' ghost'+(total===1?'':'s') : '';
+
+  /* ghost map */
+  mapEl.innerHTML='';
+  if (!inEl.value){ mapEl.innerHTML='<div class="empty">The map is empty. Paste haunted text above…</div>'; return; }
+  if (!total){ mapEl.innerHTML='<div class="empty">✦ Nothing haunting here — every character is what it claims to be.</div>';
+    const plain=document.createElement('span'); plain.textContent=inEl.value; mapEl.appendChild(plain); return; }
+
+  const frag=document.createDocumentFragment();
+  let buf='';
+  ghosts.forEach(g=>{
+    const seg=inEl.value.slice(ghosts._p||0,g.i); /* segment before this ghost */
+    if (seg){ const s=document.createElement('span'); s.textContent=seg; frag.appendChild(s); }
+    const chip=document.createElement('span');
+    chip.className='ghost '+CATS[g.cat].cls;
+    chip.textContent=g.label;
+    chip.dataset.tip='<b>'+g.hex+'</b> '+g.name+'<br>category: '+g.cat.toUpperCase()+'<br>action: '+(g.fix?'clean on exorcise':'left as-is (usually legit)');
+    frag.appendChild(chip);
+    ghosts._p=g.i+g.ch.length;
+  });
+  const tail=inEl.value.slice(ghosts._p||0);
+  if (tail){ const s=document.createElement('span'); s.textContent=tail; frag.appendChild(s); }
+  ghosts._p=0;
+  mapEl.appendChild(frag);
+}
+
+/* tooltip for ghost chips (event delegation) */
+document.addEventListener('mousemove',e=>{
+  const chip=e.target.closest('.ghost');
+  if (chip){ tip.innerHTML=chip.dataset.tip; tip.style.display='block';
+    let x=e.clientX+14, y=e.clientY+16;
+    const r=tip.getBoundingClientRect();
+    if (x+r.width>innerWidth-8) x=e.clientX-r.width-10;
+    if (y+r.height>innerHeight-8) y=e.clientY-r.height-10;
+    tip.style.left=x+'px'; tip.style.top=y+'px';
+  } else tip.style.display='none';
+});
+
+/* ---------------- exorcise ---------------- */
+function exorcise(){
+  if (!ghosts.length){ outzone.classList.remove('show'); return; }
+  let out=''; let fixes=0;
+  const confFixOn = true;
+  for (let i=0;i<inEl.value.length;i++){
+    const cp=inEl.value.codePointAt(i);
+    const g=classify(cp);
+    let ch=String.fromCodePoint(cp);
+    if (g && g.fix){
+      if (g.fix==='delete') ch='';
+      else if (g.fix==='space') ch=' ';
+      else if (g.fix==='ascii' && confFixOn && CONF_FIX.has(cp)) ch=CONF_FIX.get(cp);
+      fixes++;
+    }
+    out+=ch;
+    if (cp>0xFFFF) i++;
+  }
+  cleanText=out;
+  outEl.textContent=out||'(nothing left — pure phantom text)';
+  const removed=ghosts.length;
+  outmeta.textContent=removed+' ghost'+(removed===1?'':'s')+' exorcised ('+fixes+' transformed) · '+inEl.value.length+' → '+out.length+' chars';
+  outzone.classList.add('show');
+  outzone.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+$('exorcise').onclick=exorcise;
+$('copyout').onclick=()=>{
+  navigator.clipboard.writeText(cleanText).then(()=>{
+    $('copyout').textContent='✓ Copied'; setTimeout(()=>$('copyout').textContent='📋 Copy clean text',1200);
+  }).catch(()=>{ /* fallback */ const r=document.createRange(); r.selectNodeContents(outEl);
+    const sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); document.execCommand('copy'); sel.removeAllRanges(); });
+};
+$('dlout').onclick=()=>{
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([cleanText],{type:'text/plain'}));
+  a.download='exorcised.txt'; a.click(); URL.revokeObjectURL(a.href);
+};
+$('clear').onclick=()=>{ inEl.value=''; scan(); outzone.classList.remove('show'); inEl.focus(); };
+
+/* live scan */
+let deb; inEl.addEventListener('input',()=>{ clearTimeout(deb); deb=setTimeout(scan,120); });
+
+/* samples */
+const SAMPLES={
+  zw:'access_token=sk\xADlive\xa02024\u200B-\u200Bsecret\uFEFF-part\u2060',
+  bidi:'if (isAdmin\u202E \u2066) \u2069{ grant() } else { deny() }',
+  conf:'https://p\u0430ypal.com/secure   (first "a" is Cyrillic \u0430)',
+  space:'Hello\u00A0world,\u2009this\u3000line\u2003has\u200Aodd\u2002spaces.'
+};
+document.querySelectorAll('.samples button').forEach(b=>{
+  b.onclick=()=>{ inEl.value=SAMPLES[b.dataset.s]; scan(); };
+});
+
+/* file drop / open */
+const fileIn=$('file');
+function loadFile(f){
+  if (!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ inEl.value=String(r.result).slice(0,200000); scan(); };
+  r.readAsText(f.slice(0,2000000));
+}
+fileIn.onchange=()=>loadFile(fileIn.files[0]);
+const zone=document.querySelector('.inputzone');
+['dragover','dragenter'].forEach(ev=>zone.addEventListener(ev,e=>{e.preventDefault();zone.classList.add('drop');}));
+['dragleave','drop'].forEach(ev=>zone.addEventListener(ev,e=>{e.preventDefault();zone.classList.remove('drop');}));
+zone.addEventListener('drop',e=>loadFile(e.dataTransfer.files[0]));
+$('filebtn').onclick=e=>{e.preventDefault();fileIn.click();};
+
+scan();
+</script>
+</body>
+</html>
