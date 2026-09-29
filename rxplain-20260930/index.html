@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rxplain · 正则翻译官</title>
+<meta name="description" content="粘贴正则表达式，逐段染色并翻译成中文白话；输入测试文本，实时高亮谁被谁匹配。本地运行，零依赖。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔣</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--line:#21262d;--fg:#e6edf3;--mut:#8b949e;--acc:#58a6ff;
+  --c-lit:#8b949e;--c-esc:#58a6ff;--c-cls:#bc8cff;--c-grp:#d29922;--c-anc:#3fb950;--c-quant:#f85149;--c-alt:#ec8cbc;
+  --ok:#3fb950;--err:#f85149;--mark:#bb8009;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:var(--bg);color:var(--fg);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom));
+}
+main{max-width:860px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.3px}
+.sub{color:var(--mut);font-size:13px;margin:4px 0 22px}
+label{display:block;font-size:12.5px;color:var(--mut);margin:16px 0 6px;letter-spacing:.4px}
+textarea,input[type=text]{
+  width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  color:var(--fg);font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  padding:10px 12px;outline:none;resize:vertical;
+}
+textarea:focus,input[type=text]:focus{border-color:var(--acc)}
+textarea{min-height:64px}
+/* 分段卡片流 */
+#viz{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;min-height:38px}
+.chip{
+  display:inline-flex;align-items:baseline;gap:7px;max-width:100%;
+  background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--c-lit);
+  border-radius:8px;padding:5px 10px;font-size:13px;
+}
+.chip code{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--fg);word-break:break-all}
+.chip small{color:var(--mut);font-size:11.5px;white-space:nowrap}
+.chip.t-esc{border-left-color:var(--c-esc)}.chip.t-cls{border-left-color:var(--c-cls)}
+.chip.t-anc{border-left-color:var(--c-anc)}.chip.t-quant{border-left-color:var(--c-quant)}
+.chip.t-alt{border-left-color:var(--c-alt)}
+.grpbox{
+  border:1px dashed var(--c-grp);border-radius:10px;padding:7px 9px;display:inline-flex;
+  flex-direction:column;gap:5px;max-width:100%;
+}
+.grpbox>.glabel{font-size:11.5px;color:var(--c-grp);white-space:nowrap}
+.grpbox>.gchildren{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
+/* 白话清单 */
+#explain{margin-top:10px}
+.exrow{display:flex;gap:9px;padding:6px 2px;border-top:1px solid var(--line);font-size:13.5px}
+.exrow:last-child{border-bottom:1px solid var(--line)}
+.exrow .n{color:var(--acc);font-variant-numeric:tabular-nums;min-width:20px;text-align:right}
+.exrow .t{flex:1;min-width:0}
+.exrow .t b{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:600}
+.exrow .t span{color:var(--mut)}
+/* flags & 按钮 */
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.flag{
+  display:inline-flex;align-items:center;gap:5px;font:12.5px ui-monospace,monospace;color:var(--mut);
+  background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:4px 9px;cursor:pointer;
+  user-select:none;-webkit-user-select:none;
+}
+.flag.on{color:var(--acc);border-color:var(--acc)}
+.flag b{font-weight:700}
+button.act{
+  background:var(--panel);border:1px solid var(--line);border-radius:7px;color:var(--fg);
+  font-size:13px;padding:6px 13px;cursor:pointer;
+}
+button.act:active{transform:translateY(1px)}
+/* 速查 chips */
+#cook{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+#cook button{
+  background:var(--panel);border:1px solid var(--line);border-radius:999px;color:var(--mut);
+  font-size:12.5px;padding:5px 12px;cursor:pointer;
+}
+#cook button:hover{color:var(--acc);border-color:var(--acc)}
+/* 匹配结果 */
+#highlight{
+  white-space:pre-wrap;word-break:break-all;background:var(--panel);border:1px solid var(--line);
+  border-radius:8px;padding:10px 12px;margin-top:10px;font:14px/1.8 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  min-height:46px;
+}
+#highlight mark{background:var(--mark);color:#0d1117;border-radius:3px;padding:1px 0}
+.mstat{color:var(--mut);font-size:12.5px;margin-top:6px}
+table{border-collapse:collapse;width:100%;margin-top:8px;font-size:12.5px}
+th,td{border:1px solid var(--line);padding:5px 9px;text-align:left;word-break:break-all}
+th{color:var(--mut);font-weight:500;background:var(--panel)}
+td code{font:12.5px ui-monospace,monospace}
+.notice{color:var(--mut);font-size:13px;margin-top:10px}
+.banner{
+  display:none;background:#2d1216;border:1px solid var(--err);color:#ffb3ad;
+  border-radius:8px;padding:9px 12px;font-size:13px;margin-top:10px;word-break:break-all;
+}
+.banner.show{display:block}
+footer{margin-top:34px;color:var(--mut);font-size:12px}
+footer a{color:var(--acc);text-decoration:none}
+@media (max-width:560px){ .exrow .n{min-width:16px} }
+</style>
+</head>
+<body>
+<main>
+<h1>🔣 Rxplain · 正则翻译官</h1>
+<p class="sub">把正则表达式逐段染色、翻成中文白话；测试文本即时高亮谁被谁匹配。全部在浏览器本地完成，数据不出页面。</p>
+
+<label for="pat">正则表达式（不用写两边的斜杠）</label>
+<textarea id="pat" spellcheck="false" placeholder="例如：(?&lt;user&gt;[\w.+-]+)@([\w-]+\.[\w.-]+)"></textarea>
+<div class="banner" id="err"></div>
+
+<div id="viz" aria-label="正则分段可视化"></div>
+<div class="bar" id="flags"></div>
+<button class="act" id="copy" style="margin-top:10px">📋 复制白话解释</button>
+
+<div id="explain" aria-label="白话解释"></div>
+
+<label for="cooksel">常用正则速查（点一下直接载入）</label>
+<div id="cook"></div>
+
+<label for="test">测试文本（即时高亮匹配）</label>
+<textarea id="test" spellcheck="false" placeholder="粘贴一段文本，看看正则能抓住谁"></textarea>
+<div id="highlight" aria-label="匹配高亮"></div>
+<div class="mstat" id="mstat"></div>
+<div id="caps"></div>
+
+<footer>Rxplain · 每日创意小工具 #18 · <a href="../">daily-tools</a> · 纯本地运行，零依赖</footer>
+</main>
+
+<script>
+"use strict";
+/* ===================== 纯逻辑区（可独立抽取测试） ===================== */
+
+// 节点类型：lit 字面 / esc 转义 / cls 字符类 / anc 锚点 / dot / grp 分组 / alt 分支 / quant 量词
+var ESC_NAMES = {
+  d:"一位数字（0-9）", D:"一位非数字", w:"一个字母/数字/下划线", W:"一个非单词字符",
+  s:"一个空白字符（空格、制表符等）", S:"一个非空白字符",
+  n:"换行符", r:"回车符", t:"制表符", "0":"空字符 NUL",
+  ".":"点号本身（已转义）", "/":"斜杠本身（已转义）", "-":"连字符本身（已转义）"
+};
+var ANCHOR_NAMES = {
+  "^":"字符串的开头（多行模式下是每行开头）",
+  "$":"字符串的结尾（多行模式下是每行结尾）",
+  "\\b":"单词边界（字母数字与非字母数字的分界）",
+  "\\B":"非单词边界"
+};
+var QUANT_NAMES = {
+  "*":"重复 0 次或多次", "+":"重复 1 次或多次", "?":"出现 0 次或 1 次（可有可无）"
+};
+
+// 解析正则源码 → 树。失败抛 Error（带中文信息）。
+// 分组编号 captureCount 按出现顺序递增。
+function parseRegex(src){
+  var pos = 0, captureCount = 0;
+  var NAMED_RX = /^<([A-Za-z_$][\w$]*)>|^<'([A-Za-z_$][\w$]*)'>/;
+  function fail(msg){ throw new Error(msg + "（第 " + (pos+1) + " 个字符附近）"); }
+
+  function parseSeq(depth){
+    var branches = [], cur = [];
+    while (pos < src.length){
+      var c = src[pos];
+      if (c === ")"){
+        if (depth === 0) fail("多余的右括号 )");
+        break;
+      }
+      if (c === "|"){ branches.push(cur); cur = []; pos++; continue; }
+      cur.push(parseAtom(depth));
+    }
+    branches.push(cur);
+    return branches;
+  }
+
+  function parseAtom(depth){
+    var c = src[pos];
+    var node = null;
+    if (c === "\\"){
+      pos++;
+      var e = src[pos];
+      if (e === undefined) fail("反斜杠后面没有字符");
+      if (e === "b" || e === "B"){
+        pos++;
+        node = {type:"anc", text:"\\"+e, name:ANCHOR_NAMES["\\"+e]};
+      } else if (/^[1-9]$/.test(e)){
+        pos++;
+        node = {type:"esc", text:"\\"+e, name:"反向引用：回到第 "+e+" 个捕获组匹配到的内容"};
+      } else if (e === "k"){
+        pos++;
+        var m = NAMED_RX.exec(src.slice(pos));
+        if (!m) fail("\\k 后缺少 <名称>");
+        pos += m[0].length;
+        node = {type:"esc", text:"\\k"+m[0], name:"反向引用：回到命名组「"+(m[1]||m[2])+"」匹配到的内容"};
+      } else if (e === "u" || e === "x"){
+        // \uXXXX / \xFF：吞掉后面的码位
+        var start = pos-1;
+        if (e === "u"){
+          if (src[pos+1] === "{"){
+            var end = src.indexOf("}", pos+1);
+            if (end === -1) fail("\\u{ 后缺少 }");
+            pos = end+1;
+          } else pos += 5;
+        } else pos += 3;
+        node = {type:"esc", text:src.slice(start, pos), name:"Unicode 字符转义"};
+      } else {
+        pos++;
+        var nm = ESC_NAMES[e];
+        if (e === "." || e === "/" || e === "\\" || e === "-" || /^[*+?^${}()[\]|]$/.test(e)){
+          node = {type:"esc", text:"\\"+e, name:"符号「"+e+"」本身（已转义）"};
+        } else if (nm){
+          node = {type:"esc", text:"\\"+e, name:nm};
+        } else {
+          node = {type:"lit", text:"\\"+e, name:null};
+        }
+      }
+    } else if (c === "["){
+      node = parseClass();
+    } else if (c === "("){
+      node = parseGroup();
+    } else if (c === "."){
+      pos++;
+      node = {type:"dot", text:".", name:"任意一个字符（换行符除外；s 模式下连换行也算）"};
+    } else if (c === "^" || c === "$"){
+      pos++;
+      node = {type:"anc", text:c, name:ANCHOR_NAMES[c]};
+    } else if ("*+?".indexOf(c) !== -1){
+      fail("量词 " + c + " 前面没有可重复的内容");
+    } else if (c === "{"){
+      // 单独的 { 当字面量处理（JS 里 "a{" 合法）
+      pos++;
+      node = {type:"lit", text:"{", name:null};
+    } else {
+      var start = pos;
+      while (pos < src.length && !/[\\^$.|?*+()[{]/.test(src[pos])) pos++;
+      node = {type:"lit", text:src.slice(start, pos), name:null};
+    }
+    // 量词
+    while (pos < src.length){
+      var q = src[pos];
+      if (q === "*" || q === "+" || q === "?"){
+        pos++;
+        node = attachQuant(node, q);
+      } else if (q === "{"){
+        var m2 = /^\{(\d+)(,(\d*)?)?\}/.exec(src.slice(pos));
+        if (m2){
+          pos += m2[0].length;
+          var label = m2[2] === undefined ? "恰好重复 " + m2[1] + " 次"
+                    : (m2[3] === "" ? "至少重复 " + m2[1] + " 次"
+                    : "重复 " + m2[1] + " 到 " + m2[3] + " 次");
+          node = attachQuant(node, m2[0], label);
+        } else break; // 非量词的 {，留给下一轮当字面量
+      } else break;
+      var lazy = src[pos] === "?";
+      if (lazy){ pos++; node.lazy = true; }
+    }
+    return node;
+  }
+
+  function attachQuant(target, q, label){
+    if (!target) fail("量词 " + q + " 前面没有内容");
+    return {type:"quant", text:q, child:target, name:label || QUANT_NAMES[q], lazy:false};
+  }
+
+  function parseClass(){
+    var start = pos; pos++; // [
+    var neg = false;
+    if (src[pos] === "^"){ neg = true; pos++; }
+    var parts = [];
+    var first = true;
+    while (true){
+      var ch = src[pos];
+      if (ch === undefined) fail("字符类 [ 没有闭合 ]");
+      if (ch === "]" && !first){ pos++; break; }
+      first = false;
+      var lo;
+      if (ch === "\\"){
+        pos++; lo = "\\" + src[pos];
+        parts.push({kind:"esc", text:lo});
+        pos++;
+      } else {
+        lo = ch; pos++;
+        if (src[pos] === "-" && src[pos+1] !== "]" && src[pos+1] !== undefined){
+          pos++; // consume -
+          var hi;
+          if (src[pos] === "\\"){ pos++; hi = "\\"+src[pos]; }
+          else { hi = src[pos]; pos++; }
+          parts.push({kind:"range", text:lo+"-"+hi});
+        } else {
+          parts.push({kind:"char", text:lo});
+        }
+      }
+    }
+    var body = src.slice(start+1, pos-1);
+    var desc = neg ? "不在这些字符之中的任意一个" : "从这些字符里挑一个";
+    var human = parts.map(function(p){ return p.text; }).join("");
+    return {type:"cls", text:src.slice(start,pos), name:desc, neg:neg, parts:parts, human:human};
+  }
+
+  function parseGroup(){
+    var gstart = pos;
+    pos++; // (
+    var kind = "cap", name = null;
+    if (src[pos] === "?"){
+      if (src[pos+1] === ":"){ kind = "noncap"; pos += 2; }
+      else if (src[pos+1] === "="){ kind = "look"; pos += 2; }
+      else if (src[pos+1] === "!"){ kind = "nlook"; pos += 2; }
+      else if (src[pos+1] === "<"){
+        if (src[pos+2] === "="){ kind = "lbeh"; pos += 3; }
+        else if (src[pos+2] === "!"){ kind = "nlbeh"; pos += 3; }
+        else {
+          var m3 = NAMED_RX.exec(src.slice(pos+1));
+          if (!m3) fail("分组 (?< 后缺少合法名称");
+          kind = "cap"; name = m3[1] || m3[2]; pos += 1 + m3[0].length;
+        }
+      }
+      else if (src[pos+1] === "P" && src[pos+2] === "<"){
+        var m4 = /^P<([A-Za-z_$][\w$]*)>/.exec(src.slice(pos+1));
+        if (!m4) fail("分组 (?P< 后缺少合法名称");
+        kind = "cap"; name = m4[1]; pos += 1 + m4[0].length;
+      }
+      else fail("不支持的内联分组写法 (?" + (src[pos+1]||""));
+    }
+    var num = null;
+    if (kind === "cap"){ captureCount++; num = captureCount; }
+    var branches = parseSeq(1);
+    if (src[pos] !== ")") fail("分组 ( 没有闭合 )");
+    pos++;
+    var kindName = {
+      cap:   name ? "捕获组「"+name+"」"+(num?"（第 "+num+" 组）":"")+"：把这里匹配到的内容存起来，之后可以用反向引用拿到"
+             : "捕获组（第 "+num+" 组）：把这里匹配到的内容存起来",
+      noncap:"非捕获分组：只用来括在一起，不单独保存匹配结果",
+      look:  "正向先行断言：右边必须跟着这个模式，但不消耗字符",
+      nlook: "负向先行断言：右边不能是这个模式",
+      lbeh:  "正向后行断言：左边必须紧挨着这个模式",
+      nlbeh: "负向后行断言：左边不能紧挨着这个模式"
+    }[kind];
+    return {type:"grp", kind:kind, num:num, name:name, branches:branches,
+            text:src.slice(gstart, pos), name2:kindName};
+  }
+
+  var branches = parseSeq(0);
+  if (pos < src.length && src[pos] === ")") fail("多余的右括号 )");
+  return {branches:branches, captureCount:captureCount};
+}
+
+// 把树拉平成"带层级的条目列表"（用于白话清单和复制）
+function flatten(tree){
+  var out = [];
+  function label(n){
+    switch(n.type){
+      case "lit": return {t:"字面文本", d:"「"+n.text+"」"};
+      case "esc": case "dot": case "anc": return {t:n.text, d:n.name};
+      case "cls": return {t:n.text, d:n.name + "：" + describeClass(n)};
+      case "alt": return {t:"|", d:"或者（左右两边任选其一）"};
+      case "grp": return {t:"(...)", d:n.name2};
+      case "quant":
+        var inner = label(n.child);
+        return {t:n.text, d:inner.d + "，" + n.name + (n.lazy ? "（懒惰模式：尽量少重复）" : "")};
+    }
+    return {t:n.text, d:""};
+  }
+  function describeClass(n){
+    var bits = n.parts.map(function(p){
+      if (p.kind === "range") return p.text.replace("-", " 到 ");
+      if (p.text === "\\d") return "数字";
+      if (p.text === "\\w") return "字母数字下划线";
+      if (p.text === "\\s") return "空白";
+      return p.text;
+    });
+    return bits.join("、");
+  }
+  function walk(branches, depth){
+    branches.forEach(function(branch, bi){
+      if (branches.length > 1){
+        out.push({depth:depth, label:"|", text:"分支 " + (bi+1), desc:"以下内容与其它分支二选一"});
+        if (branch.length === 0) out.push({depth:depth+1, label:"", text:"(空)", desc:"空分支：什么都没有也匹配"});
+      }
+      branch.forEach(function(n){
+        if (n.type === "grp"){
+          out.push({depth:depth, label:"(", text:"("+ (n.name?"?<"+n.name+">":(n.kind!=="cap"&&n.text?inlinePrefix(n):"")) +")", desc:n.name2});
+          walk(n.branches, depth+1);
+        } else if (n.type === "quant"){
+          out.push({depth:depth, label:quantLabel(n), text:n.child.text+" "+n.text, desc:label(n).d});
+        } else {
+          var L = label(n);
+          out.push({depth:depth, label:L.t, text:n.text, desc:L.d});
+        }
+      });
+    });
+  }
+  function inlinePrefix(n){
+    if (n.kind==="noncap") return "?:";
+    if (n.kind==="look") return "?=";
+    if (n.kind==="nlook") return "?!";
+    if (n.kind==="lbeh") return "?<=";
+    if (n.kind==="nlbeh") return "?<!";
+    return "";
+  }
+  function quantLabel(n){
+    var t = n.child.type;
+    return t==="cls" ? "[...]" : (t==="grp" ? "(...)" : n.child.text);
+  }
+  walk(tree.branches, 0);
+  return out;
+}
+
+// 顶层分支数 > 1 时，节点挂个 alt 标记（供渲染分支分隔）
+function topBranchCount(tree){ return tree.branches.length; }
+
+/* ===================== 渲染与交互 ===================== */
+var $ = function(id){ return document.getElementById(id); };
+var FLAGS = [
+  {k:"g", name:"全局（找出所有匹配）"},
+  {k:"i", name:"忽略大小写"},
+  {k:"m", name:"多行模式（^ $ 按行算）"},
+  {k:"s", name:"让 . 也匹配换行"},
+  {k:"u", name:"Unicode 模式"}
+];
+var state = {flags:{g:true,i:false,m:false,s:false,u:false}};
+
+var COOKBOOK = [
+  {name:"邮箱", re:"(?<user>[\\w.+-]+)@([\\w-]+\\.[\\w.-]+)",
+   test:"联系我们：hello.world+tag@example-site.com 或 support@qq.com，无效的：foo@bar"},
+  {name:"中国手机号", re:"(?:\\+86[ -]?)?1[3-9]\\d{9}",
+   test:"老张 13812345678，座机不要；+8615987654321 带国家码也能抓到；199-8888-7777 这种带横线的抓不到，但 19988887777 可以。"},
+  {name:"网址 URL", re:"https?:\\/\\/[\\w.-]+(?:\\/[^\\s]*)?",
+   test:"文档在 https://example.com/docs/intro#top，镜像 http://mirror.example.org/a/b?q=1。"},
+  {name:"日期 年-月-日", re:"(?<y>\\d{4})-(?<m>0[1-9]|1[0-2])-(?<d>0[1-9]|[12]\\d|3[01])",
+   test:"项目启动 2026-09-30，上线 2027-01-15，写错的 2026-13-40 不该被抓到。"},
+  {name:"十六进制颜色", re:"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\\b",
+   test:"主题色 #58a6ff，辅助 #F0F，背景 #0d1117，写错的 #12345 别抓。"},
+  {name:"IPv4 地址", re:"\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b",
+   test:"网关 192.168.1.1，公网 8.8.8.8，版本号 1.2.3.4 会被顺带抓到——正则不完美，看得见才好改。"},
+  {name:"重复单词", re:"\\b(\\w+)\\s+\\1\\b",
+   test:"这是这是重复的 the the words，还有 gone gone。中文没空格，抓不到。"},
+  {name:"标签对", re:"<(?<tag>[a-z]+)[^>]*>.*?<\\/(?<tag2>\\1)>",
+   test:"<div class=\"a\">hello <b>world</b></div> 和 <p>ok</p>；<div>x</span> 配错了。"}
+];
+
+function escHtml(s){
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function flagStr(){
+  return FLAGS.map(function(f){ return state.flags[f.k] ? f.k : ""; }).join("");
+}
+
+function renderFlags(){
+  var host = $("flags");
+  host.innerHTML = "";
+  FLAGS.forEach(function(f){
+    var el = document.createElement("span");
+    el.className = "flag" + (state.flags[f.k] ? " on" : "");
+    el.innerHTML = "<b>"+f.k+"</b> "+f.name;
+    el.addEventListener("click", function(){
+      state.flags[f.k] = !state.flags[f.k];
+      renderFlags(); renderAll();
+    });
+    host.appendChild(el);
+  });
+}
+
+// 分段卡片：分组渲染成虚线盒子，量词跟随子节点
+function chipNode(n){
+  var kinds = {lit:"", esc:"t-esc", cls:"t-cls", anc:"t-anc", dot:"t-esc", alt:"t-alt"};
+  if (n.type === "grp"){
+    var box = document.createElement("span");
+    box.className = "grpbox";
+    var gl = document.createElement("span");
+    gl.className = "glabel";
+    gl.textContent = (n.kind === "cap")
+      ? (n.name ? "组「"+n.name+"」" : "捕获组 #"+n.num)
+      : (n.kind === "noncap" ? "分组" : "断言");
+    box.appendChild(gl);
+    var kids = document.createElement("span");
+    kids.className = "gchildren";
+    n.branches.forEach(function(branch, bi){
+      if (n.branches.length > 1 && bi > 0){
+        var or = document.createElement("span");
+        or.className = "chip t-alt"; or.innerHTML = "<code>|</code><small>或者</small>";
+        kids.appendChild(or);
+      }
+      branch.forEach(function(m){ kids.appendChild(chipNode(m)); });
+    });
+    box.appendChild(kids);
+    return box;
+  }
+  if (n.type === "quant"){
+    var wrap = chipNode(n.child);
+    var q = document.createElement("span");
+    q.className = "chip t-quant";
+    q.innerHTML = "<code>"+escHtml(n.text)+(n.lazy?"?":"")+"</code><small>"+escHtml(shortQuant(n))+"</small>";
+    var holder = document.createElement("span");
+    holder.style.display = "inline-flex";
+    holder.style.alignItems = "flex-start";
+    holder.style.gap = "4px";
+    holder.appendChild(wrap); holder.appendChild(q);
+    return holder;
+  }
+  var el = document.createElement("span");
+  el.className = "chip " + (kinds[n.type] || "");
+  el.innerHTML = "<code>"+escHtml(n.text)+"</code>" +
+    (n.name ? "<small>"+escHtml(shortName(n))+"</small>" : "");
+  return el;
+}
+function shortQuant(n){
+  var s = n.name || "";
+  return s.length > 14 ? s.slice(0,13)+"…" : s;
+}
+function shortName(n){
+  var s = n.name || "";
+  if (n.type === "cls") s = (n.neg ? "排除：" : "") + "字符集合";
+  if (n.type === "dot") s = "任意字符";
+  return s.length > 16 ? s.slice(0,15)+"…" : s;
+}
+
+function renderAll(){
+  var src = $("pat").value.trim();
+  var viz = $("viz"), ex = $("explain"), banner = $("err");
+  banner.classList.remove("show");
+  viz.innerHTML = ""; ex.innerHTML = "";
+  $("highlight").innerHTML = ""; $("mstat").textContent = ""; $("caps").innerHTML = "";
+  if (!src){
+    viz.innerHTML = "<span class='notice'>在上面输入或粘贴一个正则试试，也可以点下面的速查。</span>";
+    return;
+  }
+  var tree;
+  try {
+    tree = parseRegex(src);
+    new RegExp(src, flagStr()); // 语法兜底校验（如嵌套量词 a**）
+  } catch (e) {
+    banner.textContent = "⚠️ 这个正则我读不懂：" + e.message;
+    banner.classList.add("show");
+    return;
+  }
+  tree.branches.forEach(function(branch, bi){
+    if (tree.branches.length > 1 && bi > 0){
+      var or = document.createElement("span");
+      or.className = "chip t-alt"; or.innerHTML = "<code>|</code><small>或者</small>";
+      viz.appendChild(or);
+    }
+    branch.forEach(function(n){ viz.appendChild(chipNode(n)); });
+  });
+  var items = flatten(tree);
+  items.forEach(function(it, i){
+    var row = document.createElement("div");
+    row.className = "exrow";
+    row.style.paddingLeft = (it.depth * 18) + "px";
+    var n0 = i === 0 && it.text === "分支 1" ? "" : (i+1);
+    row.innerHTML = "<span class='n'>"+n0+".</span><span class='t'><b>"+escHtml(it.text)+"</b> <span>— "+escHtml(it.desc)+"</span></span>";
+    ex.appendChild(row);
+  });
+  renderMatches(src);
+}
+
+function renderMatches(src){
+  var text = $("test").value;
+  var hl = $("highlight"), stat = $("mstat"), caps = $("caps");
+  hl.textContent = text || "（测试文本为空——粘一段进来，看正则能抓住谁）";
+  stat.textContent = "";
+  caps.innerHTML = "";
+  if (!text) return;
+  var re;
+  try { re = new RegExp(src, flagStr()); }
+  catch(e){ return; } // 上方 banner 已报错
+  var g = state.flags.g;
+  var flags = flagStr();
+  if (!g) flags += "g"; // 高亮始终全局，但计数尊重 g
+  var gre = new RegExp(src, flags);
+  var segs = [], last = 0, matches = [], guard = 0;
+  var m;
+  while ((m = gre.exec(text)) !== null){
+    if (m[0].length === 0){ gre.lastIndex++; if (guard++ > text.length + 10) break; continue; }
+    matches.push(m);
+    segs.push([last, m.index]);
+    segs.push([m.index, m.index + m[0].length, true, matches.length - 1]);
+    last = m.index + m[0].length;
+    if (!g) break;
+  }
+  segs.push([last, text.length]);
+  var html = "";
+  segs.forEach(function(s){
+    var piece = escHtml(text.slice(s[0], s[1]));
+    html += s[2] ? "<mark data-i='"+s[3]+"'>"+piece+"</mark>" : piece;
+  });
+  hl.innerHTML = html || escHtml(text);
+  var n = matches.length;
+  stat.textContent = n === 0
+    ? "一个匹配都没有——检查正则或换段文本试试。"
+    : "抓到 " + n + " 处匹配" + (g ? "" : "（未开 g 标志，这里仍高亮全部方便观察）") + "。";
+  // 捕获组表格
+  var hasCap = matches.some(function(mm){ return mm.length > 1; });
+  if (hasCap && n > 0){
+    var maxG = 0;
+    matches.forEach(function(mm){ maxG = Math.max(maxG, mm.length - 1); });
+    var names = groupNames(src);
+    var thead = "<tr><th>#</th><th>整体匹配</th>";
+    for (var i2 = 1; i2 <= maxG; i2++){
+      thead += "<th>" + (names[i2-1] ? "$"+i2+"「"+escHtml(names[i2-1])+"」" : "$"+i2) + "</th>";
+    }
+    thead += "</tr>";
+    var rows = "";
+    matches.slice(0, 20).forEach(function(mm, mi){
+      rows += "<tr><td>"+(mi+1)+"</td><td><code>"+escHtml(mm[0])+"</code></td>";
+      for (var j = 1; j <= maxG; j++){
+        rows += "<td>"+(mm[j] === undefined ? "<i style='color:var(--mut)'>未参与</i>" : "<code>"+escHtml(mm[j])+"</code>")+"</td>";
+      }
+      rows += "</tr>";
+    });
+    caps.innerHTML = "<table>"+thead+rows+"</table>" +
+      (n > 20 ? "<div class='notice'>只展示前 20 行。</div>" : "");
+  }
+}
+
+function groupNames(src){
+  var names = [];
+  try {
+    var tree = parseRegex(src);
+    (function walk(branches){
+      branches.forEach(function(b){
+        b.forEach(function(n){
+          if (n.type === "grp"){
+            if (n.kind === "cap") names[n.num-1] = n.name || null;
+            walk(n.branches);
+          }
+        });
+      });
+    })(tree.branches);
+  } catch(e){}
+  return names;
+}
+
+function copyExplain(){
+  var src = $("pat").value.trim();
+  if (!src) return;
+  var lines = ["正则：/"+src+"/"+flagStr(), ""];
+  try {
+    flatten(parseRegex(src)).forEach(function(it, i){
+      lines.push(new Array(it.depth+1).join("  ") + (i+1) + ". " + it.text + " — " + it.desc);
+    });
+  } catch(e){ return; }
+  var txt = lines.join("\n");
+  var done = function(){ $("copy").textContent = "✅ 已复制"; setTimeout(function(){ $("copy").textContent = "📋 复制白话解释"; }, 1600); };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(function(){ fallbackCopy(txt, done); });
+  } else fallbackCopy(txt, done);
+}
+function fallbackCopy(txt, done){
+  var ta = document.createElement("textarea");
+  ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); done(); } catch(e){}
+  document.body.removeChild(ta);
+}
+
+function renderCook(){
+  var host = $("cook");
+  COOKBOOK.forEach(function(c){
+    var b = document.createElement("button");
+    b.textContent = c.name;
+    b.addEventListener("click", function(){
+      $("pat").value = c.re;
+      $("test").value = c.test;
+      renderAll();
+    });
+    host.appendChild(b);
+  });
+}
+
+function boot(){
+  var first = COOKBOOK[0];
+  $("pat").value = first.re;
+  $("test").value = first.test;
+  renderFlags();
+  renderCook();
+  renderAll();
+  $("pat").addEventListener("input", renderAll);
+  $("test").addEventListener("input", renderAll);
+  $("copy").addEventListener("click", copyExplain);
+}
+boot();
+</script>
+</body>
+</html>
