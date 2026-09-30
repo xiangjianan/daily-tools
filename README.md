@@ -8,6 +8,7 @@ One original single-file creative micro-tool per day — local-first, zero-depen
 
 | # | Date | Demo | Idea | Source |
 | --- | --- | --- | --- | --- |
+| #19 | 2026-10-01 | [ExifRay](exifray-20261001/) | 照片隐私X光机：元数据泄露体检 + 一键清洁版复检自证 | [source](exifray-20261001) |
 | #18 | 2026-09-30 | [Rxplain](rxplain-20260930/) | 正则翻译官：逐段染色翻成白话 + 实时匹配高亮 | [source](rxplain-20260930) |
 | #17 | 2026-09-29 | [ProseWave](prosewave-20260929/) | 文案心电图：句子节奏波形与单调警报 | [source](prosewave-20260929) |
 | #16 | 2026-09-28 | [KeyHeat](keyheat-20260928/) | 键盘击键热力图与手指行程统计 | [source](keyheat-20260928) |

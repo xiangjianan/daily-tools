@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ExifRay · 照片隐私X光机</title>
+<meta name="description" content="把照片拖进来，看看它想偷偷告诉别人什么：GPS、设备、时间线一目了然，还能一键生成抹掉元数据的清洁版。全程本地处理。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📷</text></svg>">
+<style>
+:root{--bg:#0d1117;--card:#161b22;--fg:#e6edf3;--mut:#8b949e;--line:#21262d;
+--ok:#3fb950;--warn:#d29922;--risk:#db6d28;--bad:#f85149;--acc:#58a6ff}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom))}
+main{max-width:760px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.4px}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 20px}
+#drop{border:2px dashed var(--line);border-radius:14px;background:var(--card);
+padding:34px 18px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+#drop.on{border-color:var(--acc);background:#10161f}
+#drop .big{font-size:34px;line-height:1}
+#drop .t{margin-top:10px;font-weight:600}
+#drop .d{color:var(--mut);font-size:12.5px;margin-top:4px}
+#pick{display:none}
+.actions{display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+button{font:inherit;font-size:13.5px;color:var(--fg);background:var(--card);border:1px solid var(--line);
+border-radius:9px;padding:9px 16px;cursor:pointer;min-height:40px}
+button:hover{border-color:var(--acc)}
+button.primary{background:#12233c;border-color:#1f4e8c;color:#9ecbff}
+#msg{margin-top:12px;font-size:13px;border-radius:9px;padding:9px 13px;display:none}
+#msg.err{display:block;background:#2d1517;border:1px solid #67262a;color:#ffb3ad}
+#msg.info{display:block;background:#12233c;border:1px solid #1f4e8c;color:#9ecbff}
+#result{display:none;margin-top:22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:14px}
+.card h2{font-size:13px;color:var(--mut);font-weight:600;letter-spacing:.6px;margin-bottom:10px}
+.verdict{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.gauge{width:110px;height:110px;border-radius:50%;flex:none;display:flex;flex-direction:column;
+align-items:center;justify-content:center;background:conic-gradient(var(--vc,#3fb950) calc(var(--pct)*1%),#21262d 0)}
+.gauge b{font-size:26px;font-variant-numeric:tabular-nums;line-height:1}
+.gauge i{font-style:normal;font-size:10.5px;color:var(--mut)}
+.vtxt{flex:1;min-width:200px}
+.vlevel{font-size:17px;font-weight:700;color:var(--vc,#3fb950)}
+.vdesc{color:var(--mut);font-size:13px;margin-top:4px}
+.leaks{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:12px}
+.leak{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg)}
+.leak .lt{font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.leak .ld{color:var(--mut);font-size:12.5px;margin-top:4px;word-break:break-all}
+.leak .ld b{color:var(--fg);font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td{padding:6px 8px;border-top:1px solid var(--line);vertical-align:top}
+td:first-child{color:var(--mut);white-space:nowrap;width:1%}
+td:last-child{word-break:break-all;white-space:pre-wrap}
+.grp td{color:var(--acc);font-weight:600;border-top:1px solid var(--line);padding-top:12px}
+#preview{max-width:180px;max-height:180px;border-radius:10px;border:1px solid var(--line);
+display:block;margin:0 auto 4px;object-fit:contain}
+.meta{display:flex;gap:14px;flex-wrap:wrap;color:var(--mut);font-size:12.5px;margin-top:10px}
+.meta b{color:var(--fg);font-variant-numeric:tabular-nums}
+#cleanout{display:none;margin-top:12px;padding:12px 14px;border:1px solid #1d4428;border-radius:10px;background:#0f1a12}
+#cleanout a{display:inline-block;margin-top:8px;color:#7ee2a8;font-weight:600;text-decoration:none;
+border:1px solid #1d4428;border-radius:9px;padding:9px 16px;background:#12281a}
+footer{margin-top:30px;color:var(--mut);font-size:12.5px}
+footer a{color:var(--acc);text-decoration:none}
+@media(max-width:560px){.gauge{width:92px;height:92px}.vtxt{min-width:160px}}
+</style>
+</head>
+<body>
+<main>
+<h1>📷 ExifRay <span style="color:var(--mut);font-size:14px">照片隐私X光机</span></h1>
+<p class="sub">照片不只是像素 —— 里面可能藏着拍摄地点、手机型号、精确到秒的时间。拖进来照一下，然后带走一份干净的。全程本地处理，照片不会离开你的设备。</p>
+
+<div id="drop">
+  <div class="big">🖼️</div>
+  <div class="t">把照片拖到这里，或点这里选择</div>
+  <div class="d">支持 JPEG / PNG（也可直接 Ctrl+V 粘贴截图）· 仅支持单张</div>
+  <input id="pick" type="file" accept="image/jpeg,image/png,image/webp">
+</div>
+<div class="actions">
+  <button id="sample" class="primary">🧪 载入一张「泄密示例照」</button>
+</div>
+<div id="msg"></div>
+
+<div id="result">
+  <div class="card">
+    <img id="preview" alt="预览">
+    <div class="meta" id="meta"></div>
+  </div>
+  <div class="card">
+    <h2>隐私体检报告</h2>
+    <div class="verdict">
+      <div class="gauge" id="gauge"><b id="score">--</b><i>泄露指数</i></div>
+      <div class="vtxt">
+        <div class="vlevel" id="vlevel"></div>
+        <div class="vdesc" id="vdesc"></div>
+      </div>
+    </div>
+    <div class="leaks" id="leaks"></div>
+  </div>
+  <div class="card">
+    <h2>全部元数据</h2>
+    <table id="tags"></table>
+  </div>
+  <div class="card">
+    <h2>生成清洁版</h2>
+    <div style="color:var(--mut);font-size:13px">用画布重新编码，只保留像素、抹掉全部元数据（会轻微重压缩，JPEG 品质 92%）。</div>
+    <div class="actions" style="justify-content:flex-start">
+      <button id="clean" class="primary">🧼 生成并复检清洁版</button>
+    </div>
+    <div id="cleanout"></div>
+  </div>
+</div>
+
+<footer>ExifRay · 每日创意小工具 #19 · <a href="../">返回目录</a> · 纯前端，数据不出浏览器</footer>
+</main>
+<script>
+"use strict";
+var $=function(id){return document.getElementById(id)};
+var msgEl=$("msg");
+function say(t,cls){msgEl.className=cls||"";msgEl.textContent=t;if(!t)msgEl.className="";}
+var TAGS0={0x010E:"图片说明",0x010F:"厂商 Make",0x0110:"机型 Model",0x0112:"方向",0x011A:"X分辨率",0x011B:"Y分辨率",0x0128:"分辨率单位",0x0131:"软件 Software",0x0132:"修改时间",0x013B:"作者 Artist",0x8298:"版权",0x0103:"压缩方式",0x0213:"YCbCr定位",0x4746:"XMP包",0x4749:"备注"};
+var TAGSE={0x829A:"曝光时间",0x829D:"光圈 F值",0x8822:"曝光程序",0x8824:"色彩空间",0x8827:"ISO 感光度",0x9003:"拍摄时间 Original",0x9004:"数字化时间",0x9201:"闪光灯亮度",0x9202:"最大光圈",0x9207:"拍摄场景",0x9209:"闪光灯",0x920A:"焦距",0x927C:"厂商备注",0x9286:"用户注释",0xA002:"宽度",0xA003:"高度",0xA405:"等效焦距",0xA430:"机主姓名",0xA431:"机身序列号",0xA432:"镜头参数",0xA433:"镜头厂商",0xA434:"镜头型号",0xA435:"镜头序列号"};
+var TAGSG={0x0000:"GPS版本",0x0001:"纬度参考",0x0002:"纬度",0x0003:"经度参考",0x0004:"经度",0x0005:"海拔参考",0x0006:"海拔",0x0007:"GPS时间",0x000B:"测向",0x0012:"地图基准",0x001D:"GPS日期",0x001F:"水平精度"};
+var TSZ={1:1,2:1,3:2,4:4,5:8,7:1,9:4,10:8};
+function u16(v,o,le){return le?v[o]|v[o+1]<<8:v[o]<<8|v[o+1]}
+function u32(v,o,le){return le?(v[o]|v[o+1]<<8|v[o+2]<<16|v[o+3]<<24)>>>0:((v[o]<<24|v[o+1]<<16|v[o+2]<<8|v[o+3])>>>0)}
+/* ---- TIFF/EXIF 解析：返回 {ifd0:[],exif:[],gps:[],thumb:bool} 每项 [name,value] ---- */
+function parseTiff(v){
+  if(v.length<8)return null;
+  var le=v[0]===0x49&&v[1]===0x49&&v[2]===0x2A&&v[3]===0x00,
+      be=v[0]===0x4D&&v[1]===0x4D&&v[2]===0x00&&v[3]===0x2A;
+  if(!le&&!be)return null;
+  var out={ifd0:[],exif:[],gps:[],thumb:false};
+  function readIFD(off,names){
+    var res=[];
+    if(!off||off+2>v.length)return res;
+    var n=u16(v,off,le);
+    if(n>512)return res;
+    for(var i=0;i<n;i++){
+      var e=off+2+i*12;if(e+12>v.length)break;
+      var tag=u16(v,e,le),typ=u16(v,e+2,le),cnt=u32(v,e+4,le);
+      if(typ<1||typ>10&&typ!==7)continue;
+      var sz=(TSZ[typ]||1)*cnt,valOff=e+8;
+      if(sz>4)valOff=u32(v,e+8,le);
+      if(valOff<0||valOff+sz>v.length||sz>1e6)continue;
+      var val;
+      if(typ===2){val="";for(var j=0;j<cnt&&v[valOff+j];j++)val+=String.fromCharCode(v[valOff+j]);}
+      else if(typ===3){val=[];for(j=0;j<cnt;j++)val.push(u16(v,valOff+j*2,le));val=cnt===1?val[0]:val.join(", ");}
+      else if(typ===4){val=[];for(j=0;j<cnt;j++)val.push(u32(v,valOff+j*4,le));val=cnt===1?val[0]:val.join(", ");}
+      else if(typ===1||typ===7){val=[];for(j=0;j<cnt&&j<64;j++)val.push(v[valOff+j]);val=cnt===1?val[0]:val.join(",");}
+      else if(typ===5||typ===10){var rats=[];for(j=0;j<cnt;j++){var nu=typ===5?u32(v,valOff+j*8,le):v[valOff+j*8]|v[valOff+j*8+1]<<8|v[valOff+j*8+2]<<16|v[valOff+j*8+3]<<24;var de=typ===5?u32(v,valOff+j*8+4,le):v[valOff+j*8+4]|v[valOff+j*8+5]<<8|v[valOff+j*8+6]<<16|v[valOff+j*8+7]<<24;rats.push(de?nu/de:nu+"/"+de);}val=cnt===1?rats[0]:rats.join(", ");}
+      else{val=u32(v,valOff,le);}
+      var name=(names&&names[tag])||"Tag 0x"+tag.toString(16).toUpperCase().padStart(4,"0");
+      res.push([name,val,tag]);
+    }
+    return res;
+  }
+  var ifd0off=u32(v,4,le);
+  out.ifd0=readIFD(ifd0off,TAGS0);
+  for(var i=0;i<out.ifd0.length;i++){
+    if(out.ifd0[i][2]===0x8769)out.exif=readIFD(out.ifd0[i][1],TAGSE);
+    if(out.ifd0[i][2]===0x8825)out.gps=readIFD(out.ifd0[i][1],TAGSG);
+  }
+  var ifd1off=u32(v,ifd0off+2+out.ifd0.length*12,le);
+  if(ifd1off){var t1=readIFD(ifd1off,null);for(var i=0;i<t1.length;i++)if(t1[i][2]===0x0201&&t1[i][1]>0)out.thumb=true;}
+  return out;
+}
+/* ---- JPEG 扫描：找 APP1 Exif / XMP、APP13 等 ---- */
+function scanJpeg(v){
+  if(u16(v,0,false)!=0xFFD8)return null;
+  var pos=2,found={exif:null,xmp:false,photoshop:false,icc:false};
+  while(pos+4<v.length){
+    if(v[pos]!==0xFF)break;
+    var m=v[pos+1];
+    if(m===0xDA||m===0xD9)break;
+    if(m===0x01||m>=0xD0&&m<=0xD7){pos+=2;continue;}
+    var len=u16(v,pos+2,false);
+    if(len<2)break;
+    var seg=v.subarray(pos+4,pos+2+len);
+    if(m===0xE1&&seg.length>6){
+      if(seg[0]===0x45&&seg[1]===0x78&&seg[2]===0x69&&seg[3]===0x66)found.exif=parseTiff(seg.subarray(6));
+      else{var s="";for(var i=0;i<28&&i<seg.length;i++)s+=String.fromCharCode(seg[i]);if(s.indexOf("ns.adobe.com/xap")>=0)found.xmp=true;}
+    }
+    if(m===0xED)found.photoshop=true;
+    if(m===0xE2){var s2="";for(var i=0;i<11&&i<seg.length;i++)s2+=String.fromCharCode(seg[i]);if(s2.indexOf("ICC_PROFILE")>=0)found.icc=true;}
+    pos+=2+len;
+  }
+  return found;
+}
+/* ---- PNG 扫描：tEXt/iTXt/zTXt/eXIf/tIME ---- */
+function scanPng(v){
+  if(u32(v,0,false)!==0x89504E47)return null;
+  var pos=8,found={texts:[],exif:null,time:null};
+  while(pos+8<=v.length){
+    var len=u32(v,pos,false),type=String.fromCharCode(v[pos+4],v[pos+5],v[pos+6],v[pos+7]);
+    if(len>0x7FFFFFFF||pos+12+len>v.length)break;
+    var d=v.subarray(pos+8,pos+8+len);
+    if(type==="tEXt"||type==="iTXt"||type==="zTXt"){
+      var z=0;while(z<d.length&&d[z])z++;
+      var key="";for(var i=0;i<z;i++)key+=String.fromCharCode(d[i]);
+      var val="";if(type==="tEXt"){for(var i=z+1;i<d.length&&i<z+200;i++)val+=String.fromCharCode(d[i]);}
+      else val="(压缩或国际文本, "+(len-z)+"字节)";
+      if(val.length>200)val=val.slice(0,200)+"…";
+      found.texts.push([key,val]);
+    }else if(type==="eXIf"){found.exif=parseTiff(d);}
+    else if(type==="tIME"){found.time=d[0]<<8|d[1]+"-"+d[2]+"-"+d[3]+" "+d[4]+":"+d[5]+":"+d[6];}
+    if(type==="IEND")break;
+    pos+=12+len;
+  }
+  return found;
+}
+function toDec(r,ref){
+  if(!r||!ref)return null;
+  var p=String(r).split(", ").map(parseFloat);
+  if(p.length!==3||p.some(isNaN))return null;
+  var d=p[0]+p[1]/60+p[2]/3600;
+  return (ref==="S"||ref==="W")?-d:d;
+}
+function dms(r){var p=String(r).split(", ").map(parseFloat);if(p.length!==3)return String(r);
+  return p[0]+"°"+p[1]+"′"+p[2].toFixed(1)+"″";}
+function find(tabs,tag){for(var i=0;i<tabs.length;i++)if(tabs[i][2]===tag)return tabs[i][1];return null}
+/* ---- 体检判定 ---- */
+function verdict(rep){
+  var f=[],score=100;
+  var ex=rep.exif;
+  if(ex){
+    var lat=toDec(find(ex.gps,0x0002),find(ex.gps,0x0001)),lon=toDec(find(ex.gps,0x0004),find(ex.gps,0x0003));
+    if(lat!==null&&lon!==null){
+      score-=45;f.push({s:"bad",t:"📍 精确拍摄位置",d:"纬经度 <b>"+lat.toFixed(6)+", "+lon.toFixed(6)+"</b>（"+dms(find(ex.gps,0x0002))+" N? "+"/"+dms(find(ex.gps,0x0004))+"）——精确到 house 级别，发出去等于交出家门钥匙"});
+    }
+    if(find(ex.gps,0x0007)||find(ex.gps,0x001D)){score-=4;f.push({s:"warn",t:"🕐 GPS 时间戳",d:"GPS 日期/时间与拍摄时间互相印证，进一步锁定行踪"});}
+    var mk=find(ex.ifd0,0x010F),md=find(ex.ifd0,0x0110);
+    if(mk||md){score-=10;f.push({s:"warn",t:"📱 拍摄设备",d:"<b>"+[mk,md].filter(Boolean).join(" ")+"</b>——设备型号是广告追踪与画像的常用维度"});}
+    var ser=find(ex.exif,0xA431),oser=find(ex.exif,0xA435);
+    if(ser||oser){score-=12;f.push({s:"bad",t:"🔖 设备序列号",d:"<b>"+(ser||oser)+"</b>——全球唯一，可跨平台关联同一台设备"});}
+    if(find(ex.exif,0xA430)||find(ex.ifd0,0x013B)||find(ex.ifd0,0x8298)){score-=8;f.push({s:"bad",t:"👤 所有者信息",d:"包含作者/机主/版权字段，直接暴露身份"});}
+    var dt=find(ex.exif,0x9003)||find(ex.ifd0,0x0132);
+    if(dt){score-=8;f.push({s:"warn",t:"🕒 精确时间",d:"<b>"+dt+"</b>——精确到秒的拍摄时间，配合位置就是完整行踪"});}
+    if(find(ex.ifd0,0x0131)){score-=6;f.push({s:"risk",t:"💾 处理软件",d:"<b>"+find(ex.ifd0,0x0131)+"</b>——暴露你的软件环境与后期痕迹"});}
+    if(ex.thumb){score-=4;f.push({s:"risk",t:"🖼️ 内嵌缩略图",d:"EXIF 里嵌着原图缩略图——历史上曾泄过「已裁剪掉」的画面"});}
+  }
+  if(rep.png){
+    if(rep.png.time){score-=6;f.push({s:"warn",t:"🕒 修改时间",d:"PNG tIME: <b>"+rep.png.time+"</b>"});}
+    rep.png.texts.forEach(function(p){
+      if(/software|author|creator|comment|description|copyright/i.test(p[0])){
+        score-=p[0].match(/software|creator|author/i)?6:4;
+        f.push({s:"risk",t:"🏷️ PNG 文本块",d:p[0]+": <b>"+p[1]+"</b>"});
+      }});
+    if(rep.png.exif)score-=4;
+  }
+  if(rep.xmp){score-=4;f.push({s:"risk",t:"🧾 XMP 元数据包",d:"Adobe 系编辑软件常写入完整编辑历史"});}
+  if(rep.photoshop){score-=2;f.push({s:"risk",t:"Photoshop 资源段",d:"APP13 段常携带图层/IPTC 信息"});}
+  score=Math.max(0,Math.min(100,score));
+  if(!f.length){f.push({s:"ok",t:"✅ 未发现敏感元数据",d:"这张照片相当干净——但仍建议发布前再照一次。"});}
+  var lv,desc;
+  if(score>=85){lv=["干净","元数据里几乎没有可识别信息，可以放心分享。"];desc="--ok"}
+  else if(score>=60){lv=["低风险","有一些环境信息，多数场景可接受。"];desc="--warn"}
+  else if(score>=35){lv=["需注意","设备、时间等画像信息不少，建议清洁后再发。"];desc="--risk"}
+  else{lv=["高危","含位置/序列号级别的敏感泄露，强烈建议生成清洁版。"];desc="--bad"}
+  return {score:score,leaks:f,level:lv[0],desc:lv[1],tone:desc};
+}
+/* ---- 渲染 ---- */
+var cur={bytes:null,name:"",mime:"",kind:""};
+function render(rep,info){
+  var v=verdict(rep);
+  $("preview").src=info.url;
+  $("preview").style.display="block";
+  var kb=function(n){return (n/1024).toFixed(1)+" KB"};
+  $("meta").innerHTML="<span>文件 <b>"+info.name+"</b></span><span>大小 <b>"+kb(info.size)+"</b></span><span>格式 <b>"+info.kind+"</b></span><span>解析出 <b>"+(rep.exif?rep.exif.ifd0.length+rep.exif.exif.length+rep.exif.gps.length:0+(rep.png?rep.png.texts.length:0))+"</b> 条字段</span>";
+  var g=$("gauge");g.style.setProperty("--pct",v.score);g.style.setProperty("--vc","var("+v.tone+")");
+  $("score").textContent=v.score;
+  var vl=$("vlevel");vl.textContent=v.level;vl.style.setProperty("--vc","var("+v.tone+")");vl.style.color="var("+v.tone+")";
+  $("vdesc").textContent=v.desc;
+  var lk=$("leaks");lk.innerHTML="";
+  v.leaks.forEach(function(x){
+    var d=document.createElement("div");d.className="leak";
+    var col={ok:"var(--ok)",warn:"var(--warn)",risk:"var(--risk)",bad:"var(--bad)"}[x.s];
+    d.innerHTML="<div class='lt'><span class='dot' style='background:"+col+"'></span>"+x.t+"</div><div class='ld'>"+x.d+"</div>";
+    lk.appendChild(d);
+  });
+  var tb=$("tags");tb.innerHTML="";
+  function grp(title){var r=tb.insertRow();r.className="grp";r.insertCell().textContent=title;r.insertCell();}
+  function row(a,b){var r=tb.insertRow();r.insertCell().textContent=a;r.insertCell().textContent=String(b).slice(0,300);}
+  if(rep.exif){
+    grp("EXIF · IFD0 基础信息");rep.exif.ifd0.forEach(function(t){row(t[0],t[1])});
+    if(rep.exif.exif.length){grp("EXIF · 拍摄参数");rep.exif.exif.forEach(function(t){row(t[0],t[1])});}
+    if(rep.exif.gps.length){grp("EXIF · GPS 定位");rep.exif.gps.forEach(function(t){row(t[0],t[1])});
+      var lat=toDec(find(rep.exif.gps,0x0002),find(rep.exif.gps,0x0001)),lon=toDec(find(rep.exif.gps,0x0004),find(rep.exif.gps,0x0003));
+      if(lat!==null)row("十进制纬经度",lat.toFixed(6)+", "+lon.toFixed(6));}
+    if(rep.exif.thumb)grp("EXIF · 内嵌缩略图存在");
+  }
+  if(rep.png){
+    if(rep.png.texts.length){grp("PNG · 文本块");rep.png.texts.forEach(function(t){row(t[0],t[1])});}
+    if(rep.png.time)row("PNG 修改时间",rep.png.time);
+    if(rep.png.exif)grp("PNG · eXIf 块（内容并入 IFD0/Exif/GPS 分组）");
+  }
+  if(rep.xmp)row("XMP","存在 Adobe XMP 元数据包（未逐字段展开）");
+  if(rep.photoshop)row("APP13","存在 Photoshop 资源段");
+  if(rep.icc)row("ICC","嵌入 ICC 色彩配置文件（一般无害）");
+  if(!rep.exif&&!rep.png)row("—","未发现元数据段（可能本来就没有，或已被清洁过）");
+  $("cleanout").style.display="none";
+  $("result").style.display="block";
+  $("result").scrollIntoView({behavior:"smooth",block:"start"});
+}
+/* ---- 清洁版：canvas 重编码 + 复检 ---- */
+$("clean").addEventListener("click",function(){
+  if(!cur.img)return say("请先载入一张照片","err");
+  say("正在生成清洁版…","info");
+  var c=document.createElement("canvas");
+  c.width=cur.img.naturalWidth;c.height=cur.img.naturalHeight;
+  var ctx=c.getContext("2d");
+  if(cur.kind!=="PNG"){ctx.fillStyle="#000";ctx.fillRect(0,0,c.width,c.height);}
+  ctx.drawImage(cur.img,0,0);
+  var outType=cur.kind==="PNG"?"image/png":"image/jpeg";
+  c.toBlob(function(blob){
+    if(!blob)return say("生成失败：画布导出异常","err");
+    var fr=new FileReader();
+    fr.onload=function(){
+      var nb=new Uint8Array(fr.result);
+      var s=nb[0]===0xFF?scanJpeg(nb):scanPng(nb);
+      var base=cur.name.replace(/\.[^.]+$/,"");
+      var url=URL.createObjectURL(blob);
+      var box=$("cleanout");box.style.display="block";
+      var n2=s?(s.exif?countTiff(s.exif):0)+(s.texts?s.texts.length:0):0;
+      var xmp2=s?!!s.xmp||!!s.photoshop:false;
+      box.innerHTML="<div style='font-size:13.5px'>✅ 清洁版已生成：<b>"+(nb.length/1024).toFixed(1)+" KB</b>（原 "+(cur.bytes.length/1024).toFixed(1)+" KB）· 复检元数据字段 <b>"+(n2+ (xmp2?1:0))+"</b> 条"+(n2?" ⚠️ 仍有残留":" 🎉 已全部抹净")+"</div>";
+      var a=document.createElement("a");a.href=url;a.download=base+"-clean."+(outType==="image/png"?"png":"jpg");
+      a.textContent="⬇️ 下载清洁版 "+a.download;a.style.display="inline-block";
+      box.appendChild(a);
+      say("","");say("清洁版生成完毕，记得下载 —— 刷新页面就找不回了","info");
+    };
+    fr.readAsArrayBuffer(blob);
+  },outType,0.92);
+});
+function countTiff(t){return t.ifd0.length+t.exif.length+t.gps.length}
+/* ---- 输入通道：选择 / 拖拽 / 粘贴 ---- */
+$("drop").addEventListener("click",function(){$("pick").click()});
+$("pick").addEventListener("change",function(){if(this.files[0])loadFile(this.files[0]);this.value="";});
+["dragover","dragenter"].forEach(function(ev){$("drop").addEventListener(ev,function(e){e.preventDefault();$("drop").classList.add("on")})});
+["dragleave","drop"].forEach(function(ev){$("drop").addEventListener(ev,function(e){e.preventDefault();$("drop").classList.remove("on")})});
+$("drop").addEventListener("drop",function(e){var f=e.dataTransfer.files[0];if(f)loadFile(f)});
+document.addEventListener("paste",function(e){
+  for(var i=0;i<e.clipboardData.items.length;i++){
+    var it=e.clipboardData.items[i];
+    if(it.type.indexOf("image")===0){loadFile(it.getAsFile());break;}
+  }
+});
+function loadFile(f){
+  say("","");
+  if(!/image\//.test(f.type)&&!/\.(jpe?g|png|webp)$/i.test(f.name)){say("这不是图片文件——请拖入 JPEG / PNG 照片","err");return;}
+  if(f.size>30*1024*1024){say("文件超过 30 MB，为保流畅请先压缩","err");return;}
+  var fr=new FileReader();
+  fr.onload=function(){
+    var bytes=new Uint8Array(fr.result);
+    var rep;
+    if(bytes[0]===0xFF&&bytes[1]===0xD8){rep=scanJpeg(bytes);cur.kind="JPEG";}
+    else if(bytes[0]===0x89&&bytes[1]===0x50){rep=scanPng(bytes);cur.kind="PNG";}
+    else{say("目前只认识 JPEG 和 PNG 的元数据格式（WebP/HEIC 可稍后支持）。你可以先把照片转成 JPG 再试。","err");return;}
+    if(rep===null){say("文件看起来损坏了，无法解析出图像结构","err");return;}
+    cur.bytes=bytes;cur.name=f.name||"clipboard.png";
+    var img=new Image();
+    img.onload=function(){cur.img=img;render(rep,{url:img.src,name:cur.name,size:f.size,kind:cur.kind});};
+    img.onerror=function(){say("图像解码失败：文件可能已损坏","err");return;};
+    img.src=URL.createObjectURL(f);
+  };
+  fr.readAsArrayBuffer(f);
+}
+/* ---- 内置示例（PIL 离线生成、base64 内嵌，双击离线可用）---- */
+var SAMPLE_B64="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vuYbiQQTmnx/EzxrFaxQJq0OIYIreFzZQGSFY4vJRkcpuSQRhU8xSH2og3YVcAjR1v4eadpnh+7uLLxJLealY6Pp2t3lnJY+VGkN2luQqS+Yxd0a6iBG0Agkg8FRb8AaD4b1zw8lnJptlqfiC5vZIVsby6mtZZofLQR/YnUiJp95kykuc/ugqnLVT1f4r65qVkdPistPisW0a00dopbaKSQrBaxwbzKEV2yUZ1VywQuCPmVWGFo3jbxL4f0wWGl38UUKTNcQ+ZaxTPbSsoUyQu6loXIVPmQqflXn5RgA7fWvhroF5cLD4c1aeHUINC0XUrrT/sTyxj7XFZxuyyB2d5DNdrJ5ax4w5CnIC1DffCbS9MvL2a+8WTxaXb6B/bwuBp6PM4/tAWJh8tZyobzCxH7w9AG2knbyNp478WWGsvq1nq7wXrWtpZGdIowwitWga3UfLwUNpbncOTs5Jy2Xap498U6vDLBeX1uIZdPGlNDbWUFvGLYXQuxGqRooUeeA+QAe2cHFAHZ2Hwd02bxZomk6j4vntbfxBqFrYaTcxaZ5rSGe3trgNMnmr5WEvbcEAv8AMWGcDdVQ+A/DmpeBvDE9nqs1lr174c1DV5LUWxliuPstxfMzPKZB5ZMNttVVQgmPnG4ml8I/GXU/DZhur3T/AO09Qs5reexnZoVSI28EcEIKNC5ACQxgtE0TsAQztwRxUHivX7f7D5N/t+w6dcaVbfukPl21x5/mx8rzu+1T/McsN/BGFwAd1efCRNNNk51fz1urLV3kW5szE8E9hYi7ZQgl3AMHRVMgRhyWjxgN5ZXXal8TvG2rTRy32rQtIgvfmjsreIubyEQXTuUQb3kjABdstnkEHmuRoGFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAf/2Q==";
+$("sample").addEventListener("click",function(){
+  if(!SAMPLE_B64){say("示例数据缺失","err");return;}
+  var bin=atob(SAMPLE_B64),n=bin.length,bytes=new Uint8Array(n);
+  for(var i=0;i<n;i++)bytes[i]=bin.charCodeAt(i);
+  loadFile(new File([bytes],"shanghai-rooftop.jpg",{type:"image/jpeg"}));
+});
+</script>
+</body>
+</html>
