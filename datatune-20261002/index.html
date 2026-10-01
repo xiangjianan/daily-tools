@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DATATUNE · 数据旋律机 — 把一列数字唱给你听</title>
+<meta name="description" content="粘贴任意一列数字，DATATUNE 把它映射成五声音阶旋律实时播放。异常值会以琥珀色高音被你「一耳朵」听出来。纯本地运行，数据不出浏览器。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f141a'/%3E%3Crect x='6' y='18' width='4' height='8' rx='1.5' fill='%2339c5cf'/%3E%3Crect x='12' y='12' width='4' height='14' rx='1.5' fill='%2339c5cf'/%3E%3Crect x='18' y='6' width='4' height='20' rx='1.5' fill='%23f5a623'/%3E%3Crect x='24' y='14' width='4' height='12' rx='1.5' fill='%2339c5cf'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0f141a; --bg2:#151c25; --panel:#1a2330; --line:#26313f;
+  --fg:#dde5ee; --dim:#8296ab; --faint:#5a6b7e;
+  --accent:#39c5cf; --amber:#f5a623; --danger:#e5697a; --ok:#7fc98a;
+  --radius:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg); color:var(--fg);
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  min-height:100vh;
+  padding:calc(env(safe-area-inset-top,0px) + 20px) 16px calc(env(safe-area-inset-bottom,0px) + 40px);
+}
+.wrap{max-width:860px;margin:0 auto}
+header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+h1{font-size:22px;letter-spacing:.5px}
+h1 .logo{color:var(--accent)}
+.sub{color:var(--dim);font-size:13px}
+.privacy{
+  display:inline-flex;align-items:center;gap:6px;margin:10px 0 18px;
+  font-size:12px;color:var(--ok);background:rgba(127,201,138,.08);
+  border:1px solid rgba(127,201,138,.25);border-radius:999px;padding:3px 12px;
+}
+.panel{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px;margin-bottom:14px;
+}
+.panel-label{font-size:12px;color:var(--dim);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+textarea{
+  width:100%;min-height:130px;resize:vertical;
+  background:var(--bg2);color:var(--fg);
+  border:1px solid var(--line);border-radius:8px;
+  padding:12px;font:13px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  white-space:pre-wrap;overflow-wrap:anywhere;
+}
+textarea:focus{outline:none;border-color:var(--accent)}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 16px;margin-bottom:14px}
+.ctl{display:flex;flex-direction:column;gap:5px}
+.ctl label{font-size:12px;color:var(--dim)}
+.ctl select,.ctl input[type=range]{
+  width:100%;background:var(--bg2);color:var(--fg);
+  border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px;
+}
+.ctl input[type=range]{padding:0;height:32px;accent-color:var(--accent);border:none;background:transparent}
+.ctl .val{color:var(--accent);font-variant-numeric:tabular-nums}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+button{
+  cursor:pointer;border:none;border-radius:10px;
+  font-size:14px;font-weight:600;padding:11px 22px;
+  display:inline-flex;align-items:center;gap:8px;
+  transition:filter .15s ease, opacity .15s ease;
+}
+button:active{filter:brightness(.85)}
+@media (hover:hover){ button:hover{filter:brightness(1.12)} }
+.btn-primary{background:var(--accent);color:#06282b}
+.btn-ghost{background:var(--bg2);color:var(--fg);border:1px solid var(--line)}
+.btn-amber{background:var(--amber);color:#33230a}
+button:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.chip{
+  background:var(--bg2);border:1px solid var(--line);border-radius:8px;
+  padding:6px 12px;font-size:12px;color:var(--dim);
+  font-variant-numeric:tabular-nums;
+}
+.chip b{color:var(--fg);font-weight:600;margin-left:4px}
+.chip.warn b{color:var(--amber)}
+.chip.hot b{color:var(--danger)}
+#stage{
+  background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);
+  width:100%;display:block;
+}
+.hint{
+  margin-top:10px;font-size:13px;color:var(--dim);min-height:20px;
+  white-space:pre-wrap;overflow-wrap:anywhere;
+}
+.hint.err{color:var(--danger)}
+.hint.ok{color:var(--ok)}
+.legend{display:flex;gap:16px;margin-top:8px;font-size:12px;color:var(--dim);flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+footer{margin-top:26px;font-size:12px;color:var(--faint);line-height:1.8}
+footer a{color:var(--dim)}
+@media (max-width:560px){
+  body{padding-left:12px;padding-right:12px}
+  .actions button{flex:1;justify-content:center;padding:12px 10px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="logo">DATATUNE</span> 数据旋律机</h1>
+    <span class="sub">把一列数字唱给你听</span>
+  </header>
+  <div class="privacy">🔒 纯本地运行 — 数字不出浏览器，无任何上传</div>
+
+  <div class="panel">
+    <div class="panel-label">
+      <span>① 输入数字（任意分隔：逗号 / 空格 / 换行 / 表格列都行，自动抽取）</span>
+      <button class="btn-ghost" id="btnSample" type="button" style="padding:5px 12px;font-size:12px">载入示例：服务器 CPU 负载</button>
+    </div>
+    <textarea id="input" placeholder="例如：&#10;12.3 14.1 13.8 15.2 22.9&#10;或粘贴 CSV 的一列、日志里的耗时、体重记录、股票收盘价……&#10;非数字字符会被自动忽略。"></textarea>
+  </div>
+
+  <div class="controls">
+    <div class="ctl">
+      <label for="scale">音阶</label>
+      <select id="scale">
+        <option value="pentaMajor">大调五声（明快）</option>
+        <option value="pentaMinor">小调五声（忧郁）</option>
+        <option value="inSen">都节音阶（日式）</option>
+        <option value="chromatic">半音阶（原始）</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label for="wave">音色</label>
+      <select id="wave">
+        <option value="sine">正弦（柔和）</option>
+        <option value="triangle">三角（清脆）</option>
+        <option value="square">方波（复古芯片音）</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label for="tempo">速度 <span class="val" id="tempoVal">120 BPM</span></label>
+      <input type="range" id="tempo" min="50" max="240" step="5" value="120">
+    </div>
+    <div class="ctl">
+      <label for="transpose">移调 <span class="val" id="transposeVal">0</span></label>
+      <input type="range" id="transpose" min="-12" max="12" step="1" value="0">
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn-primary" id="btnPlay" type="button">▶ 播放</button>
+    <button class="btn-ghost" id="btnStop" type="button" disabled>■ 停止</button>
+    <button class="btn-amber" id="btnWav" type="button">⬇ 导出 WAV</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+  <canvas id="stage" height="260"></canvas>
+  <div class="legend">
+    <span><i style="background:var(--accent)"></i>普通音符</span>
+    <span><i style="background:var(--amber)"></i>异常值（|z| &gt; 2，一耳朵听出来的高音 / 低音）</span>
+  </div>
+  <div class="hint" id="hint"></div>
+
+  <footer>
+    数据旋律（data sonification）：耳朵对音高突变的敏感度远超肉眼扫表格——趋势、周期、毛刺都能「听」出来。<br>
+    DATATUNE · <a href="https://github.com/xiangjianan/daily-tools/tree/main/datatune-20261002">源码</a> · 每日一个创意小工具 #20 · 零依赖单文件，双击即用
+  </footer>
+</div>
+
+<script>
+'use strict';
+/* ================= pure core（可独立测试） ================= */
+
+var SCALES = {
+  pentaMajor: [0, 2, 4, 7, 9],
+  pentaMinor: [0, 3, 5, 7, 10],
+  inSen:      [0, 2, 3, 7, 8],
+  chromatic:  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+};
+var NUM_RE = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+var MAX_NOTES = 512;
+var BASE_HZ = 261.6255653; // C4
+
+/** 从任意文本抽取数字序列。返回 {values:[], raw:''} */
+function parseNumbers(text) {
+  var values = [];
+  var m;
+  NUM_RE.lastIndex = 0;
+  while ((m = NUM_RE.exec(text)) !== null) {
+    var v = parseFloat(m[0]);
+    if (isFinite(v)) values.push(v);
+  }
+  return { values: values };
+}
+
+/** 基本统计 + z 分数。返回 {n,min,max,mean,sd,zs:[],outlierCount} */
+function stats(values) {
+  var n = values.length;
+  if (!n) return { n: 0, min: 0, max: 0, mean: 0, sd: 0, zs: [], outlierCount: 0 };
+  var min = Infinity, max = -Infinity, sum = 0, i;
+  for (i = 0; i < n; i++) {
+    if (values[i] < min) min = values[i];
+    if (values[i] > max) max = values[i];
+    sum += values[i];
+  }
+  var mean = sum / n;
+  var sq = 0;
+  for (i = 0; i < n; i++) sq += (values[i] - mean) * (values[i] - mean);
+  var sd = n > 1 ? Math.sqrt(sq / (n - 1)) : 0;
+  var zs = values.map(function (v) { return sd > 0 ? (v - mean) / sd : 0; });
+  var outlierCount = zs.filter(function (z) { return Math.abs(z) > 2; }).length;
+  return { n: n, min: min, max: max, mean: mean, sd: sd, zs: zs, outlierCount: outlierCount };
+}
+
+/** 展开音阶到 octaves 个八度，返回半音偏移数组（严格递增） */
+function scaleDegrees(steps, octaves) {
+  var degs = [];
+  for (var o = 0; o < octaves; o++)
+    for (var i = 0; i < steps.length; i++)
+      degs.push(steps[i] + 12 * o);
+  return degs;
+}
+
+/**
+ * 数值序列 → 音符序列。
+ * 归一化到 [0,1]，映射进 degrees；z>2 的异常值整体升一个八度制造「突兀感」。
+ * 返回 [{semi, isOutlier, value}]
+ */
+function buildNotes(values, steps, octaves) {
+  var st = stats(values);
+  var degs = scaleDegrees(steps, octaves);
+  var span = st.max - st.min;
+  var notes = values.map(function (v, i) {
+    var t = span > 0 ? (v - st.min) / span : 0.5;
+    var idx = Math.round(t * (degs.length - 1));
+    var isOut = Math.abs(st.zs[i]) > 2;
+    return {
+      semi: degs[idx] + (isOut ? 12 : 0),
+      isOutlier: isOut,
+      value: v
+    };
+  });
+  return notes;
+}
+
+function freqOf(semi, transpose) {
+  return BASE_HZ * Math.pow(2, (semi + transpose) / 12);
+}
+
+function fmtNum(v) {
+  if (Math.abs(v) >= 1e6 || (Math.abs(v) < 1e-4 && v !== 0)) return v.toExponential(2);
+  return String(Math.round(v * 1000) / 1000);
+}
+
+/** Float32 PCM → 16bit WAV ArrayBuffer（纯函数，可独立测试） */
+function encodeWAV(samples, sampleRate) {
+  var n = samples.length;
+  var buf = new ArrayBuffer(44 + n * 2);
+  var view = new DataView(buf);
+  function wstr(off, s) { for (var i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); }
+  wstr(0, 'RIFF');
+  view.setUint32(4, 36 + n * 2, true);
+  wstr(8, 'WAVE');
+  wstr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);          // PCM
+  view.setUint16(22, 1, true);          // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  wstr(36, 'data');
+  view.setUint32(40, n * 2, true);
+  for (var i = 0; i < n; i++) {
+    var s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return buf;
+}
+
+/* ================= state & dom ================= */
+
+var $ = function (id) { return document.getElementById(id); };
+var elInput = $('input'), elHint = $('hint'), elStats = $('stage') ? $('stats') : null;
+var elStage = $('stage');
+var elPlay = $('btnPlay'), elStop = $('btnStop'), elWav = $('btnWav');
+var elScale = $('scale'), elWave = $('wave');
+var elTempo = $('tempo'), elTempoVal = $('tempoVal');
+var elTranspose = $('transpose'), elTransposeVal = $('transposeVal');
+var elSample = $('btnSample');
+
+var SAMPLE = [
+  12,14,13,15,13,14,16,15, 14,13,12,15,17,16,14,13,
+  15,14,16,18,17,15,14,13, 12,14,15,13,14,16,15,14,
+  13,15,14,16,15,14,13,12, 14,15,17,92,18,16,15,14,
+  13,12,14,15,16,14,13,15, 14,13,12,14,15,13,14,12
+].join(' ');
+
+var audioCtx = null;
+var playing = false;
+var playToken = 0;      // 使旧的渲染循环/调度失效
+var noteEvents = [];    // {t, semi, isOutlier}
+var playStartTime = 0;
+var noteDur = 0.25;
+var animRAF = 0;
+
+function currentValues() {
+  var parsed = parseNumbers(elInput.value);
+  return parsed.values;
+}
+
+function setHint(msg, cls) {
+  elHint.textContent = msg;
+  elHint.className = 'hint' + (cls ? ' ' + cls : '');
+}
+
+function renderStats(values) {
+  var st = stats(values);
+  if (!st.n) {
+    $('stats').innerHTML = '';
+    return st;
+  }
+  var html =
+    '<span class="chip">音符数<b>' + st.n + '</b></span>' +
+    '<span class="chip">范围<b>' + fmtNum(st.min) + ' ~ ' + fmtNum(st.max) + '</b></span>' +
+    '<span class="chip">均值<b>' + fmtNum(st.mean) + '</b></span>' +
+    '<span class="chip">标准差<b>' + fmtNum(st.sd) + '</b></span>' +
+    '<span class="chip' + (st.outlierCount ? ' warn' : '') + '">异常值<b>' + st.outlierCount + '</b></span>';
+  if (values.length > MAX_NOTES)
+    html += '<span class="chip hot">超出<b>' + values.length + ' → 仅演奏前 ' + MAX_NOTES + ' 个</b></span>';
+  $('stats').innerHTML = html;
+  return st;
+}
+
+function buildProgram() {
+  var values = currentValues();
+  var st = renderStats(values);
+  if (!st.n) return null;
+  var clipped = values.slice(0, MAX_NOTES);
+  var steps = SCALES[elScale.value];
+  var notes = buildNotes(clipped, steps, 2);
+  var transpose = parseInt(elTranspose.value, 10) || 0;
+  var bpm = parseInt(elTempo.value, 10) || 120;
+  var spn = 30 / bpm; // 八分音符
+  var wave = elWave.value;
+  noteEvents = notes.map(function (n, i) {
+    return { t: i * spn, semi: n.semi, isOutlier: n.isOutlier, freq: freqOf(n.semi, transpose) };
+  });
+  return { noteEvents: noteEvents, spn: spn, wave: wave, total: noteEvents.length * spn };
+}
+
+/* ---------- 音频调度 ---------- */
+
+function scheduleVoice(ctx, evs, spn, wave, t0, gainScale) {
+  var g = gainScale || 1;
+  evs.forEach(function (ev) {
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.type = wave;
+    osc.frequency.value = ev.freq;
+    var peak = (wave === 'square' ? 0.16 : 0.3) * g;
+    var atk = 0.012;
+    var dur = Math.min(spn * 0.92, 0.6);
+    gain.gain.setValueAtTime(0.0001, t0 + ev.t);
+    gain.gain.exponentialRampToValueAtTime(peak, t0 + ev.t + atk);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + ev.t + dur);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t0 + ev.t);
+    osc.stop(t0 + ev.t + dur + 0.05);
+  });
+}
+
+function ensureCtx() {
+  if (!audioCtx) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function stopPlayback() {
+  playing = false;
+  playToken++;
+  cancelAnimationFrame(animRAF);
+  if (audioCtx && audioCtx.state === 'running') {
+    // 简单粗暴：关掉旧 ctx，下次播放重建，避免残留调度
+    try { audioCtx.close(); } catch (e) {}
+    audioCtx = null;
+  }
+  elPlay.disabled = false;
+  elStop.disabled = true;
+  elWav.disabled = false;
+  drawIdle();
+}
+
+function startPlayback() {
+  var prog = buildProgram();
+  if (!prog) {
+    setHint('请先输入至少一个数字——任意分隔都行，或点上面的「载入示例」。', 'err');
+    return;
+  }
+  if (playing) return;
+  var token = ++playToken;
+  var ctx = ensureCtx();
+  playing = true;
+  elPlay.disabled = true;
+  elStop.disabled = false;
+  elWav.disabled = true;
+  playStartTime = ctx.currentTime + 0.12;
+  noteDur = prog.spn;
+  scheduleVoice(ctx, prog.noteEvents, prog.spn, prog.wave, playStartTime, 1);
+  var endT = playStartTime + prog.total + 0.4;
+  setHint('正在演奏 ' + prog.noteEvents.length + ' 个音符…点击「停止」可中断。', 'ok');
+  (function loop() {
+    if (!playing || token !== playToken) return;
+    var now = ctx.currentTime;
+    draw(now - playStartTime);
+    if (now >= endT) { stopPlayback(); setHint('演奏完毕 🎵 试试点「导出 WAV」保存这段数据的声音。', 'ok'); return; }
+    animRAF = requestAnimationFrame(loop);
+  })();
+}
+
+/* ---------- 可视化 ---------- */
+
+function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function sizeCanvas() {
+  var dpr = window.devicePixelRatio || 1;
+  var w = elStage.clientWidth || 600;
+  var h = 260;
+  elStage.width = Math.round(w * dpr);
+  elStage.height = Math.round(h * dpr);
+  elStage.style.height = h + 'px';
+  var c = elStage.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function drawIdle() {
+  sizeCanvas();
+  var c = elStage.getContext('2d');
+  var w = elStage.clientWidth, h = 260;
+  c.clearRect(0, 0, w, h);
+  c.fillStyle = cssVar('--faint');
+  c.font = '13px sans-serif';
+  c.textAlign = 'center';
+  c.fillText('钢琴卷帘会在这里出现：横轴时间，纵轴音高，琥珀色 = 异常值', w / 2, h / 2);
+  drawStrikeLine(c, w, h);
+}
+
+function drawStrikeLine(c, w, h) {
+  c.strokeStyle = cssVar('--line');
+  c.lineWidth = 1;
+  c.beginPath();
+  c.moveTo(0, h - 34);
+  c.lineTo(w, h - 34);
+  c.stroke();
+}
+
+function draw(elapsed) {
+  var w = elStage.clientWidth, h = 260;
+  var c = elStage.getContext('2d');
+  c.clearRect(0, 0, w, h);
+  var strikeY = h - 34;
+  var pxPerSec = Math.max(90, w / 5);
+  var windowSec = (strikeY) / pxPerSec; // 可见的未来时长
+  var nowT = elapsed;
+  var minSemi = Infinity, maxSemi = -Infinity, i, ev;
+  for (i = 0; i < noteEvents.length; i++) {
+    if (noteEvents[i].semi < minSemi) minSemi = noteEvents[i].semi;
+    if (noteEvents[i].semi > maxSemi) maxSemi = noteEvents[i].semi;
+  }
+  if (maxSemi === minSemi) { maxSemi += 1; }
+  var laneH = strikeY / (maxSemi - minSemi + 1);
+  for (i = 0; i < noteEvents.length; i++) {
+    ev = noteEvents[i];
+    var dt = ev.t - nowT;
+    if (dt > windowSec + 1) continue;
+    var y = strikeY - dt * pxPerSec;
+    var lane = maxSemi - ev.semi;
+    var bh = Math.max(6, laneH * 0.62);
+    var bw = Math.max(10, Math.min(46, noteDur * pxPerSec * 0.8));
+    if (y < -bh) continue;
+    var passed = dt < 0;
+    c.globalAlpha = passed ? Math.max(0, 1 + dt / 0.6) * 0.35 : 1;
+    c.fillStyle = ev.isOutlier ? cssVar('--amber') : cssVar('--accent');
+    var x = 12 + (i % 2) * (bw + 6);
+    c.beginPath();
+    var r = 3;
+    var bx = x, by = y - bh;
+    c.moveTo(bx + r, by);
+    c.arcTo(bx + bw, by, bx + bw, by + bh, r);
+    c.arcTo(bx + bw, by + bh, bx, by + bh, r);
+    c.arcTo(bx, by + bh, bx, by, r);
+    c.arcTo(bx, by, bx + bw, by, r);
+    c.fill();
+  }
+  c.globalAlpha = 1;
+  drawStrikeLine(c, w, h);
+}
+
+/* ---------- WAV 导出 ---------- */
+
+function exportWav() {
+  var prog = buildProgram();
+  if (!prog) { setHint('请先输入至少一个数字。', 'err'); return; }
+  var rate = 44100;
+  var total = prog.total + 0.6;
+  var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  var oc = new OAC(1, Math.ceil(total * rate), rate);
+  scheduleVoice(oc, prog.noteEvents, prog.spn, prog.wave, 0.05, 1);
+  setHint('正在离线渲染 WAV…');
+  oc.startRendering().then(function (buf) {
+    var wav = encodeWAV(buf.getChannelData(0), rate);
+    var blob = new Blob([wav], { type: 'audio/wav' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'datatune-' + Date.now() + '.wav';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    setHint('WAV 已导出 ✓（' + Math.round(blob.size / 1024) + ' KB）', 'ok');
+  }).catch(function (e) {
+    setHint('导出失败：' + e.message, 'err');
+  });
+}
+
+/* ---------- 事件绑定 ---------- */
+
+elSample.addEventListener('click', function () {
+  elInput.value = SAMPLE;
+  onInput();
+});
+
+function onInput() {
+  var values = currentValues();
+  var st = stats(values);
+  if (playing) stopPlayback();
+  renderStats(values);
+  if (!elInput.value.trim()) {
+    setHint('等一列数字被粘贴进来 🎹', '');
+    drawIdle();
+    return;
+  }
+  if (!st.n) {
+    setHint('这段文本里没有找到数字——纯文字是唱不响的，加点数字试试。', 'err');
+    drawIdle();
+    return;
+  }
+  setHint('已识别 ' + st.n + ' 个数字' + (st.outlierCount ? '，其中 ' + st.outlierCount + ' 个异常值（|z|>2）会以琥珀色高八度出现' : '') + '。点「▶ 播放」开听。', '');
+}
+
+elInput.addEventListener('input', onInput);
+elPlay.addEventListener('click', startPlayback);
+elStop.addEventListener('click', stopPlayback);
+elWav.addEventListener('click', exportWav);
+elScale.addEventListener('change', function () { if (playing) stopPlayback(); });
+elWave.addEventListener('change', function () {});
+elTempo.addEventListener('input', function () { elTempoVal.textContent = elTempo.value + ' BPM'; });
+elTranspose.addEventListener('input', function () {
+  var v = parseInt(elTranspose.value, 10) || 0;
+  elTransposeVal.textContent = (v > 0 ? '+' : '') + v;
+});
+window.addEventListener('resize', function () { if (!playing) drawIdle(); });
+
+sizeCanvas();
+drawIdle();
+onInput();
+</script>
+</body>
+</html>
