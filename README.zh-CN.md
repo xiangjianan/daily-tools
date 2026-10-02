@@ -8,6 +8,7 @@ English switch: [English](README.md)
 
 | # | Date | 在线试玩 | Idea | 源码 |
 | --- | --- | --- | --- | --- |
+| #21 | 2026-10-03 | [TimeBridge（时区桥）](timebridge-20261003/) | 跨时区会议一屏定档，彩带看时差，自动找全员最佳时段 | [source](timebridge-20261003) |
 | #20 | 2026-10-02 | [DataTune（数据旋律机）](datatune-20261002/) | 数字→五声音阶即点即播，异常值一耳朵听出来 | [source](datatune-20261002) |
 | #19 | 2026-10-01 | [ExifRay（照片隐私X光机）](exifray-20261001/) | 照片元数据泄露体检 + 一键清洁版复检自证 | [source](exifray-20261001) |
 | #18 | 2026-09-30 | [Rxplain（正则翻译官）](rxplain-20260930/) | 正则翻译官：逐段染色翻成白话 + 实时匹配高亮 | [source](rxplain-20260930) |

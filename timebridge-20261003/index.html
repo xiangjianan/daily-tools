@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TimeBridge · 时区桥 — 一屏定档跨时区会议</title>
+<meta name="description" content="把每个参会者的一天画成 24 小时彩带，自动找出对所有人都合适的会议时段。纯浏览器本地计算，零网络。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌉</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--fg:#e6edf3;--mut:#8b949e;--line:#21262d;
+  --acc:#58a6ff;--ok:#3fb950;--mid:#d29922;--bad:#f85149;--wknd:#30363d;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 14px max(40px,env(safe-area-inset-bottom))}
+main{max-width:860px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.3px}
+h1 .em{color:var(--acc)}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+.bar .grow{flex:1;min-width:8px}
+button,.sel,.addsel{background:#21262d;color:var(--fg);border:1px solid #30363d;border-radius:7px;
+  padding:7px 12px;font-size:13.5px;font-family:inherit;cursor:pointer;min-height:36px}
+button:hover{border-color:var(--acc)}
+button:active{background:#2d333b}
+button.primary{background:#1f4a7a;border-color:#388bfd}
+button.primary:hover{background:#2a5a94}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.ghost{background:transparent}
+.addsel{max-width:230px}
+.tag{display:inline-flex;align-items:center;gap:6px;background:#21262d;border:1px solid #30363d;
+  border-radius:999px;padding:3px 6px 3px 12px;font-size:13px}
+.tag button{border:none;background:transparent;color:var(--mut);font-size:14px;padding:0 4px;min-height:0;line-height:1}
+.tag button:hover{color:var(--bad)}
+/* ---- ribbon grid ---- */
+.gridwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.grid{min-width:560px}
+.grow{display:flex;align-items:stretch;gap:6px}
+.zlabel{flex:0 0 118px;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.zlabel .nm{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zlabel .lt{font-size:11.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cells{flex:1;min-width:0;display:flex;gap:1px;position:relative;padding:2px 0}
+.cell{flex:1;min-width:6px;height:26px;border-radius:2px;position:relative}
+.cell.v2{background:var(--ok)} .cell.v1{background:var(--mid)} .cell.v0{background:#5a1f23}
+.cell.wk::after{content:"";position:absolute;inset:0;border-radius:2px;
+  background:repeating-linear-gradient(45deg,transparent 0 3px,rgba(13,17,23,.55) 3px 6px)}
+.cell.picked{outline:2px solid var(--acc);outline-offset:-1px;z-index:2}
+.nowline{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--fg);opacity:.85;z-index:3;border-radius:1px}
+.nowline::after{content:"现在";position:absolute;top:-16px;left:50%;transform:translateX(-50%);
+  font-size:10px;color:var(--fg);background:var(--bg);padding:0 3px;border-radius:3px;white-space:nowrap}
+/* axis */
+.axis{display:flex;gap:1px;margin-top:4px}
+.axis span{flex:1;min-width:6px;font-size:10px;color:var(--mut);text-align:left;font-variant-numeric:tabular-nums}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:12px;color:var(--mut)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* best slots */
+.chiprow{display:flex;flex-wrap:wrap;gap:8px}
+.slot{background:#1c2129;border:1px solid #30363d;border-radius:9px;padding:9px 12px;cursor:pointer;text-align:left}
+.slot:hover{border-color:var(--acc)}
+.slot.on{border-color:var(--acc);background:#16273c}
+.slot .t{font-weight:600;font-size:14px;font-variant-numeric:tabular-nums}
+.slot .m{font-size:11.5px;color:var(--mut);display:block;margin-top:2px}
+.slot .m b{color:var(--ok)} .slot .m i{font-style:normal;color:var(--bad)}
+/* detail card */
+.detail h3{font-size:14.5px;margin-bottom:8px}
+.plist{list-style:none}
+.plist li{display:flex;align-items:baseline;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:14px}
+.plist li:first-child{border-top:none}
+.dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px;align-self:center}
+.dot.v2{background:var(--ok)} .dot.v1{background:var(--mid)} .dot.v0{background:var(--bad)}
+.plist .who{color:var(--mut);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plist .when{font-variant-numeric:tabular-nums;font-weight:600;margin-left:auto;white-space:nowrap}
+.warn{color:var(--mid);font-size:12px;white-space:nowrap}
+.hint{color:var(--mut);font-size:12.5px;margin-top:10px}
+textarea{width:100%;background:#0d1117;color:var(--fg);border:1px solid var(--line);border-radius:8px;
+  padding:10px;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  white-space:pre;resize:vertical;min-height:130px;margin-top:10px}
+.toast{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:#1f6feb;color:#fff;border-radius:8px;padding:8px 16px;font-size:13.5px;opacity:0;
+  transition:opacity .25s;pointer-events:none;z-index:9}
+.toast.show{opacity:1}
+footer{margin-top:22px;color:var(--mut);font-size:12px}
+footer a{color:var(--acc);text-decoration:none}
+@media (max-width:560px){
+  .zlabel{flex-basis:96px}
+  h1{font-size:18px}
+  body{padding-left:10px;padding-right:10px}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>🌉 TimeBridge <span class="em">时区桥</span></h1>
+<p class="sub">跨时区会议一屏定档：每人一条 24 小时彩带，自动找出对所有人都合适的时段。全部计算在浏览器本地完成，无任何网络请求。</p>
+
+<div class="card">
+  <div class="bar">
+    <button id="prevD" class="ghost" title="前一天">◀</button>
+    <button id="todayBtn" class="sel">今天</button>
+    <button id="nextD" class="ghost" title="后一天">▶</button>
+    <span id="dayLabel" style="font-weight:600;font-size:14px"></span>
+    <span class="grow"></span>
+    <label style="font-size:13px;color:var(--mut)">时长
+      <select id="dur" class="sel" style="margin-left:4px">
+        <option value="30">30 分钟</option>
+        <option value="60" selected>1 小时</option>
+        <option value="90">1.5 小时</option>
+        <option value="120">2 小时</option>
+      </select>
+    </label>
+  </div>
+  <div class="bar" id="chips" style="margin-bottom:10px"></div>
+  <div class="bar">
+    <select id="addSel" class="addsel"></select>
+    <button id="addBtn" class="primary">＋ 添加城市</button>
+    <span class="grow"></span>
+    <button id="resetBtn" class="ghost" style="color:var(--mut)">重置</button>
+  </div>
+  <div class="gridwrap"><div class="grid" id="grid"></div></div>
+  <div class="legend">
+    <span><i style="background:var(--ok)"></i>工作时段 9:00–18:00</span>
+    <span><i style="background:var(--mid)"></i>边缘时段 8–9 / 18–22 点</span>
+    <span><i style="background:#5a1f23"></i>睡眠时段</span>
+    <span><i style="background:var(--wknd)"></i>周末（斜纹）</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="bar" style="margin-bottom:8px"><h3 style="font-size:15px">🏆 最佳时段 TOP 3</h3>
+    <span class="grow"></span><span style="font-size:12px;color:var(--mut)" id="scoreNote"></span></div>
+  <div class="chiprow" id="slots"></div>
+</div>
+
+<div class="card detail" id="detailCard">
+  <h3 id="detailTitle">点选上方时段或直接看彩带</h3>
+  <ul class="plist" id="plist"></ul>
+  <div class="bar" style="margin-top:10px">
+    <button id="copyBtn" class="primary">📋 复制会议通知</button>
+    <span style="font-size:12px;color:var(--mut)">复制后直接粘贴到群聊 / 邮件</span>
+  </div>
+  <textarea id="copyOut" readonly spellcheck="false" aria-label="会议通知文本"></textarea>
+  <p class="hint">彩带以<strong>你的本地时区</strong>为横轴（一栏 = 30 分钟）。绿灯=对方的工作时段，斜纹=对方的周末；评分优先「全员绿灯且都是工作日」的连续窗口。夏令时由浏览器内置时区库逐刻计算，跨 DST 周期也准确。</p>
+</div>
+
+<footer>TimeBridge · 每日创意小工具 #21 · <a href="https://github.com/xiangjianan/daily-tools/tree/main/timebridge-20261003">源码</a> · <a href="../">← 返回目录</a></footer>
+</main>
+<div class="toast" id="toast">已复制 ✓</div>
+
+<script>
+"use strict";
+/* ---------- zone catalog ---------- */
+var CATALOG = [
+  ["Asia/Shanghai","🇨🇳","上海"],["Asia/Hong_Kong","🇭🇰","香港"],["Asia/Taipei","🇹🇼","台北"],
+  ["Asia/Singapore","🇸🇬","新加坡"],["Asia/Tokyo","🇯🇵","东京"],["Asia/Seoul","🇰🇷","首尔"],
+  ["Asia/Kolkata","🇮🇳","孟买"],["Asia/Dubai","🇦🇪","迪拜"],["Europe/Moscow","🇷🇺","莫斯科"],
+  ["Europe/Berlin","🇩🇪","柏林"],["Europe/Paris","🇫🇷","巴黎"],["Europe/London","🇬🇧","伦敦"],
+  ["Europe/Amsterdam","🇳🇱","阿姆斯特丹"],["Europe/Zurich","🇨🇭","苏黎世"],["Europe/Stockholm","🇸🇪","斯德哥尔摩"],
+  ["America/New_York","🇺🇸","纽约"],["America/Toronto","🇨🇦","多伦多"],["America/Chicago","🇺🇸","芝加哥"],
+  ["America/Denver","🇺🇸","丹佛"],["America/Los_Angeles","🇺🇸","洛杉矶"],["America/Seattle","🇺🇸","西雅图"],
+  ["America/Mexico_City","🇲🇽","墨西哥城"],["America/Sao_Paulo","🇧🇷","圣保罗"],["America/Bogota","🇨🇴","波哥大"],
+  ["Australia/Sydney","🇦🇺","悉尼"],["Australia/Melbourne","🇦🇺","墨尔本"],["Australia/Perth","🇦🇺","珀斯"],
+  ["Pacific/Auckland","🇳🇿","奥克兰"],["Asia/Bangkok","🇹🇭","曼谷"],["Asia/Jakarta","🇮🇩","雅加达"],
+  ["Asia/Manila","🇵🇭","马尼拉"],["Asia/Kuala_Lumpur","🇲🇾","吉隆坡"],["Asia/Ho_Chi_Minh","🇻🇳","胡志明市"],
+  ["Africa/Cairo","🇪🇬","开罗"],["Africa/Johannesburg","🇿🇦","约翰内斯堡"],["Africa/Lagos","🇳🇬","拉各斯"],
+  ["Africa/Nairobi","🇰🇪","内罗毕"],["Asia/Riyadh","🇸🇦","利雅得"],["Asia/Tehran","🇮🇷","德黑兰"],
+  ["Asia/Karachi","🇵🇰","卡拉奇"],["Europe/Madrid","🇪🇸","马德里"],["Europe/Rome","🇮🇹","罗马"],
+  ["Europe/Lisbon","🇵🇹","里斯本"],["Europe/Helsinki","🇫🇮","赫尔辛基"],["Europe/Warsaw","🇵🇱","华沙"],
+  ["Europe/Istanbul","🇹🇷","伊斯坦布尔"],["America/Anchorage","🇺🇸","安克雷奇"],["Pacific/Honolulu","🇺🇸","檀香山"],
+  ["UTC","🌐","UTC"]
+];
+var DEFAULT_ZONES = ["__local__","Asia/Shanghai","Europe/London","America/New_York"];
+var WK = {Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+var COLS = 48, STEP = 30*60000;
+
+/* ---------- state ---------- */
+var state = { zones: DEFAULT_ZONES.slice(), ref: startOfToday(), dur: 60, picked: null };
+var rowsCache = [];   // per zone: {key,label,flag,cells:[{v,h,m,wk,date}]}  v:2绿/1黄/0红
+
+/* ---------- pure helpers ---------- */
+function startOfToday(){ var d=new Date(); return new Date(d.getFullYear(),d.getMonth(),d.getDate(),0,0,0,0); }
+function pad2(n){ return (n<10?"0":"")+n; }
+function zoneMeta(key){
+  if(key==="__local__") return ["🏠","我（本机时区）",Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC"];
+  for(var i=0;i<CATALOG.length;i++) if(CATALOG[i][0]===key) return [CATALOG[i][1],CATALOG[i][2],key];
+  return ["🌐",key,key];
+}
+var fmtCache = {};
+function zoneParts(tz, ms){
+  var f = fmtCache[tz];
+  if(!f){ f = fmtCache[tz] = new Intl.DateTimeFormat("en-GB",{timeZone:tz,hourCycle:"h23",
+    weekday:"short",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}); }
+  var o={},p=f.formatToParts(new Date(ms)),i;
+  for(i=0;i<p.length;i++) o[p[i].type]=p[i].value;
+  return { h:+o.hour, m:+o.minute, wk:WK[o.weekday],
+    date:o.month+"-"+o.day, year:o.year };
+}
+function verdictOf(h){ if(h>=9&&h<18) return 2; if((h>=8&&h<9)||(h>=18&&h<22)) return 1; return 0; }
+function buildRows(zones, axisStart){
+  var rows=[],i,c,meta,tz,cells,inst,pt;
+  for(i=0;i<zones.length;i++){
+    meta=zoneMeta(zones[i]); tz=meta[2]; cells=[];
+    for(c=0;c<COLS;c++){
+      inst=axisStart+c*STEP; pt=zoneParts(tz,inst);
+      cells.push({v:verdictOf(pt.h),h:pt.h,m:pt.m,wk:pt.wk,date:pt.date});
+    }
+    rows.push({key:zones[i],flag:meta[0],label:meta[1],tz:tz,cells:cells});
+  }
+  return rows;
+}
+/* score every window of wCols columns: allGreen = zones fully green on weekdays */
+function scoreWindows(rows, wCols){
+  var res=[],s,j,c,win,allGreen,red,edge,cell;
+  for(s=0;s+wCols<=COLS;s++){
+    allGreen=0;red=0;edge=0;
+    for(j=0;j<rows.length;j++){
+      var person=true;
+      for(c=s;c<s+wCols;c++){
+        cell=rows[j].cells[c];
+        if(cell.v!==2||cell.wk===0||cell.wk===6){ person=false; if(cell.v===0)red++; else edge++; }
+      }
+      if(person)allGreen++;
+    }
+    res.push({s:s,allGreen:allGreen,red:red,edge:edge});
+  }
+  res.sort(function(a,b){
+    if(b.allGreen!==a.allGreen)return b.allGreen-a.allGreen;
+    if(a.red!==b.red)return a.red-b.red;
+    if(a.edge!==b.edge)return a.edge-b.edge;
+    return a.s-b.s;
+  });
+  /* top3 non-overlapping */
+  var top=[],k;
+  for(k=0;k<res.length&&top.length<3;k++){
+    var r=res[k],ok=true,q;
+    for(q=0;q<top.length;q++) if(Math.min(top[q].s+wCols,r.s+wCols)-Math.max(top[q].s,r.s)>0){ok=false;break;}
+    if(ok)top.push(r);
+  }
+  return top;
+}
+function utcHM(ms){ var d=new Date(ms); return pad2(d.getUTCHours())+":"+pad2(d.getUTCMinutes()); }
+function fmtCell(cell){ return pad2(cell.h)+":"+pad2(cell.m); }
+function wkName(w){ return ["周日","周一","周二","周三","周四","周五","周六"][w]; }
+function verdictName(v){ return v===2?"工作时段":(v===1?"边缘时段":"睡眠时段"); }
+function copyText(rows, picked, wCols, axisStart){
+  if(picked==null) return "";
+  var lines=[];
+  lines.push("📅 会议时间 "+utcHM(axisStart+picked*STEP)+"–"+utcHM(axisStart+(picked+wCols)*STEP)+" UTC");
+  for(var i=0;i<rows.length;i++){
+    var a=rows[i].cells[picked], b=rows[i].cells[Math.min(picked+wCols,COLS)-1];
+    var v=Math.min(a.v,b.v), warn="";
+    if(a.wk===0||a.wk===6||b.wk===0||b.wk===6) warn=" ⚠️周末";
+    else if(v===0) warn=" 🌙睡眠时段";
+    else if(v===1) warn=" 🌗边缘时段";
+    lines.push(rows[i].flag+" "+rows[i].label+"："+wkName(a.wk)+" "+a.date+" "+fmtCell(a)+"–"+fmtCell(b)+warn);
+  }
+  return lines.join("\n");
+}
+
+/* ---------- render ---------- */
+function $(id){ return document.getElementById(id); }
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+function renderChips(){
+  var el=$("chips"),h="",i;
+  for(i=0;i<state.zones.length;i++){
+    var meta=zoneMeta(state.zones[i]);
+    h+='<span class="tag">'+esc(meta[0]+" "+meta[1])+
+       '<button data-rm="'+i+'" aria-label="移除'+esc(meta[1])+'">✕</button></span>';
+  }
+  el.innerHTML=h;
+}
+function renderGrid(){
+  var wCols=Math.max(1,Math.round(state.dur/30));
+  rowsCache=buildRows(state.zones,state.ref.getTime());
+  var h='<div class="grow"><div class="zlabel"><span class="nm" style="color:var(--mut)">时间轴（你的本地）</span>'+
+        '<span class="lt">UTC '+utcHM(state.ref.getTime())+' 起</span></div><div class="cells">';
+  var c;
+  for(c=0;c<COLS;c++){
+    var you=rowsCache.length?rowsCache[0].cells[c]:null;
+    h+='<div class="cell" data-col="'+c+'" style="background:'+(c%16<8?"#1c2129":"#21262d")+'" title="'+
+       (you?fmtCell(you)+" "+wkName(you.wk):"")+'"></div>';
+  }
+  h+='</div></div>';
+  var i,c2;
+  for(i=0;i<rowsCache.length;i++){
+    var r=rowsCache[i];
+    h+='<div class="grow"><div class="zlabel"><span class="nm">'+esc(r.flag+" "+esc(r.label))+'</span>'+
+       '<span class="lt">'+esc(r.tz)+'</span></div><div class="cells">';
+    for(c2=0;c2<COLS;c2++){
+      var cell=r.cells[c2];
+      h+='<div class="cell v'+cell.v+(cell.wk===0||cell.wk===6?" wk":"")+'" data-col="'+c2+
+         '" title="'+esc(r.label+" "+wkName(cell.wk)+" "+cell.date+" "+fmtCell(cell)+" · "+verdictName(cell.v))+'"></div>';
+    }
+    h+='</div></div>';
+  }
+  /* axis labels */
+  h+='<div class="axis">';
+  for(c2=0;c2<COLS;c2++) h+='<span>'+(c2%8===0?(c2/2)+":00":"")+'</span>';
+  h+='</div>';
+  $("grid").innerHTML=h;
+  /* now line */
+  var now=Date.now(),start=state.ref.getTime();
+  if(now>=start&&now<start+COLS*STEP){
+    var pct=(now-start)/(COLS*STEP)*100;
+    var lines=document.querySelectorAll("#grid .cells");
+    for(i=0;i<lines.length;i++){
+      var nl=document.createElement("div");nl.className="nowline";
+      nl.style.left=pct+"%";lines[i].appendChild(nl);
+    }
+  }
+  applyPick();
+}
+function applyPick(){
+  var cells=document.querySelectorAll("#grid .cell.picked"),i;
+  for(i=0;i<cells.length;i++)cells[i].classList.remove("picked");
+  if(state.picked==null)return;
+  var wCols=Math.max(1,Math.round(state.dur/30));
+  var mine=document.querySelectorAll('#grid .cell[data-col]');
+  for(i=0;i<mine.length;i++){
+    var c=+mine[i].getAttribute("data-col");
+    if(c>=state.picked&&c<state.picked+wCols)mine[i].classList.add("picked");
+  }
+}
+function renderSlots(){
+  var wCols=Math.max(1,Math.round(state.dur/30));
+  var top=scoreWindows(rowsCache,wCols),h="",i;
+  $("scoreNote").textContent=rowsCache.length+" 位参与者 · "+state.dur+" 分钟";
+  for(i=0;i<top.length;i++){
+    var t=top[i],inst=state.ref.getTime()+t.s*STEP;
+    var tagTxt=t.allGreen===rowsCache.length?"全员绿灯 ✓":
+      ("<b>"+t.allGreen+"</b>/"+rowsCache.length+" 绿灯"+(t.red>0?" · <i>"+t.red+" 人睡眠</i>":""));
+    h+='<button class="slot'+(state.picked===t.s?" on":"")+'" data-slot="'+t.s+'">'+
+       '<span class="t">你的本地 '+fmtCell(rowsCache[0].cells[t.s])+'</span>'+
+       '<span class="m">UTC '+utcHM(inst)+" · "+tagTxt+"</span></button>";
+  }
+  $("slots").innerHTML=h;
+}
+function renderDetail(){
+  var wCols=Math.max(1,Math.round(state.dur/30));
+  var box=$("detailCard");
+  if(state.picked==null){
+    $("detailTitle").textContent="点选上方时段，查看每人的当地时间";
+    $("plist").innerHTML="";$("copyOut").value="";return;
+  }
+  var inst=state.ref.getTime()+state.picked*STEP;
+  $("detailTitle").textContent="📅 "+utcHM(inst)+"–"+utcHM(inst+wCols*STEP)+" UTC · 每人当地时间";
+  var h="",i;
+  for(i=0;i<rowsCache.length;i++){
+    var r=rowsCache[i],a=r.cells[state.picked],b=r.cells[Math.min(state.picked+wCols,COLS)-1];
+    var v=Math.min(a.v,b.v),warn="";
+    if(a.wk===0||a.wk===6||b.wk===0||b.wk===6)warn='<span class="warn">⚠️ 周末</span>';
+    else if(v===0)warn='<span class="warn">🌙 '+verdictName(v)+"</span>";
+    else if(v===1)warn='<span class="warn">🌗 '+verdictName(v)+"</span>";
+    h+='<li><span class="dot v'+v+'"></span><span class="who">'+esc(r.flag+" "+r.label)+"</span>"+warn+
+       '<span class="when">'+wkName(a.wk)+" "+a.date+" "+fmtCell(a)+"–"+fmtCell(b)+"</span></li>";
+  }
+  $("plist").innerHTML=h;
+  $("copyOut").value=copyText(rowsCache,state.picked,wCols,state.ref.getTime());
+}
+function renderAll(){ renderChips();renderGrid();renderSlots();renderDetail(); }
+
+/* ---------- events ---------- */
+function showToast(msg){ var t=$("toast");t.textContent=msg;t.classList.add("show");
+  clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove("show");},1600); }
+function shiftDay(n){ var d=state.ref;state.ref=new Date(d.getFullYear(),d.getMonth(),d.getDate()+n);
+  state.picked=null;renderAll(); }
+$("prevD").addEventListener("click",function(){shiftDay(-1);});
+$("nextD").addEventListener("click",function(){shiftDay(1);});
+$("todayBtn").addEventListener("click",function(){state.ref=startOfToday();state.picked=null;renderAll();});
+$("dur").addEventListener("change",function(){state.dur=+this.value;state.picked=null;renderAll();});
+$("addSel").addEventListener("change",function(){ $("addBtn").disabled=!this.value; });
+$("addBtn").addEventListener("click",function(){
+  var v=$("addSel").value;if(!v)return;
+  if(state.zones.indexOf(v)>=0){showToast("该城市已在列表里");return;}
+  if(state.zones.length>=10){showToast("最多 10 个城市，先删一个吧");return;}
+  state.zones.push(v);state.picked=null;renderAll();
+  $("addSel").value="";$("addBtn").disabled=true;
+});
+$("chips").addEventListener("click",function(e){
+  var b=e.target.closest("button[data-rm]");if(!b)return;
+  if(state.zones.length<=1){showToast("至少保留一个时区");return;}
+  state.zones.splice(+b.getAttribute("data-rm"),1);state.picked=null;renderAll();
+});
+$("resetBtn").addEventListener("click",function(){
+  state.zones=DEFAULT_ZONES.slice();state.ref=startOfToday();state.dur=60;$("dur").value="60";
+  state.picked=null;renderAll();
+});
+$("slots").addEventListener("click",function(e){
+  var b=e.target.closest("button[data-slot]");if(!b)return;
+  var s=+b.getAttribute("data-slot");
+  state.picked=(state.picked===s)?null:s;
+  renderSlots();applyPick();renderDetail();
+});
+$("copyBtn").addEventListener("click",function(){
+  var txt=$("copyOut").value;
+  if(!txt){showToast("先选一个时段");return;}
+  function fb(){ $("copyOut").removeAttribute("readonly");$("copyOut").select();
+    try{document.execCommand("copy");}catch(err){}
+    $("copyOut").setAttribute("readonly","");showToast("已复制 ✓"); }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){showToast("已复制 ✓");},fb);
+  }else fb();
+});
+/* day label */
+function renderDayLabel(){
+  var d=state.ref,t=startOfToday();
+  var diff=Math.round((d-t)/86400000);
+  var base="你的本地 "+wkName(d.getDay())+" "+pad2(d.getMonth()+1)+"-"+pad2(d.getDate());
+  $("dayLabel").textContent=base+(diff===0?" · 今天":(diff===1?" · 明天":(diff===-1?" · 昨天":"")));
+}
+var _renderAll=renderAll;
+renderAll=function(){ _renderAll();renderDayLabel(); };
+
+/* ---------- init ---------- */
+(function(){
+  var sel=$("addSel"),h='<option value="">选择城市…</option>',i;
+  for(i=0;i<CATALOG.length;i++) h+='<option value="'+CATALOG[i][0]+'">'+CATALOG[i][1]+" "+CATALOG[i][2]+"</option>";
+  sel.innerHTML=h;
+  renderAll();
+  setInterval(function(){ /* refresh now-line position every 5 min */
+    var g=$("grid");if(g)renderGrid();
+  },300000);
+})();
+</script>
+</body>
+</html>
