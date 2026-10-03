@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JWT 体检卡 · Token Checkup</title>
+<meta name="description" content="粘贴 JWT 即出体检报告：声明白话翻译、生命周期时间轴、安全检查。全程本地，零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2129;--line:#21262d;--fg:#e6edf3;--mut:#8b949e;
+  --acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--crit:#f85149;--amber:#e3b341;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(24px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom))}
+main{max-width:760px;margin:0 auto}
+h1{font-size:22px;letter-spacing:.5px}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 20px}
+label.small{display:block;color:var(--mut);font-size:12.5px;margin-bottom:6px}
+textarea{width:100%;min-height:104px;resize:vertical;background:var(--panel);color:var(--fg);
+  border:1px solid var(--line);border-radius:10px;padding:12px 14px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  word-break:break-all;overflow-wrap:anywhere}
+textarea:focus{outline:none;border-color:var(--acc)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{background:var(--panel);border:1px solid var(--line);color:var(--fg);border-radius:999px;
+  padding:6px 14px;font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.chip:hover,.chip:active{border-color:var(--acc);color:var(--acc)}
+.err{margin-top:12px;background:#2d1214;border:1px solid #67272b;color:#ffb3ad;border-radius:10px;padding:10px 14px;font-size:13.5px}
+#results{margin-top:18px;display:flex;flex-direction:column;gap:14px}
+.badge{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:14px 16px}
+.badge .dot{width:12px;height:12px;border-radius:50%;flex:none}
+.badge.ok .dot{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+.badge.warn .dot{background:var(--warn);box-shadow:0 0 10px var(--warn)}
+.badge.crit .dot{background:var(--crit);box-shadow:0 0 10px var(--crit)}
+.badge .vt{font-size:16px;font-weight:700}
+.badge .cd{margin-left:auto;color:var(--mut);font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card h2{font-size:13px;color:var(--mut);font-weight:600;letter-spacing:.6px;margin-bottom:10px;display:flex;align-items:center}
+.card h2 .mini{margin-left:auto}
+.mini{background:none;border:1px solid var(--line);color:var(--mut);border-radius:6px;padding:3px 10px;
+  font-size:12px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.mini:hover,.mini:active{color:var(--acc);border-color:var(--acc)}
+.claims{display:flex;flex-direction:column}
+.claim{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--line);flex-wrap:wrap;align-items:baseline}
+.claim:first-child{border-top:none}
+.claim .k{font:12.5px ui-monospace,Menlo,Consolas,monospace;color:var(--acc);min-width:88px;word-break:break-all}
+.claim .zh{color:var(--mut);font-size:12px;min-width:64px}
+.claim .v{flex:1;font:12.5px ui-monospace,Menlo,Consolas,monospace;overflow-wrap:anywhere}
+.claim .note{flex-basis:100%;color:var(--mut);font-size:12px}
+.tl-wrap{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.tl{position:relative;height:10px;border-radius:5px;background:var(--panel2);margin:18px 4px 30px}
+.tl .seg{position:absolute;top:0;height:100%;border-radius:5px;background:#23863666}
+.tl .now{position:absolute;top:-5px;width:4px;height:20px;border-radius:2px;background:var(--fg)}
+.tl .now::after{content:"";position:absolute;left:-4px;top:-4px;width:12px;height:12px;border-radius:50%;
+  border:2px solid var(--fg);animation:pulse 1.6s infinite}
+@keyframes pulse{0%{transform:scale(.6);opacity:.9}70%{transform:scale(1.5);opacity:0}100%{opacity:0}}
+.tl .mk{position:absolute;top:16px;transform:translateX(-50%);color:var(--mut);font-size:11px;white-space:nowrap;text-align:center}
+.tl .mk b{display:block;color:var(--fg);font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.tl-note{color:var(--mut);font-size:12.5px}
+.checks{display:flex;flex-direction:column}
+.check{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:13.5px;align-items:flex-start}
+.check:first-child{border-top:none}
+.check .ic{flex:none;font-size:14px;line-height:1.5}
+.check.crit{color:#ffb3ad}.check.warn{color:#e8c268}.check.info{color:var(--mut)}.check.ok{color:#7ee2a8}
+footer{margin-top:26px;color:var(--mut);font-size:12.5px}
+footer a{color:var(--acc);text-decoration:none}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:var(--panel2);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:8px 18px;
+  font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:9}
+#toast.show{opacity:1}
+@media (max-width:640px){.badge{flex-wrap:wrap}.badge .cd{margin-left:0;width:100%;text-align:left}}
+</style>
+</head>
+<body>
+<main>
+  <h1>🩺 JWT 体检卡</h1>
+  <p class="sub">粘贴任意 JWT，即时解码出「声明白话翻译 + 生命周期时间轴 + 安全体检报告」。纯本地解析，token 不离开浏览器。</p>
+
+  <label class="small" for="input">在此粘贴 token（支持带 <code>Bearer</code> 前缀，粘贴即体检）</label>
+  <textarea id="input" spellcheck="false" placeholder="eyJhbGciOi..."></textarea>
+  <div class="chips">
+    <button class="chip" id="s-ok">🟢 有效 token</button>
+    <button class="chip" id="s-exp">🔴 已过期</button>
+    <button class="chip" id="s-none">⚠️ alg=none</button>
+    <button class="chip" id="clear">清空</button>
+  </div>
+  <div class="err" id="err" hidden></div>
+
+  <div id="results" hidden>
+    <div class="badge" id="badge">
+      <span class="dot"></span>
+      <span class="vt" id="verdict"></span>
+      <span class="cd" id="countdown"></span>
+    </div>
+
+    <div class="tl-wrap" id="tlwrap">
+      <h2 style="font-size:13px;color:var(--mut);letter-spacing:.6px">生命周期时间轴</h2>
+      <div id="tlbox"></div>
+    </div>
+
+    <div class="card">
+      <h2>HEADER · 请求头声明 <button class="mini" id="copy-head">复制 JSON</button></h2>
+      <div class="claims" id="headclaims"></div>
+    </div>
+
+    <div class="card">
+      <h2>PAYLOAD · 数据声明 <button class="mini" id="copy-payload">复制 JSON</button></h2>
+      <div class="claims" id="payloadclaims"></div>
+    </div>
+
+    <div class="card">
+      <h2>安全体检</h2>
+      <div class="checks" id="checks"></div>
+    </div>
+  </div>
+
+  <footer>
+    ⚠️ 本工具只做解码与规则检查，<b>不验证签名</b>（验证需要密钥）。数据 100% 在浏览器本地处理，
+    无任何网络请求。源码与更多期目：<a href="../">daily-tools</a> · MIT License
+  </footer>
+</main>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ========== 纯函数区（可独立仿真） ========== */
+
+// Base64URL 解码（UTF-8 安全），失败返回 null
+function b64urlDecode(s) {
+  if (typeof s !== "string") return null;
+  s = s.replace(/-/g, "+").replace(/_/g, "/").replace(/\s+/g, "");
+  while (s.length % 4) s += "=";
+  try { atob(s); } catch (e) { return null; }
+  var bin = atob(s), bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+  catch (e) { return null; }
+}
+
+// Base64URL 编码（UTF-8 安全），仅用于生成内置样例
+function b64urlEncode(str) {
+  var bytes = new TextEncoder().encode(str), bin = "";
+  for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// 剥离 Bearer 前缀与首尾空白
+function cleanInput(raw) {
+  return String(raw || "").trim().replace(/^Bearer\s+/i, "").replace(/\s+/g, "");
+}
+
+// 解析 JWT：返回 {ok,error,...} 或错误信息
+function parseToken(raw) {
+  var tok = cleanInput(raw);
+  if (!tok) return { ok: false, error: "empty" };
+  var parts = tok.split(".");
+  if (parts.length !== 3) {
+    return { ok: false, error: "parts:" + parts.length };
+  }
+  var headStr = b64urlDecode(parts[0]);
+  if (headStr === null) return { ok: false, error: "head-b64" };
+  var payloadStr = b64urlDecode(parts[1]);
+  if (payloadStr === null) return { ok: false, error: "payload-b64" };
+  var head, payload;
+  try { head = JSON.parse(headStr); } catch (e) { return { ok: false, error: "head-json" }; }
+  try { payload = JSON.parse(payloadStr); } catch (e) { return { ok: false, error: "payload-json" }; }
+  if (head === null || typeof head !== "object" || Array.isArray(head)) return { ok: false, error: "head-json" };
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return { ok: false, error: "payload-json" };
+  return { ok: true, header: head, headerRaw: headStr, payload: payload, payloadRaw: payloadStr, sig: parts[2], alg: String(head.alg || "") };
+}
+
+// 秒级时间戳容错：>1e12 视为毫秒（部分签发方的常见笔误）
+function toSec(v) {
+  var n = Number(v);
+  if (!isFinite(n)) return null;
+  return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
+}
+
+var CLAIM_ZH = {
+  iss: "签发方", sub: "主体 ID", aud: "目标受众", exp: "过期时间", iat: "签发时间",
+  nbf: "生效时间", jti: "令牌编号", name: "姓名", email: "邮箱", preferred_username: "用户名",
+  given_name: "名", family_name: "姓", nickname: "昵称", picture: "头像", locale: "语言区域",
+  scope: "授权范围", roles: "角色", groups: "用户组", azp: "授权方应用", client_id: "客户端 ID",
+  session_state: "会话状态", sid: "会话 ID", kid: "密钥编号", typ: "类型", alg: "签名算法",
+  ver: "版本", phone_number: "电话", updated_at: "更新时间", auth_time: "登录时间",
+  nonce: "一次性随机数", amr: "认证方式", acr: "认证等级", tenant: "租户", org_id: "组织 ID"
+};
+var TIME_CLAIMS = { exp: 1, iat: 1, nbf: 1, auth_time: 1, updated_at: 1 };
+
+function fmtLocal(sec) {
+  try {
+    return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(sec * 1000));
+  } catch (e) { return new Date(sec * 1000).toString(); }
+}
+
+function fmtDuration(ms) {
+  if (ms < 0) ms = 0;
+  var s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600),
+      m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (d > 0) return d + " 天 " + h + " 小时";
+  if (h > 0) return h + " 小时 " + m + " 分";
+  if (m > 0) return m + " 分 " + sec + " 秒";
+  return sec + " 秒";
+}
+
+// 声明行渲染所需数据：{k,zh,v,note}
+function claimRows(obj) {
+  var rows = [];
+  for (var k in obj) {
+    if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
+    var v = obj[k], note = "", shown;
+    if (TIME_CLAIMS[k]) {
+      var sec = toSec(v);
+      if (sec !== null) {
+        shown = String(v) + (Number(v) > 1e12 ? "（毫秒）" : "");
+        note = "→ 本地时间 " + fmtLocal(sec);
+      } else { shown = String(v); }
+    } else if (typeof v === "object") {
+      shown = JSON.stringify(v);
+    } else { shown = String(v); }
+    rows.push({ k: k, zh: CLAIM_ZH[k] || "自定义声明", v: shown, note: note });
+  }
+  return rows;
+}
+
+// 敏感信息保守扫描（只看字符串值与键名，宁漏勿误报）
+function sensitiveFindings(payload) {
+  var findings = [];
+  var EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  var SECRET_KEY = /pass|secret|credential|api[_-]?key|private[_-]?key|access[_-]?token/i;
+  for (var k in payload) {
+    if (!Object.prototype.hasOwnProperty.call(payload, k)) continue;
+    var v = payload[k];
+    if (SECRET_KEY.test(k)) findings.push("字段名「" + k + "」疑似携带凭据类内容");
+    else if (typeof v === "string" && EMAIL.test(v) && k !== "email") findings.push("「" + k + "」的值是邮箱地址");
+  }
+  return findings;
+}
+
+// 安全体检清单：{level: crit|warn|info|ok, text}
+function buildChecks(t, nowSec) {
+  var out = [], alg = t.alg;
+  if (!alg) out.push({ level: "warn", text: "header 里没有 alg 字段，部分库会直接拒绝这种 token" });
+  else if (alg === "none") out.push({ level: "crit", text: "alg=none 表示声明「无需签名」。除非协议明确约定，这通常意味着签名可被任意伪造" });
+  else if (alg.indexOf("HS") === 0) out.push({ level: "info", text: "alg=" + alg + " 是对称签名：服务端用同一个密钥既签又验，密钥泄露即全线失守，注意不要把密钥放进前端" });
+  else out.push({ level: "ok", text: "alg=" + alg + " 是非对称签名：验签方只需公钥，相对更安全" });
+
+  if (t.sig === "") out.push({ level: "warn", text: "签名为空（第三段是空串）——这个 token 实际上没有任何防篡改保护" });
+
+  var exp = toSec(t.payload.exp);
+  if (exp === null) out.push({ level: "warn", text: "没有 exp（过期时间）声明：token 永不过期，一旦泄露无法靠等待止损，只能进黑名单" });
+  else {
+    if (exp > nowSec) out.push({ level: "ok", text: "exp 正常，将于 " + fmtLocal(exp) + " 过期（剩 " + fmtDuration((exp - nowSec) * 1000) + "）" });
+    else out.push({ level: "crit", text: "token 已于 " + fmtLocal(exp) + " 过期（过期 " + fmtDuration((nowSec - exp) * 1000) + "），服务端应拒绝" });
+  }
+  var iat = toSec(t.payload.iat);
+  if (iat !== null && iat - 300 > nowSec) out.push({ level: "warn", text: "iat（签发时间）在未来：可能是签发方时钟漂移，也可能是伪造痕迹" });
+  var nbf = toSec(t.payload.nbf);
+  if (nbf !== null && nbf > nowSec) out.push({ level: "info", text: "nbf 生效时间在未来（" + fmtLocal(nbf) + "）：token 已签发但尚未生效" });
+
+  var hdr = t.header;
+  if (hdr.jku || hdr.x5u) out.push({ level: "warn", text: "header 带远程密钥指针（" + (hdr.jku ? "jku " : "") + (hdr.x5u ? "x5u" : "") + "）：验签方必须校验其指向可信域，否则是经典的密钥注入攻击面" });
+  if (hdr.b64 === false) out.push({ level: "info", text: "b64=false：未签名的 payload 不做 Base64，属于 RFC 7797 特殊用法，兼容性较差" });
+
+  var sens = sensitiveFindings(t.payload);
+  for (var i = 0; i < sens.length; i++) out.push({ level: "warn", text: "payload 含敏感信息：" + sens[i] + "。JWT 只是编码不是加密，任何拿到 token 的人都能读" });
+
+  out.push({ level: "info", text: "本工具不验证签名：真伪验证需要服务端密钥或公钥，切勿仅凭「能解码」判断 token 可信" });
+  return out;
+}
+
+// 徽章判定：优先级 crit > 过期 > warn > ok
+function verdictOf(checks, nowSec, payload) {
+  var exp = toSec(payload && payload.exp);
+  var hasCrit = false, hasWarn = false;
+  for (var i = 0; i < checks.length; i++) {
+    if (checks[i].level === "crit") hasCrit = true;
+    if (checks[i].level === "warn") hasWarn = true;
+  }
+  if (hasCrit && exp !== null && exp <= nowSec) return { cls: "crit", text: "⛔ 已过期" };
+  if (hasCrit) return { cls: "crit", text: "⛔ 高危" };
+  var nbf = payload ? toSec(payload.nbf) : null;
+  if (nbf !== null && nbf > nowSec) return { cls: "warn", text: "⏳ 已签发未生效" };
+  if (hasWarn) return { cls: "warn", text: "⚠️ 有隐患" };
+  return { cls: "ok", text: "✅ 体检通过" };
+}
+
+// 时间轴布局数据：lo/hi 秒 + 关键标记点；无 exp 返回 null
+function timelineModel(payload, nowSec) {
+  var exp = toSec(payload.exp);
+  if (exp === null) return null;
+  var times = [exp, nowSec];
+  var iat = toSec(payload.iat), nbf = toSec(payload.nbf);
+  if (iat !== null) times.push(iat);
+  if (nbf !== null) times.push(nbf);
+  var lo = Math.min.apply(null, times), hi = Math.max(exp, nowSec);
+  var span = hi - lo || 3600;
+  lo -= span * 0.04; hi += span * 0.04;
+  function pct(sec) { return Math.max(0, Math.min(100, ((sec - lo) / (hi - lo)) * 100)); }
+  var marks = [];
+  if (iat !== null) marks.push({ label: "签发", time: iat });
+  if (nbf !== null) marks.push({ label: "生效", time: nbf });
+  marks.push({ label: "现在", time: nowSec, now: true });
+  marks.push({ label: "过期", time: exp });
+  return { pct: pct, marks: marks, exp: exp, validFrom: nbf !== null ? nbf : (iat !== null ? iat : null) };
+}
+
+/* ========== 内置样例（运行时生成，exp 相对当前时间） ========== */
+function makeSample(kind) {
+  function sign(head, payload, withSig) {
+    return b64urlEncode(JSON.stringify(head)) + "." + b64urlEncode(JSON.stringify(payload)) + (withSig ? ".3Kt9wXzQfakeSignatureNotVerified_8sY" : ".");
+  }
+  var now = Math.floor(Date.now() / 1000);
+  if (kind === "exp") {
+    return sign({ alg: "HS256", typ: "JWT" },
+      { sub: "u_10086", name: "王小明", email: "xm.wang@example.com", iss: "https://auth.example.com",
+        aud: "api://demo", scope: "read:items write:items", roles: ["admin"], iat: now - 7200, exp: now - 3600,
+        jti: "b0f3c1d2-demo" }, true);
+  }
+  if (kind === "none") {
+    return sign({ alg: "none", typ: "JWT" },
+      { sub: "guest_0", name: "匿名访客", iss: "https://legacy.example.com", iat: now - 600, exp: now + 86400 }, false);
+  }
+  return sign({ alg: "RS256", typ: "JWT", kid: "key-2026-10" },
+    { sub: "u_10086", name: "王小明", email: "xm.wang@example.com", iss: "https://auth.example.com",
+      aud: "api://demo", scope: "read:items write:items", roles: ["editor", "viewer"],
+      iat: now - 600, nbf: now - 600, exp: now + 3600, jti: "a1b2c3d4-demo" }, true);
+}
+
+/* ========== DOM 渲染区 ========== */
+var $ = function (id) { return document.getElementById(id); };
+var state = { parsed: null };
+var CHECK_ICON = { crit: "⛔", warn: "⚠️", info: "💡", ok: "✅" };
+
+function renderClaims(el, obj) {
+  el.textContent = "";
+  var rows = claimRows(obj);
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i], div = document.createElement("div");
+    div.className = "claim";
+    var k = document.createElement("span"); k.className = "k"; k.textContent = r.k;
+    var zh = document.createElement("span"); zh.className = "zh"; zh.textContent = r.zh;
+    var v = document.createElement("span"); v.className = "v"; v.textContent = r.v;
+    div.appendChild(k); div.appendChild(zh); div.appendChild(v);
+    if (r.note) { var n = document.createElement("span"); n.className = "note"; n.textContent = r.note; div.appendChild(n); }
+    el.appendChild(div);
+  }
+}
+
+function renderTimeline(model) {
+  var box = $("tlbox");
+  box.textContent = "";
+  if (!model) {
+    var p = document.createElement("p"); p.className = "tl-note";
+    p.textContent = "这个 token 没有 exp 声明，画不出生命周期——它「理论上」永不过期。";
+    box.appendChild(p); return;
+  }
+  var tl = document.createElement("div"); tl.className = "tl";
+  var validFrom = model.validFrom !== null ? model.validFrom : model.marks[0].time;
+  var seg = document.createElement("div"); seg.className = "seg";
+  var a = model.pct(validFrom), b = model.pct(Math.max(validFrom, Math.min(Date.now() / 1000, model.exp)));
+  seg.style.left = a + "%"; seg.style.width = Math.max(0, b - a) + "%";
+  tl.appendChild(seg);
+  var now = document.createElement("div"); now.className = "now"; now.id = "nowdot";
+  now.style.left = model.pct(Date.now() / 1000) + "%";
+  tl.appendChild(now);
+  for (var i = 0; i < model.marks.length; i++) {
+    var m = model.marks[i], mk = document.createElement("div");
+    mk.className = "mk"; mk.style.left = model.pct(m.time) + "%";
+    var b1 = document.createElement("b"); b1.textContent = fmtClock(m.time);
+    var l1 = document.createElement("span"); l1.textContent = m.label;
+    mk.appendChild(b1); mk.appendChild(l1);
+    if (m.now) { mk.style.transform = "translateX(-50%)"; }
+    tl.appendChild(mk);
+  }
+  box.appendChild(tl);
+  var note = document.createElement("p"); note.className = "tl-note";
+  note.textContent = "绿色段 = token 有效窗口；脉冲点 = 当前时刻，每秒自动移动。";
+  box.appendChild(note);
+}
+
+function fmtClock(sec) {
+  var d = new Date(sec * 1000);
+  function p2(n) { return (n < 10 ? "0" : "") + n; }
+  return (d.getMonth() + 1) + "-" + p2(d.getDate()) + " " + p2(d.getHours()) + ":" + p2(d.getMinutes());
+}
+
+function render(t) {
+  var nowSec = Math.floor(Date.now() / 1000);
+  var checks = buildChecks(t, nowSec);
+  var vd = verdictOf(checks, nowSec, t.payload);
+  var badge = $("badge");
+  badge.className = "badge " + vd.cls;
+  $("verdict").textContent = vd.text;
+  updateCountdown();
+  renderTimeline(timelineModel(t.payload, nowSec));
+  renderClaims($("headclaims"), t.header);
+  renderClaims($("payloadclaims"), t.payload);
+  var box = $("checks"); box.textContent = "";
+  for (var i = 0; i < checks.length; i++) {
+    var c = checks[i], div = document.createElement("div");
+    div.className = "check " + c.level;
+    var ic = document.createElement("span"); ic.className = "ic"; ic.textContent = CHECK_ICON[c.level];
+    var tx = document.createElement("span"); tx.textContent = c.text;
+    div.appendChild(ic); div.appendChild(tx);
+    box.appendChild(div);
+  }
+  $("results").hidden = false;
+}
+
+function updateCountdown() {
+  var t = state.parsed;
+  if (!t || !t.ok) return;
+  var exp = toSec(t.payload.exp);
+  var cd = $("countdown");
+  if (exp === null) { cd.textContent = "无过期时间"; return; }
+  var diff = (exp - Date.now() / 1000) * 1000;
+  cd.textContent = diff > 0 ? "⏰ " + fmtDuration(diff) + " 后过期" : "已于 " + fmtDuration(-diff) + " 前过期";
+}
+
+function showError(code) {
+  var msgs = {
+    "empty": "先把 JWT 粘贴进来吧——三段式、用点号分隔的那串。",
+    "parts:1": "看起来不是 JWT：至少要有 3 段、用两个点号分隔（header.payload.signature）。",
+    "parts:2": "少了第三段签名：标准 JWT 是 header.payload.signature 三段。",
+    "head-b64": "第一段（header）不是合法的 Base64URL，检查是否复制完整。",
+    "payload-b64": "第二段（payload）不是合法的 Base64URL，检查是否复制完整。",
+    "head-json": "第一段能解码但不是 JSON 对象，这不像标准的 JWT header。",
+    "payload-json": "第二段能解码但不是 JSON 对象，这不像标准的 JWT payload。"
+  };
+  var el = $("err");
+  el.textContent = msgs[code] || "解析失败：请确认粘贴的是完整的 JWT。";
+  el.hidden = false;
+  $("results").hidden = true;
+}
+
+var debounceTimer = null;
+function onInput() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(function () {
+    var raw = $("input").value;
+    if (!cleanInput(raw)) {
+      $("err").hidden = true; $("results").hidden = true; state.parsed = null; return;
+    }
+    var t = parseToken(raw);
+    state.parsed = t;
+    if (!t.ok) { showError(t.error); return; }
+    $("err").hidden = true;
+    render(t);
+  }, 300);
+}
+
+function toast(msg) {
+  var el = $("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  setTimeout(function () { el.classList.remove("show"); }, 1600);
+}
+
+function copyText(text, label) {
+  function fallback() {
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast(label + "已复制 ✓"); }
+    catch (e) { toast("复制失败，请手动选择"); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { toast(label + "已复制 ✓"); }, fallback);
+  } else fallback();
+}
+
+/* ========== 事件绑定 ========== */
+$("input").addEventListener("input", onInput);
+$("s-ok").addEventListener("click", function () { $("input").value = makeSample("ok"); onInput(); });
+$("s-exp").addEventListener("click", function () { $("input").value = makeSample("exp"); onInput(); });
+$("s-none").addEventListener("click", function () { $("input").value = makeSample("none"); onInput(); });
+$("clear").addEventListener("click", function () { $("input").value = ""; onInput(); $("input").focus(); });
+$("copy-head").addEventListener("click", function () {
+  if (state.parsed && state.parsed.ok) copyText(JSON.stringify(state.parsed.header, null, 2), "Header JSON ");
+});
+$("copy-payload").addEventListener("click", function () {
+  if (state.parsed && state.parsed.ok) copyText(JSON.stringify(state.parsed.payload, null, 2), "Payload JSON ");
+});
+setInterval(function () {
+  if (state.parsed && state.parsed.ok) { updateCountdown(); var m = timelineModel(state.parsed.payload, Math.floor(Date.now() / 1000)); if (m) { var d = $("nowdot"); if (d) d.style.left = m.pct(Date.now() / 1000) + "%"; } }
+}, 1000);
+</script>
+</body>
+</html>

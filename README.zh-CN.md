@@ -8,6 +8,7 @@ English switch: [English](README.md)
 
 | # | Date | 在线试玩 | Idea | 源码 |
 | --- | --- | --- | --- | --- |
+| #22 | 2026-10-04 | [JWT Checkup（JWT 体检卡）](jwt-checkup-20261004/) | 粘贴 JWT 即出体检报告：声明白话翻译、生命周期时间轴、安全体检清单，全程本地 | [source](jwt-checkup-20261004) |
 | #21 | 2026-10-03 | [TimeBridge（时区桥）](timebridge-20261003/) | 跨时区会议一屏定档，彩带看时差，自动找全员最佳时段 | [source](timebridge-20261003) |
 | #20 | 2026-10-02 | [DataTune（数据旋律机）](datatune-20261002/) | 数字→五声音阶即点即播，异常值一耳朵听出来 | [source](datatune-20261002) |
 | #19 | 2026-10-01 | [ExifRay（照片隐私X光机）](exifray-20261001/) | 照片元数据泄露体检 + 一键清洁版复检自证 | [source](exifray-20261001) |
