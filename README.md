@@ -8,6 +8,7 @@ One original single-file creative micro-tool per day — local-first, zero-depen
 
 | # | Date | Demo | Idea | Source |
 | --- | --- | --- | --- | --- |
+| #23 | 2026-10-05 | [ShotFramer](shotframer-20261005/) | ShotFramer: drop a screenshot, get a ready-to-post image — browser/phone frame, gradient backdrop, tilt & shadow, 2× PNG export, fully local | [s| [source](jwt-checkup-20261004) |
 | #22 | 2026-10-04 | [JWT Checkup](jwt-checkup-20261004/) | JWT Checkup: paste a token, get a checkup report — plain-language claims, lifecycle timeline, security review, all local | [source](jwt-checkup-20261004) |
 | #21 | 2026-10-03 | [TimeBridge](timebridge-20261003/) | 时区桥：跨时区会议一屏定档，彩带看时差，自动找全员最佳时段 | [source](timebridge-20261003) |
 | #20 | 2026-10-02 | [DataTune](datatune-20261002/) | 数据旋律机：数字→五声音阶即点即播，异常值一耳朵听出来 | [source](datatune-20261002) |

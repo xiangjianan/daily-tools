@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ShotFramer 截图装裱机 — 把截图变成能直接发的成品图</title>
+<meta name="description" content="拖入截图，一键装裱成浏览器/手机相框成品图。全本地处理，图片不上传。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='7' width='26' height='20' rx='4' fill='none' stroke='%23ffb454' stroke-width='2.5'/%3E%3Cpath d='M3 13h26' stroke='%23ffb454' stroke-width='2.5'/%3E%3Ccircle cx='8' cy='10' r='1.6' fill='%23ff6b6b'/%3E%3Ccircle cx='13' cy='10' r='1.6' fill='%23ffd93d'/%3E%3Ccircle cx='18' cy='10' r='1.6' fill='%236bff8f'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0f1115; --bg2:#161a21; --panel:#1b2029; --line:#2a313d;
+  --tx:#e8ebf0; --tx2:#9aa4b2; --tx3:#5f6b7a;
+  --acc:#ffb454; --acc2:#ff8a3d; --ok:#6bff8f; --err:#ff6b6b;
+  --r:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg);color:var(--tx);
+  font-family:ui-sans-serif,system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  min-height:100vh;
+  padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 28px);
+}
+.wrap{max-width:1180px;margin:0 auto}
+header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+h1{font-size:22px;letter-spacing:.5px}
+h1 .en{color:var(--acc)}
+.tagline{color:var(--tx2);font-size:13px}
+.privacy{
+  display:inline-flex;align-items:center;gap:6px;margin:10px 0 18px;
+  font-size:12px;color:var(--ok);background:rgba(107,255,143,.07);
+  border:1px solid rgba(107,255,143,.18);border-radius:999px;padding:4px 12px;
+}
+main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+@media (max-width:860px){main{grid-template-columns:minmax(0,1fr)}}
+/* ---- stage ---- */
+.stage{
+  position:relative;border:1.5px dashed var(--line);border-radius:var(--r);
+  background:
+    radial-gradient(1200px 500px at 20% -10%, rgba(255,180,84,.05), transparent 60%),
+    var(--bg2);
+  min-height:420px;display:flex;align-items:center;justify-content:center;
+  padding:26px;overflow:hidden;transition:border-color .2s,background .2s;
+}
+.stage.drag{border-color:var(--acc);background:var(--bg2) radial-gradient(1200px 500px at 20% -10%, rgba(255,180,84,.12), transparent 60%)}
+#out{
+  max-width:100%;max-height:640px;height:auto;display:block;border-radius:8px;
+  box-shadow:0 8px 40px rgba(0,0,0,.5);
+}
+.empty{text-align:center;color:var(--tx2);user-select:none}
+.empty .big{font-size:44px;margin-bottom:10px}
+.empty p{font-size:14px;line-height:1.9}
+.empty kbd{
+  background:var(--panel);border:1px solid var(--line);border-bottom-width:2px;
+  border-radius:6px;padding:1px 7px;font-size:12px;color:var(--tx);
+}
+.empty .hint{color:var(--tx3);font-size:12px;margin-top:8px}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));color:#221505;
+  border:none;border-radius:10px;padding:10px 20px;font-size:14px;font-weight:700;
+  margin-top:16px;font-family:inherit;
+}
+.btn:active{transform:translateY(1px)}
+.btn.ghost{
+  background:var(--panel);color:var(--tx);border:1px solid var(--line);font-weight:500;
+}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+/* ---- panel ---- */
+.panel{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  padding:16px;display:flex;flex-direction:column;gap:16px;
+}
+.grp>label{display:block;font-size:12px;color:var(--tx2);margin-bottom:8px;letter-spacing:.5px}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{
+  flex:1;min-width:72px;cursor:pointer;background:var(--bg2);color:var(--tx2);
+  border:1px solid var(--line);border-radius:9px;padding:8px 6px;font-size:13px;font-family:inherit;
+}
+.seg button[aria-pressed="true"]{
+  background:rgba(255,180,84,.14);color:var(--acc);border-color:var(--acc);
+}
+.swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.sw{
+  height:38px;border-radius:9px;cursor:pointer;border:2px solid transparent;position:relative;
+}
+.sw[aria-pressed="true"]{border-color:#fff;box-shadow:0 0 0 2px var(--acc)}
+.sw.none{background:repeating-conic-gradient(#2a313d 0 25%,#1b2029 0 50%) 0 0/12px 12px}
+.row{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--tx2)}
+.row output{color:var(--tx);min-width:38px;text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{
+  flex:1;appearance:none;-webkit-appearance:none;height:4px;border-radius:2px;
+  background:var(--line);outline:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+  background:var(--acc);cursor:pointer;border:none;
+}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--acc);cursor:pointer;border:none}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.actions .btn{margin-top:0;flex:1;justify-content:center;padding:10px 8px}
+.foot{margin-top:4px;font-size:11px;color:var(--tx3);line-height:1.8}
+.toast{
+  position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 24px);transform:translateX(-50%) translateY(20px);
+  background:#252b36;color:var(--tx);border:1px solid var(--line);border-radius:10px;
+  padding:10px 18px;font-size:13px;opacity:0;pointer-events:none;transition:all .25s;z-index:9;
+  max-width:90vw;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.err{color:var(--err)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="en">ShotFramer</span> 截图装裱机</h1>
+    <span class="tagline">拖入截图 → 一键变成品图（相框 + 背景 + 倾斜）</span>
+  </header>
+  <span class="privacy">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+    全程本地处理 · 图片永不离开浏览器
+  </span>
+
+  <main>
+    <section class="stage" id="stage" aria-label="预览区，可拖入图片">
+      <div class="empty" id="empty">
+        <div class="big">🖼️</div>
+        <p>把截图拖到这里，或 <kbd>Ctrl</kbd>+<kbd>V</kbd> 粘贴</p>
+        <button class="btn" id="btnSample" type="button">试试示例截图</button>
+        <p class="hint">或点击选择文件 · 支持 PNG / JPG / WebP / GIF 首帧</p>
+      </div>
+      <canvas id="out" hidden></canvas>
+    </section>
+
+    <aside class="panel">
+      <div class="grp">
+        <label>相框</label>
+        <div class="seg" id="segFrame" role="group">
+          <button type="button" data-v="browser" aria-pressed="true">浏览器</button>
+          <button type="button" data-v="phone" aria-pressed="false">手机</button>
+          <button type="button" data-v="plain" aria-pressed="false">裸圆角</button>
+        </div>
+      </div>
+
+      <div class="grp">
+        <label>背景</label>
+        <div class="swatches" id="swatches"></div>
+      </div>
+
+      <div class="grp">
+        <label>倾斜角度</label>
+        <div class="row">
+          <input type="range" id="tilt" min="-10" max="10" step="1" value="0">
+          <output id="tiltV">0°</output>
+        </div>
+      </div>
+
+      <div class="grp">
+        <label>留白</label>
+        <div class="row">
+          <input type="range" id="pad" min="10" max="140" step="2" value="56">
+          <output id="padV">56</output>
+        </div>
+      </div>
+
+      <div class="grp">
+        <label>圆角</label>
+        <div class="row">
+          <input type="range" id="rad" min="0" max="28" step="1" value="12">
+          <output id="radV">12</output>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn ghost" id="btnPick" type="button">选图</button>
+        <button class="btn" id="btnDl" type="button" disabled>下载 PNG</button>
+        <button class="btn ghost" id="btnCopy" type="button" disabled>复制</button>
+      </div>
+      <p class="foot">导出为 2× 分辨率 PNG，适合发推 / 公众号 / 文档插图。<br>换图随时点「选图」或再拖一张进来。</p>
+      <input type="file" id="file" accept="image/*" hidden>
+    </aside>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+"use strict";
+/* ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== =====
+ * ShotFramer 截图装裱机
+ * 单文件 · 零依赖 · 全本地 canvas 合成
+ * ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== */
+
+/* ---------- 纯函数：几何与背景（可独立仿真） ---------- */
+// 背景预设：双色渐变（角度 135°）
+var BACKDROPS = [
+  { id:"dusk",    a:"#2b1a3d", b:"#7a3b5e" },
+  { id:"ocean",   a:"#0f2b46", b:"#1d6f8c" },
+  { id:"forest",  a:"#12321f", b:"#3f7d4e" },
+  { id:"ember",   a:"#3d1408", b:"#a0491c" },
+  { id:"grape",   a:"#241040", b:"#5b2a86" },
+  { id:"steel",   a:"#232a33", b:"#4a5a6b" },
+  { id:"cream",   a:"#e8ddc8", b:"#c9a86a" },
+  { id:"none",    a:null,      b:null      }   // 透明
+];
+
+// 计算装裱后总画布尺寸（含倾斜外扩余量）
+// src:{w,h} pad:留白 px chrome:相框额外高度 tiltDeg:倾角
+function layoutSize(src, pad, chrome, tiltDeg){
+  var fw = src.w + pad * 2;
+  var fh = src.h + pad * 2 + chrome;
+  var rad = Math.abs(tiltDeg) * Math.PI / 180;
+  // 旋转后包围盒
+  var ow = fw * Math.cos(rad) + fh * Math.sin(rad);
+  var oh = fw * Math.sin(rad) + fh * Math.cos(rad);
+  return { w: Math.ceil(ow), h: Math.ceil(oh), frameW: fw, frameH: fh };
+}
+
+// 图片超限缩放：最长边不超 max，返回整数尺寸（不放大）
+function fitSrc(w, h, max){
+  var s = Math.min(1, max / Math.max(w, h));
+  return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)) };
+}
+
+// browser 相框：内容区上方的 chrome 高度
+function chromeHeight(kind, srcH){
+  if (kind === "browser") return Math.round(Math.min(44, Math.max(30, srcH * 0.055)));
+  if (kind === "phone")   return 0;   // 手机框四边包边，无独立 chrome 高
+  return 0;
+}
+// phone 相框：四边包边厚度
+function phoneBezel(srcW){ return Math.round(Math.min(26, Math.max(14, srcW * 0.02))); }
+
+/* ---------- 状态 ---------- */
+var st = {
+  img: null,          // HTMLImageElement（原始图）
+  frame: "browser",
+  backdrop: 0,        // BACKDROPS 下标
+  tilt: 0,
+  pad: 56,
+  rad: 12,
+  exporting: false
+};
+var MAXSRC = 1600;    // 源图最长边上限，防超大图爆 canvas
+var SCALE = 2;        // 导出分辨率倍数
+
+/* ---------- DOM ---------- */
+function $(id){ return document.getElementById(id); }
+var stage = $("stage"), out = $("out"), emptyBox = $("empty");
+var toastEl = $("toast"), toastTimer = null;
+
+function toast(msg, isErr){
+  toastEl.textContent = msg;
+  toastEl.className = "toast show" + (isErr ? " err" : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ toastEl.className = "toast"; }, 2200);
+}
+
+/* ---------- 背景色板 UI ---------- */
+(function buildSwatches(){
+  var box = $("swatches");
+  BACKDROPS.forEach(function(bd, i){
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "sw" + (bd.id === "none" ? " none" : "");
+    b.title = bd.id;
+    b.setAttribute("aria-pressed", i === 0 ? "true" : "false");
+    if (bd.a){
+      b.style.background = "linear-gradient(135deg," + bd.a + "," + bd.b + ")";
+    }
+    b.addEventListener("click", function(){
+      st.backdrop = i;
+      box.querySelectorAll(".sw").forEach(function(el){ el.setAttribute("aria-pressed","false"); });
+      b.setAttribute("aria-pressed","true");
+      render();
+    });
+    box.appendChild(b);
+  });
+})();
+
+/* ---------- 相框切换 ---------- */
+$("segFrame").addEventListener("click", function(e){
+  var btn = e.target.closest("button");
+  if (!btn) return;
+  st.frame = btn.dataset.v;
+  this.querySelectorAll("button").forEach(function(el){ el.setAttribute("aria-pressed","false"); });
+  btn.setAttribute("aria-pressed","true");
+  render();
+});
+
+/* ---------- 滑杆 ---------- */
+function bindRange(id, key, suffix){
+  var el = $(id), ov = $(id + "V");
+  el.addEventListener("input", function(){
+    st[key] = +el.value;
+    ov.textContent = el.value + (suffix || "");
+    render();
+  });
+}
+bindRange("tilt", "tilt", "°");
+bindRange("pad", "pad", "");
+bindRange("rad", "rad", "");
+
+/* ---------- 图片载入 ---------- */
+function loadImageFile(file){
+  if (!file || !/^image\//.test(file.type)){
+    toast("这不是图片文件，换个 PNG / JPG 试试", true);
+    return;
+  }
+  var url = URL.createObjectURL(file);
+  var im = new Image();
+  im.onload = function(){
+    URL.revokeObjectURL(url);
+    st.img = im;
+    emptyBox.hidden = true;
+    out.hidden = false;
+    $("btnDl").disabled = false;
+    $("btnCopy").disabled = false;
+    render();
+    toast("已装裱 ✓ " + im.naturalWidth + "×" + im.naturalHeight);
+  };
+  im.onerror = function(){
+    URL.revokeObjectURL(url);
+    toast("图片解码失败，试试另存为 PNG 再拖进来", true);
+  };
+  im.src = url;
+}
+
+stage.addEventListener("dragover", function(e){ e.preventDefault(); stage.classList.add("drag"); });
+stage.addEventListener("dragleave", function(){ stage.classList.remove("drag"); });
+stage.addEventListener("drop", function(e){
+  e.preventDefault();
+  stage.classList.remove("drag");
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) loadImageFile(e.dataTransfer.files[0]);
+});
+document.addEventListener("paste", function(e){
+  var items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (var i = 0; i < items.length; i++){
+    if (items[i].type.indexOf("image") === 0){
+      loadImageFile(items[i].getAsFile());
+      return;
+    }
+  }
+});
+$("btnPick").addEventListener("click", function(){ $("file").click(); });
+$("file").addEventListener("change", function(){
+  if (this.files && this.files[0]) loadImageFile(this.files[0]);
+  this.value = "";
+});
+
+/* ---------- 示例截图（程序化画一张假登录页） ---------- */
+function makeSample(){
+  var c = document.createElement("canvas");
+  c.width = 720; c.height = 460;
+  var g = c.getContext("2d");
+  g.fillStyle = "#ffffff"; g.fillRect(0, 0, 720, 460);
+  // 左栏渐变
+  var lg = g.createLinearGradient(0, 0, 0, 460);
+  lg.addColorStop(0, "#5b2a86"); lg.addColorStop(1, "#1d6f8c");
+  g.fillStyle = lg; g.fillRect(0, 0, 300, 460);
+  g.fillStyle = "rgba(255,255,255,.9)";
+  g.font = "700 26px sans-serif"; g.fillText("Nebula", 36, 60);
+  g.font = "14px sans-serif"; g.fillStyle = "rgba(255,255,255,.65)";
+  g.fillText("Design faster, ship sooner.", 36, 88);
+  // 表单
+  g.fillStyle = "#f1f3f7";
+  g.fillRect(360, 130, 300, 44); g.fillRect(360, 190, 300, 44);
+  g.fillStyle = "#5b2a86"; g.fillRect(360, 250, 300, 44);
+  g.fillStyle = "#fff"; g.font = "600 14px sans-serif";
+  g.fillText("Sign in", 484, 277);
+  g.fillStyle = "#98a1ad"; g.font = "13px sans-serif";
+  g.fillText("you@example.com", 372, 156);
+  g.fillText("••••••••••", 372, 216);
+  // 顶栏
+  g.fillStyle = "#fafbfc"; g.fillRect(0, 0, 720, 44);
+  g.fillStyle = "#e3e7ec"; g.fillRect(0, 43, 720, 1);
+  var dots = ["#ff6b6b", "#ffd93d", "#6bff8f"];
+  dots.forEach(function(d, i){
+    g.fillStyle = d; g.beginPath(); g.arc(24 + i * 20, 22, 6, 0, 7); g.fill();
+  });
+  g.fillStyle = "#c6cdd6"; g.fillRect(300, 12, 180, 20);
+  var im = new Image();
+  im.onload = function(){
+    st.img = im;
+    emptyBox.hidden = true;
+    out.hidden = false;
+    $("btnDl").disabled = false;
+    $("btnCopy").disabled = false;
+    render();
+    toast("示例已装裱，拖你自己的截图来替换吧");
+  };
+  im.src = c.toDataURL("image/png");
+}
+$("btnSample").addEventListener("click", makeSample);
+
+/* ---------- 渲染：全部合成进一个 canvas ---------- */
+function roundRectPath(g, x, y, w, h, r){
+  r = Math.min(r, w / 2, h / 2);
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+function render(){
+  if (!st.img) return;
+  var src = fitSrc(st.img.naturalWidth, st.img.naturalHeight, MAXSRC);
+  var chrome = chromeHeight(st.frame, src.h);
+  var bezel = st.frame === "phone" ? phoneBezel(src.w) : 0;
+  var frameW = src.w + bezel * 2;
+  var frameH = src.h + bezel * 2 + chrome;
+  var lay = layoutSize({ w: frameW, h: frameH }, st.pad, 0, st.tilt);
+
+  out.width = lay.w * SCALE;
+  out.height = lay.h * SCALE;
+  var g = out.getContext("2d");
+  g.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+
+  // 背景
+  var bd = BACKDROPS[st.backdrop];
+  if (bd.a){
+    var bg = g.createLinearGradient(0, 0, lay.w, lay.h);
+    bg.addColorStop(0, bd.a); bg.addColorStop(1, bd.b);
+    g.fillStyle = bg;
+  } else {
+    g.clearRect(0, 0, lay.w, lay.h);
+  }
+  if (bd.a) g.fillRect(0, 0, lay.w, lay.h);
+
+  // 倾斜 + 居中
+  g.save();
+  g.translate(lay.w / 2, lay.h / 2);
+  g.rotate(st.tilt * Math.PI / 180);
+  var fx = -frameW / 2, fy = -frameH / 2;
+
+  // 投影
+  g.save();
+  g.shadowColor = "rgba(0,0,0,.45)";
+  g.shadowBlur = Math.max(18, st.pad * 0.4);
+  g.shadowOffsetY = Math.max(8, st.pad * 0.14);
+  g.fillStyle = "#0a0c10";
+  if (st.frame === "phone"){
+    roundRectPath(g, fx, fy, frameW, frameH, st.rad + bezel);
+  } else {
+    roundRectPath(g, fx, fy, frameW, frameH, st.rad);
+  }
+  g.fill();
+  g.restore();
+
+  if (st.frame === "browser"){
+    // 相框底
+    roundRectPath(g, fx, fy, frameW, frameH, st.rad);
+    g.fillStyle = "#20242c"; g.fill();
+    // chrome 栏
+    roundRectPath(g, fx, fy, frameW, frameH, st.rad);
+    g.save(); g.clip();
+    g.fillStyle = "#2a303a"; g.fillRect(fx, fy, frameW, chrome);
+    var dots = ["#ff5f57", "#febc2e", "#28c840"];
+    for (var i = 0; i < 3; i++){
+      g.fillStyle = dots[i];
+      g.beginPath();
+      g.arc(fx + 18 + i * 18, fy + chrome / 2, 5, 0, 7);
+      g.fill();
+    }
+    // 地址栏
+    var urlW = Math.min(frameW * 0.5, 260);
+    roundRectPath(g, fx + (frameW - urlW) / 2, fy + chrome / 2 - 8, urlW, 16, 8);
+    g.fillStyle = "#1a1e26"; g.fill();
+    g.fillStyle = "#7d8794";
+    g.font = "9px ui-monospace,monospace";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText("localhost:3000", fx + frameW / 2, fy + chrome / 2 + 0.5);
+    g.restore();
+  } else if (st.frame === "phone"){
+    // 手机包边
+    roundRectPath(g, fx, fy, frameW, frameH, st.rad + bezel);
+    g.fillStyle = "#111318"; g.fill();
+    // 打孔摄像头
+    g.fillStyle = "#000";
+    g.beginPath();
+    g.arc(0, fy + bezel + 14, 5, 0, 7);
+    g.fill();
+    g.strokeStyle = "rgba(255,255,255,.14)";
+    g.lineWidth = 1;
+    g.stroke();
+  } else {
+    // 裸圆角：白描边增加立体感
+    roundRectPath(g, fx, fy, frameW, frameH, st.rad);
+    g.fillStyle = "#161a21"; g.fill();
+    g.strokeStyle = "rgba(255,255,255,.1)";
+    g.lineWidth = 1;
+    g.stroke();
+  }
+
+  // 图片（圆角裁剪）
+  var ix = fx + bezel, iy = fy + bezel + chrome;
+  g.save();
+  roundRectPath(g, ix, iy, src.w, src.h, st.frame === "phone" ? Math.max(2, st.rad - bezel * 0.4) : st.rad);
+  g.clip();
+  g.drawImage(st.img, ix, iy, src.w, src.h);
+  g.restore();
+
+  g.restore();
+}
+
+/* ---------- 导出 ---------- */
+function exportBlob(cb){
+  out.toBlob(function(blob){ cb(blob); }, "image/png");
+}
+$("btnDl").addEventListener("click", function(){
+  if (!st.img){ toast("先装裱一张图", true); return; }
+  exportBlob(function(blob){
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "shotframer-" + Date.now() + ".png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+    toast("已下载 ✓");
+  });
+});
+$("btnCopy").addEventListener("click", function(){
+  if (!st.img){ toast("先装裱一张图", true); return; }
+  if (!navigator.clipboard || !window.ClipboardItem){
+    toast("此浏览器不支持复制图片，请用下载", true);
+    return;
+  }
+  exportBlob(function(blob){
+    navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
+      .then(function(){ toast("已复制到剪贴板 ✓"); })
+      .catch(function(){ toast("复制被拒绝，请用下载", true); });
+  });
+});
+</script>
+</body>
+</html>
