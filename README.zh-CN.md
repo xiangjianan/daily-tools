@@ -8,6 +8,7 @@ English switch: [English](README.md)
 
 | # | Date | 在线试玩 | Idea | 源码 |
 | --- | --- | --- | --- | --- |
+| #24 | 2026-10-06 | [SUBSLIDE（字幕轨拖拽）](subslide-20261006/) | 字幕不同步？像拖音频块一样拖整条字幕轨，双参考点修帧率漂移，导出修复 SRT，全程本地 | [source](subslide-20261006) |
 | #23 | 2026-10-05 | [ShotFramer（截图装裱机）](shotframer-20261005/) | 拖入截图一键装裱成成品图：浏览器/手机相框、渐变背景、倾斜投影，2× PNG 下载/复制，全程本地 | [source](jwt-checkup-20261004) |
 | #22 | 2026-10-04 | [JWT Checkup（JWT 体检卡）](jwt-checkup-20261004/) | 粘贴 JWT 即出体检报告：声明白话翻译、生命周期时间轴、安全体检清单，全程本地 | [source](jwt-checkup-20261004) |
 | #21 | 2026-10-03 | [TimeBridge（时区桥）](timebridge-20261003/) | 跨时区会议一屏定档，彩带看时差，自动找全员最佳时段 | [source](timebridge-20261003) |

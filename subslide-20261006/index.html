@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>SUBSLIDE · 字幕轨拖拽 · SRT 重同步</title>
+<meta name="description" content="拖动整条字幕轨，让 SRT 字幕回到正轨。双参考点线性修复漂移，全程本地处理，不上传任何文件。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f141c'/%3E%3Crect x='5' y='18' width='22' height='5' rx='2' fill='%23f0b429'/%3E%3Crect x='9' y='9' width='14' height='5' rx='2' fill='%2338bdf8'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0d1117; --panel:#151c26; --panel2:#1b2431; --line:#263140;
+  --fg:#e6edf3; --dim:#8b98a9; --accent:#f0b429; --accent2:#38bdf8;
+  --ok:#3fb950; --warn:#f0883e; --err:#f85149;
+  --mono:ui-monospace,'SF Mono','Cascadia Code',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg);color:var(--fg);
+  font:15px/1.6 system-ui,-apple-system,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif;
+  min-height:100vh;
+  padding:calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 40px);
+}
+.wrap{max-width:960px;margin:0 auto}
+header{margin-bottom:18px}
+h1{font-size:22px;letter-spacing:.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h1 .logo{display:inline-flex}
+h1 em{font-style:normal;color:var(--accent)}
+.tagline{color:var(--dim);font-size:13.5px;margin-top:4px}
+.tagline b{color:var(--fg);font-weight:600}
+.badge{font-size:11px;color:var(--ok);border:1px solid var(--ok);border-radius:99px;padding:1px 9px;white-space:nowrap}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:14px}
+.panel h2{font-size:13px;color:var(--dim);font-weight:600;letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.panel h2 .n{color:var(--accent2);font-family:var(--mono)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{
+  background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+  padding:7px 14px;font-size:13.5px;cursor:pointer;font-family:inherit;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:border-color .15s,background .15s;
+}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#141414;font-weight:700}
+button.primary:hover{filter:brightness(1.08)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.ghost{background:transparent}
+input[type="text"],input[type="number"],textarea,select{
+  background:#0a0f16;color:var(--fg);border:1px solid var(--line);border-radius:8px;
+  padding:7px 10px;font-family:inherit;font-size:14px;min-width:0;
+}
+input:focus,textarea:focus{outline:none;border-color:var(--accent2)}
+textarea{width:100%;font-family:var(--mono);font-size:12.5px;line-height:1.5;resize:vertical;min-height:120px}
+.hint{font-size:12px;color:var(--dim)}
+.warn{font-size:12.5px;color:var(--warn)}
+.err{font-size:12.5px;color:var(--err);margin-top:6px}
+.ok{font-size:12.5px;color:var(--ok)}
+
+/* timeline */
+.tl-wrap{position:relative}
+canvas#tl{width:100%;height:190px;display:block;border-radius:8px;background:#0a0f16;border:1px solid var(--line);touch-action:none;cursor:grab}
+canvas#tl.dragging{cursor:grabbing}
+.tl-legend{display:flex;gap:14px;font-size:11.5px;color:var(--dim);margin-top:6px;flex-wrap:wrap}
+.tl-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+
+.offsetbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.offsetbar label{font-size:12.5px;color:var(--dim)}
+input[type=range]{flex:1 1 180px;accent-color:var(--accent);min-width:120px}
+#offsetVal{font-family:var(--mono);font-size:14px;color:var(--accent);min-width:76px;text-align:right}
+
+.sync-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sync-card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px}
+.sync-card h3{font-size:12px;color:var(--accent2);margin-bottom:8px;font-weight:600}
+.sync-card .f{display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.sync-card .f span{font-size:12px;color:var(--dim)}
+.sync-card input[type=number]{width:86px;font-family:var(--mono)}
+.sync-card input[type=text]{width:96px;font-family:var(--mono);font-size:13px}
+
+#syncInfo{font-family:var(--mono);font-size:12.5px;margin-top:8px;color:var(--dim)}
+#syncInfo b{color:var(--ok)}
+
+table.cues{width:100%;border-collapse:collapse;font-size:12.5px;font-family:var(--mono)}
+table.cues th{color:var(--dim);text-align:left;font-weight:600;padding:5px 8px;border-bottom:1px solid var(--line);font-size:11.5px}
+table.cues td{padding:5px 8px;border-bottom:1px solid #1a2330;vertical-align:top}
+table.cues td.txt{font-family:inherit;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
+table.cues td.old{color:var(--dim)}
+table.cues td.new{color:var(--accent)}
+.moved td.new{color:var(--ok)}
+.scroll{max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.scroll::-webkit-scrollbar{width:8px;height:8px}
+.scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+
+#toast{
+  position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 24px);transform:translateX(-50%);
+  background:var(--panel2);border:1px solid var(--ok);color:var(--fg);
+  padding:9px 18px;border-radius:99px;font-size:13.5px;opacity:0;pointer-events:none;
+  transition:opacity .25s;z-index:50;max-width:86vw;text-align:center;
+}
+#toast.show{opacity:1}
+#toast.err{border-color:var(--err)}
+
+@media (max-width:640px){
+  .sync-grid{grid-template-columns:1fr}
+  h1{font-size:19px}
+  canvas#tl{height:160px}
+}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="logo"><svg width="26" height="26" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1b2431"/><rect x="5" y="18" width="22" height="5" rx="2" fill="#f0b429"/><rect x="9" y="9" width="14" height="5" rx="2" fill="#38bdf8"/></svg></span>SUB<em>SLIDE</em> <span class="badge">100% 本地处理</span></h1>
+    <div class="tagline">字幕不同步？<b>像拖音频块一样，把整条字幕轨拖回正轨</b>。支持双参考点修复漂移，导出修复后的 SRT。文件不离开浏览器。</div>
+  </header>
+
+  <!-- 1 输入 -->
+  <section class="panel">
+    <h2><span class="n">1</span>载入字幕（.srt 文件或直接粘贴）</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button id="btnFile">📂 选择 .srt 文件</button>
+      <input type="file" id="file" accept=".srt,.txt,text/plain" hidden>
+      <button id="btnSample">✨ 载入示例</button>
+      <button id="btnClear" class="ghost">清空</button>
+      <span id="stats" class="hint"></span>
+    </div>
+    <textarea id="src" placeholder="粘贴 SRT 内容：&#10;1&#10;00:00:01,500 --> 00:00:03,200&#10;Hello world" spellcheck="false"></textarea>
+    <div id="parseMsg"></div>
+  </section>
+
+  <!-- 2 时间轴 -->
+  <section class="panel">
+    <h2><span class="n">2</span>拖动整条字幕轨（在时间轴上按住左右拖）</h2>
+    <div class="tl-wrap">
+      <canvas id="tl"></canvas>
+    </div>
+    <div class="tl-legend">
+      <span><i style="background:#38bdf8"></i>原始位置</span>
+      <span><i style="background:#f0b429"></i>调整后位置</span>
+      <span><i style="background:#f85149"></i>被切出画面外</span>
+      <span>← 在时间轴上按住拖动 →</span>
+    </div>
+    <div class="offsetbar">
+      <label>微调</label>
+      <input type="range" id="slider" min="-30000" max="30000" step="100" value="0">
+      <span id="offsetVal">+0.00 s</span>
+      <button id="btnReset" class="ghost">归零</button>
+    </div>
+  </section>
+
+  <!-- 3 双点同步 -->
+  <section class="panel">
+    <h2><span class="n">3</span>双参考点同步（可选 · 修复越播越偏的漂移）</h2>
+    <div class="hint" style="margin-bottom:10px">播放视频，找出两句字幕<b>实际应当出现</b>的时刻。给两点后按线性映射整体重排——不只平移，还修正速度差。</div>
+    <div class="sync-grid">
+      <div class="sync-card">
+        <h3>参考点 A</h3>
+        <div class="f"><span>字幕序号</span><input type="number" id="cueA" min="1" placeholder="如 3"></div>
+        <div class="f"><span>实际时刻</span><input type="text" id="timeA" placeholder="mm:ss 或 秒" ></div>
+      </div>
+      <div class="sync-card">
+        <h3>参考点 B（可选，留空=仅平移）</h3>
+        <div class="f"><span>字幕序号</span><input type="number" id="cueB" min="1" placeholder="如 120"></div>
+        <div class="f"><span>实际时刻</span><input type="text" id="timeB" placeholder="mm:ss 或 秒"></div>
+      </div>
+    </div>
+    <div id="syncInfo">尚未设置参考点</div>
+    <div class="row" style="margin-top:8px">
+      <button id="btnClearSync" class="ghost">清除参考点</button>
+    </div>
+  </section>
+
+  <!-- 4 结果 -->
+  <section class="panel">
+    <h2><span class="n">4</span>对照与导出</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button id="btnCopy" class="primary" disabled>📋 复制修复后的 SRT</button>
+      <button id="btnDl" disabled>⬇️ 下载 fixed.srt</button>
+      <span id="copyHint" class="hint"></span>
+    </div>
+    <div class="scroll">
+      <table class="cues" id="cueTable">
+        <thead><tr><th>#</th><th>原时间</th><th>调整后</th><th>文本</th></tr></thead>
+        <tbody id="cueBody"></tbody>
+      </table>
+    </div>
+    <div id="emptyMsg" class="err"></div>
+  </section>
+</div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ============ 纯逻辑：解析 / 变换 / 序列化 ============ */
+function tcToMs(h,m,s,ms){ return ((+h)*3600+(+m)*60+(+s))*1000+(+ms); }
+function parseTC(str){
+  var m = /^\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*$/.exec(str);
+  if(m) return tcToMs(m[1],m[2],m[3], +m[4]*Math.pow(10,3-String(m[4]).length));
+  return null;
+}
+function msToTC(ms){
+  ms = Math.max(0, Math.round(ms));
+  var h=Math.floor(ms/3600000), m=Math.floor(ms%3600000/60000), s=Math.floor(ms%60000/1000), r=ms%1000;
+  function p(n,w){ return String(n).padStart(w,'0'); }
+  return p(h,2)+':'+p(m,2)+':'+p(s,2)+','+p(r,3);
+}
+function msToShort(ms){
+  ms = Math.round(ms);
+  var sign = ms<0 ? '-' : '+';
+  ms = Math.abs(ms);
+  var m=Math.floor(ms/60000), s=(ms%60000)/1000;
+  if(m>0) return sign+m+'m'+s.toFixed(2).padStart(5,'0')+'s';
+  return sign+s.toFixed(2)+'s';
+}
+/* 解析 SRT。容错：BOM、\r\n、多余空行、缺序号块、时间码逗号/点混用 */
+function parseSRT(text){
+  var warnings = [];
+  text = String(text||'').replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n');
+  var blocks = text.split(/\n{2,}/);
+  var cues = [];
+  for(var i=0;i<blocks.length;i++){
+    var raw = blocks[i].replace(/^\n+|\n+$/g,'');
+    if(!raw.trim()) continue;
+    var lines = raw.split('\n');
+    var li = 0;
+    // 可选序号行
+    if(/^\s*\d+\s*$/.test(lines[li])) li++;
+    if(li >= lines.length){ warnings.push('块 '+(i+1)+'：缺少时间码行，已跳过'); continue; }
+    var tm = /^\s*(\S+)\s*-->\s*(\S+)\s*(.*)$/.exec(lines[li]);
+    if(!tm){ warnings.push('块 '+(i+1)+'：时间码格式无法识别，已跳过'); continue; }
+    var start = parseTC(tm[1]), end = parseTC(tm[2]);
+    if(start===null || end===null){ warnings.push('块 '+(i+1)+'：时间码不是 HH:MM:SS,mmm 格式，已跳过'); continue; }
+    var txt = lines.slice(li+1).join('\n').replace(/\n+$/,'');
+    if(end <= start){ warnings.push('块 '+(i+1)+'：结束时间早于开始时间，已按开始+1s 处理'); end = start+1000; }
+    if(!txt.trim()) warnings.push('块 '+(i+1)+'：字幕文本为空');
+    cues.push({ idx:cues.length+1, start:start, end:end, text:txt });
+  }
+  return { cues:cues, warnings:warnings };
+}
+/* 线性映射：t' = k*t + b（两点定 k,b；一点或无点则 k=1） */
+function solveLinear(p1, p2){
+  if(!p1 && !p2) return { k:1, b:0 };
+  if(!p2) return { k:1, b:p1.after - p1.before };
+  var k = (p2.after - p1.after) / (p2.before - p1.before);
+  if(!isFinite(k) || k <= 0 || k > 10) return { k:1, b:p1.after - p1.before };
+  var b = p1.after - k*p1.before;
+  return { k:k, b:b };
+}
+function applyTransform(cues, k, b, shift){
+  return cues.map(function(c){
+    var s = Math.max(0, Math.round(k*c.start + b + shift));
+    var e = Math.max(s+1, Math.round(k*c.end + b + shift));
+    return { idx:c.idx, start:s, end:e, text:c.text };
+  });
+}
+function buildSRT(cues){
+  return cues.map(function(c,i){
+    return (i+1)+'\n'+msToTC(c.start)+' --> '+msToTC(c.end)+'\n'+c.text;
+  }).join('\n\n') + '\n';
+}
+/* "90" | "1:30" | "1:30.5" | "00:01:30,500" → ms；非法返回 null */
+function parseUserTime(str){
+  str = String(str||'').trim();
+  if(!str) return null;
+  var m = /^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?(?:[.,](\d{1,3}))?$/.exec(str);
+  if(m){
+    if(m[3] !== undefined) return tcToMs(m[1],m[2],m[3], (m[4]? +m[4]*Math.pow(10,3-String(m[4]).length) : 0));
+    return tcToMs(0, m[1], m[2], (m[4]? +m[4]*Math.pow(10,3-String(m[4]).length) : 0));
+  }
+  if(/^\d+(\.\d+)?$/.test(str)) return Math.round(parseFloat(str)*1000);
+  return null;
+}
+/* ============ 状态与 DOM ============ */
+var $ = function(id){ return document.getElementById(id); };
+var state = { cues:[], warnings:[], k:1, b:0, shift:0 };
+var SRC='src', TL='tl';
+var SAMPLE = [
+ '1','00:00:02,000 --> 00:00:04,500','Wait for me!','',
+ '2','00:00:06,000 --> 00:00:08,200','The train leaves at noon.','',
+ '3','00:00:11,000 --> 00:00:13,400','I know. I have a ticket right here.','',
+ '4','00:00:16,500 --> 00:00:19,000','Then hurry up, we are late.','',
+ '5','00:00:23,000 --> 00:00:26,800','Late for what? The platform is empty.','',
+ '6','00:00:30,500 --> 00:00:33,000','Because the train already left!','',
+ '7','00:00:38,200 --> 00:00:40,900','You are kidding me.','',
+ '8','00:00:44,000 --> 00:00:46,500','Tomorrow. Same time.','',
+ '9','00:00:51,000 --> 00:00:53,300','I will be here. Early.','',
+ '10','00:01:00,000 --> 00:01:03,500','Promise?','Promise.'
+].join('\n');
+
+function toast(msg, isErr){
+  var t=$('toast');
+  t.textContent=msg;
+  t.className = isErr ? 'show err' : 'show';
+  clearTimeout(toast._h);
+  toast._h=setTimeout(function(){ t.className=''; }, 2200);
+}
+function cueA(){ var n=parseInt($('cueA').value,10); return (n>=1 && n<=state.cues.length)? n-1 : null; }
+function cueB(){ var n=parseInt($('cueB').value,10); return (n>=1 && n<=state.cues.length)? n-1 : null; }
+function getPoints(){
+  var pa=null, pb=null;
+  var ia=cueA(), ta=parseUserTime($('timeA').value);
+  if(ia!==null && ta!==null) pa={ before:state.cues[ia].start, after:ta };
+  var ib=cueB(), tb=parseUserTime($('timeB').value);
+  if(ib!==null && tb!==null) pb={ before:state.cues[ib].start, after:tb };
+  return { pa:pa, pb:pb };
+}
+function recompute(){
+  var pts=getPoints();
+  var sol=solveLinear(pts.pa, pts.pb);
+  state.k=sol.k; state.b=sol.b;
+  var info=$('syncInfo');
+  if(pts.pa && pts.pb){
+    info.innerHTML='两点映射：t → '+state.k.toFixed(3)+' × t '+(state.b>=0?'+ ':'− ')+msToShort(Math.abs(state.b)).replace(/^\+/,'')+'　<b>漂移已修正</b>';
+  }else if(pts.pa){
+    info.innerHTML='单点平移：整体 '+(state.b>=0?'+ ':'')+msToShort(state.b)+'　（补齐 B 点可修正漂移）';
+  }else{
+    info.textContent='尚未设置参考点';
+  }
+  render();
+  renderTable();
+}
+/* ============ 时间轴渲染 ============ */
+function setupCanvas(cv){
+  var dpr=window.devicePixelRatio||1;
+  var w=cv.clientWidth||600, h=cv.clientHeight||190;
+  if(cv.width!==Math.round(w*dpr) || cv.height!==Math.round(h*dpr)){
+    cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr);
+  }
+  var ctx=cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { ctx:ctx, w:w, h:h };
+}
+function render(){
+  var cv=$(TL);
+  var c=setupCanvas(cv);
+  var ctx=c.ctx, W=c.w, H=c.h;
+  ctx.clearRect(0,0,W,H);
+  var cues=state.cues;
+  if(!cues.length){
+    ctx.fillStyle='#3a4a5e';
+    ctx.font='13px system-ui,sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('载入字幕后，这里会出现你的字幕轨', W/2, H/2);
+    ctx.textAlign='left';
+    $('offsetVal').textContent='+0.00 s';
+    return;
+  }
+  var pad=10;
+  var t0=0, t1=Math.max.apply(null, cues.map(function(q){return q.end;}));
+  t1 += Math.abs(state.shift)*1.15 + 800;
+  var span=Math.max(t1,1000);
+  var x=function(ms){ return pad + (ms/span)*(W-2*pad); };
+  var laneH=Math.min(30,(H-46)/5);
+  // 时间标尺
+  ctx.strokeStyle='#263140'; ctx.fillStyle='#5c6b80';
+  ctx.font='10px ui-monospace,monospace'; ctx.lineWidth=1;
+  var ticks=6;
+  for(var i=0;i<=ticks;i++){
+    var tx=pad+(W-2*pad)*i/ticks;
+    ctx.beginPath(); ctx.moveTo(tx,20); ctx.lineTo(tx,H-14); ctx.stroke();
+    var lbl=msToShort(span*i/ticks);
+    ctx.fillText(lbl, Math.min(tx+2, W-40), 12);
+  }
+  var laneEnds=[0,0,0,0,0];
+  function transformed(q){ return applyTransform([q],state.k,state.b,state.shift)[0]; }
+  // 原始轨（蓝，半透明）
+  cues.forEach(function(q){
+    var x1=x(q.start), x2=x(q.end);
+    ctx.fillStyle='rgba(56,189,248,0.28)';
+    roundRect(ctx,x1,H-18-laneH,Math.max(2,x2-x1),laneH,4); ctx.fill();
+  });
+  // 调整后轨（琥珀）
+  var outCount=0;
+  cues.forEach(function(q){
+    var tq=transformed(q);
+    var x1=x(tq.start), x2=x(tq.end);
+    if(x2<pad-1 || x1>W-pad+1){ outCount++; }
+    ctx.fillStyle='#f0b429';
+    roundRect(ctx,x1,H-20-laneH*1.55,Math.max(2,x2-x1),laneH,4); ctx.fill();
+  });
+  // 拖动提示线
+  ctx.strokeStyle='rgba(240,180,41,0.35)';
+  ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(0,H-8); ctx.lineTo(W,H-8); ctx.stroke();
+  ctx.setLineDash([]);
+  var el=$('offsetVal');
+  var netShift = state.k===1 ? state.b+state.shift : state.shift;
+  el.textContent=(netShift>=0?'+':'')+ (netShift/1000).toFixed(2)+' s';
+  var st=$('stats');
+  st.textContent = cues.length+' 条字幕 · '+msToShort(cues[cues.length-1].end).replace(/^\+/,'')+' 总时长' + (outCount? ' · ⚠️ '+outCount+' 条被拖出时间轴范围':'');
+}
+function roundRect(ctx,x,y,w,h,r){
+  r=Math.min(r,w/2,h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+/* 拖拽（指针事件，鼠标+触屏统一） */
+(function(){
+  var cv=$(TL), dragging=false, lastX=0;
+  var SPAN_MS=6000; // 每像素毫秒近似，按可视 span 动态算更好——用动态值
+  function px2ms(){
+    var cues=state.cues;
+    if(!cues.length) return 10;
+    var t1=Math.max.apply(null, cues.map(function(q){return q.end;}));
+    t1 += Math.abs(state.shift)*1.15 + 800;
+    var span=Math.max(t1,1000);
+    return span / Math.max(200,(cv.clientWidth-20));
+  }
+  cv.addEventListener('pointerdown',function(e){
+    if(!state.cues.length) return;
+    dragging=true; lastX=e.clientX;
+    cv.classList.add('dragging');
+    cv.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  cv.addEventListener('pointermove',function(e){
+    if(!dragging) return;
+    var dx=e.clientX-lastX; lastX=e.clientX;
+    state.shift += dx*px2ms();
+    clampShift();
+    syncSlider();
+    render(); renderTable();
+  });
+  function end(){ dragging=false; cv.classList.remove('dragging'); }
+  cv.addEventListener('pointerup',end);
+  cv.addEventListener('pointercancel',end);
+})();
+function clampShift(){
+  if(!state.cues.length) return;
+  var maxEnd=Math.max.apply(null, state.cues.map(function(q){return q.end;}));
+  var hi=maxEnd*0.5+10000, lo=-(state.k*maxEnd)-10000;
+  if(state.shift>hi) state.shift=hi;
+  if(state.shift<lo) state.shift=lo;
+}
+function syncSlider(){
+  var net = state.k===1 ? state.b+state.shift : state.shift;
+  var v=Math.round(Math.max(-30000,Math.min(30000,net)));
+  $('slider').value=v;
+}
+/* ============ 表格 ============ */
+function renderTable(){
+  var body=$('cueBody'); body.textContent='';
+  if(!state.cues.length){
+    $('emptyMsg').textContent='还没有字幕：粘贴 SRT 文本、选择文件或点「载入示例」。';
+    $('btnCopy').disabled=true; $('btnDl').disabled=true;
+    return;
+  }
+  $('emptyMsg').textContent='';
+  $('btnCopy').disabled=false; $('btnDl').disabled=false;
+  var show=Math.min(state.cues.length, 200);
+  for(var i=0;i<show;i++){
+    var q=state.cues[i];
+    var tq=applyTransform([q],state.k,state.b,state.shift)[0];
+    var tr=document.createElement('tr');
+    if(tq.start!==q.start) tr.className='moved';
+    var moved = tq.start!==q.start;
+    tr.innerHTML =
+      '<td>'+q.idx+'</td>'+
+      '<td class="old">'+msToTC(q.start)+'<br>'+msToTC(q.end)+'</td>'+
+      '<td class="new">'+msToTC(tq.start)+'<br>'+msToTC(tq.end)+(moved?' ●':'')+'</td>'+
+      '<td class="txt"></td>';
+    tr.querySelector('.txt').textContent = q.text || '（空）';
+    body.appendChild(tr);
+  }
+  if(state.cues.length>show){
+    var tr2=document.createElement('tr');
+    tr2.innerHTML='<td colspan="4" class="old" style="text-align:center">… 其余 '+(state.cues.length-show)+' 条同样已调整（导出包含全部）</td>';
+    body.appendChild(tr2);
+  }
+}
+function outputSRT(){
+  return buildSRT(applyTransform(state.cues,state.k,state.b,state.shift));
+}
+/* ============ 输入动作 ============ */
+function loadText(text, sourceName){
+  var r=parseSRT(text);
+  if(!r.cues.length){
+    state.cues=[]; state.warnings=r.warnings;
+    $('parseMsg').innerHTML='<div class="err">没有解析出任何字幕块。确认是 SRT 格式（序号 / 00:00:00,000 --> 00:00:00,000 / 文本）。</div>'+(r.warnings.length?'<div class="warn">'+esc(r.warnings.join('；'))+'</div>':'');
+    render(); renderTable(); $('stats').textContent='';
+    return;
+  }
+  state.cues=r.cues; state.warnings=r.warnings;
+  var msg='<div class="ok">✓ 解析出 '+r.cues.length+' 条字幕'+(sourceName?'（'+esc(sourceName)+'）':'')+'</div>';
+  if(r.warnings.length) msg+='<div class="warn">⚠️ '+esc(r.warnings.slice(0,4).join('；'))+(r.warnings.length>4?' 等 '+r.warnings.length+' 条提示':'')+'</div>';
+  $('parseMsg').innerHTML=msg;
+  state.shift=0; state.k=1; state.b=0;
+  $('cueA').value=''; $('timeA').value=''; $('cueB').value=''; $('timeB').value='';
+  $('slider').value=0;
+  recompute();
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+$('btnSample').addEventListener('click',function(){
+  $('src').value=SAMPLE;
+  loadText(SAMPLE,'示例');
+  toast('示例已载入：试着拖动时间轴 ↑');
+});
+$('btnClear').addEventListener('click',function(){
+  $('src').value=''; loadText(''); $('syncInfo').textContent='尚未设置参考点';
+});
+$('btnFile').addEventListener('click',function(){ $('file').click(); });
+$('file').addEventListener('change',function(e){
+  var f=e.target.files && e.target.files[0];
+  if(!f) return;
+  if(f.size>2*1024*1024){ toast('文件超过 2MB，请确认是字幕文件', true); return; }
+  var rd=new FileReader();
+  rd.onload=function(){ $('src').value=rd.result; loadText(rd.result, f.name); toast('已载入 '+f.name); };
+  rd.onerror=function(){ toast('读取文件失败', true); };
+  rd.readAsText(f);
+  e.target.value='';
+});
+$('src').addEventListener('input', debounce(function(){ loadText($('src').value); }, 350));
+function debounce(fn,ms){ var h; return function(){ clearTimeout(h); h=setTimeout(fn,ms); }; }
+/* 微调滑杆 */
+$('slider').addEventListener('input',function(){
+  var target=parseInt(this.value,10);
+  if(state.k===1){
+    // 单点/无点模式：slider 直接改 net = b+shift
+    var cur=state.b+state.shift;
+    state.shift += target-cur;
+  }else{
+    state.shift=target;
+  }
+  clampShift();
+  render(); renderTable();
+});
+$('btnReset').addEventListener('click',function(){
+  state.shift=0; state.k=1; state.b=0;
+  $('cueA').value=''; $('timeA').value=''; $('cueB').value=''; $('timeB').value='';
+  $('slider').value=0;
+  $('syncInfo').textContent='尚未设置参考点';
+  render(); renderTable();
+  toast('已归零');
+});
+/* 双点同步 */
+['cueA','timeA','cueB','timeB'].forEach(function(id){
+  $(id).addEventListener('input', debounce(recompute, 300));
+});
+$('btnClearSync').addEventListener('click',function(){
+  state.k=1; state.b=0;
+  $('cueA').value=''; $('timeA').value=''; $('cueB').value=''; $('timeB').value='';
+  $('syncInfo').textContent='尚未设置参考点';
+  render(); renderTable();
+});
+/* 导出 */
+function download(){
+  var blob=new Blob([outputSRT()],{type:'application/x-subrip;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='fixed.srt';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },400);
+  toast('已下载 fixed.srt');
+}
+$('btnDl').addEventListener('click',download);
+$('btnCopy').addEventListener('click',function(){
+  var txt=outputSRT();
+  function fallback(){
+    var ta=document.createElement('textarea');
+    ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast('已复制到剪贴板'); }
+    catch(e){ toast('复制失败，请手动选择文本', true); }
+    ta.remove();
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){ toast('已复制到剪贴板'); }, fallback);
+  }else fallback();
+});
+window.addEventListener('resize', debounce(render,150));
+/* 初始：空态 */
+render(); renderTable();
+</script>
+</body>
+</html>
