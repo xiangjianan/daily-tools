@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LETTERLOCK · 密信胶囊 — 把一段话锁进一个自解密的 HTML 文件</title>
+<meta name="description" content="零依赖纯本地：写一段密信，设一个密码，铸造出一个自带解密器的单文件 HTML 胶囊。AES-256-GCM + PBKDF2，数据不出浏览器。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='13' width='24' height='15' rx='3' fill='%23f5a623'/%3E%3Cpath d='M10 13v-3a6 6 0 0 1 12 0v3' fill='none' stroke='%23f5a623' stroke-width='3'/%3E%3Ccircle cx='16' cy='20' r='2.4' fill='%2315171c'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#101216; --bg2:#151820; --panel:#191d26; --line:#2a2f3a; --line2:#3a4150;
+  --tx:#e8eaf0; --tx2:#9aa3b2; --tx3:#6b7482;
+  --accent:#f5a623; --accent2:#ffc757; --good:#4ecf8a; --bad:#ff6b6b; --badbg:#2a1a1a;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,'PingFang SC','Noto Sans CJK SC',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);line-height:1.55;
+  padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 40px)}
+.wrap{max-width:1060px;margin:0 auto}
+header{display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap}
+.logo{width:38px;height:38px;flex:none}
+h1{font-size:22px;letter-spacing:.5px}
+h1 .en{color:var(--accent)}
+.sub{color:var(--tx2);font-size:13.5px;margin-bottom:16px}
+.sub b{color:var(--tx);font-weight:600}
+.privacy{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--good);
+  border:1px solid rgba(78,207,138,.35);border-radius:999px;padding:3px 11px;margin-left:auto}
+.privacy svg{flex:none}
+.tabs{display:flex;gap:8px;margin-bottom:14px}
+.tab{flex:1;max-width:240px;text-align:center;padding:9px 10px;border:1px solid var(--line);
+  border-radius:10px;background:var(--bg2);color:var(--tx2);font-size:14px;cursor:pointer;
+  user-select:none;-webkit-user-select:none;transition:color .15s,border-color .15s}
+.tab:active{transform:translateY(1px)}
+.tab[aria-selected="true"]{color:var(--accent);border-color:var(--accent);background:rgba(245,166,35,.08);font-weight:600}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.panel[hidden]{display:none}
+.panel h2{font-size:14px;color:var(--tx2);font-weight:600;letter-spacing:.4px;margin-bottom:12px;
+  display:flex;align-items:center;gap:7px}
+.panel h2 .n{width:19px;height:19px;border-radius:50%;background:var(--accent);color:#151719;
+  font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:none}
+label{display:block;font-size:12.5px;color:var(--tx3);margin:12px 0 5px}
+label:first-of-type{margin-top:0}
+textarea,input[type=text],input[type=password]{
+  width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:10px;color:var(--tx);
+  font-size:14.5px;padding:10px 12px;font-family:inherit;resize:vertical}
+textarea{min-height:130px;line-height:1.6}
+textarea:focus,input:focus{outline:none;border-color:var(--accent)}
+textarea::placeholder,input::placeholder{color:var(--tx3)}
+.count{font-size:11.5px;color:var(--tx3);text-align:right;margin-top:4px;font-variant-numeric:tabular-nums}
+.pwdrow{position:relative}
+.pwdrow input{font-family:var(--mono);letter-spacing:1px;padding-right:44px}
+.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;
+  color:var(--tx3);cursor:pointer;padding:7px;font-size:15px;line-height:1;border-radius:8px}
+.eye:hover{color:var(--tx)}
+.meter{display:flex;gap:4px;margin-top:7px}
+.meter i{flex:1;height:4px;border-radius:2px;background:var(--line)}
+.meter i.on1{background:var(--bad)}.meter i.on2{background:#f5a623}.meter i.on3{background:#9bd65e}.meter i.on4{background:var(--good)}
+.mlabel{font-size:11.5px;color:var(--tx3);margin-top:4px;min-height:16px}
+.mlabel.warn{color:var(--bad)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:10px;
+  padding:11px 18px;font-size:14.5px;font-weight:600;cursor:pointer;font-family:inherit;
+  -webkit-tap-highlight-color:transparent;transition:filter .15s}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--accent);color:#151719;width:100%;margin-top:16px}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:var(--bg2);border:1px solid var(--line2);color:var(--tx2);font-weight:500;padding:8px 13px;font-size:13px}
+.btn.ghost:hover{color:var(--tx);border-color:var(--tx3)}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btnrow .ghost{flex:1;min-width:120px}
+.or{display:flex;align-items:center;gap:10px;color:var(--tx3);font-size:12px;margin:14px 0 10px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.drop{border:1.5px dashed var(--line2);border-radius:10px;padding:16px 12px;text-align:center;
+  color:var(--tx3);font-size:13px;cursor:pointer;transition:border-color .15s,color .15s}
+.drop:hover,.drop.over{border-color:var(--accent);color:var(--tx2)}
+.drop input{display:none}
+.result{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+  font-size:14.5px;white-space:pre-wrap;word-break:break-word;margin-top:12px;color:var(--tx)}
+.result.ok{border-color:rgba(78,207,138,.4)}
+.shake{animation:shake .4s}
+@keyframes shake{20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}
+.card{background:var(--bg2);border:1px solid rgba(78,207,138,.4);border-radius:10px;padding:13px 14px;margin-top:14px;font-size:13.5px;color:var(--tx2)}
+.card b{color:var(--good)}
+.payloadpeek{font-family:var(--mono);font-size:11px;color:var(--tx3);word-break:break-all;
+  background:var(--bg);border-radius:8px;padding:8px 10px;margin-top:8px;max-height:64px;overflow:hidden}
+.err{background:var(--badbg);border:1px solid rgba(255,107,107,.45);color:var(--bad)}
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 24px);transform:translateX(-50%);
+  background:#232833;border:1px solid var(--line2);color:var(--tx);font-size:13.5px;padding:10px 18px;
+  border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.45);opacity:0;pointer-events:none;
+  transition:opacity .25s,bottom .25s;max-width:88vw;z-index:50}
+.toast.show{opacity:1;bottom:calc(env(safe-area-inset-bottom) + 34px)}
+.howto{margin-top:18px;border-top:1px solid var(--line);padding-top:14px;color:var(--tx3);font-size:12.5px;line-height:1.8}
+.howto code{font-family:var(--mono);font-size:11.5px;background:var(--bg2);padding:1px 6px;border-radius:5px;color:var(--tx2)}
+footer{margin-top:22px;text-align:center;color:var(--tx3);font-size:12px}
+footer a{color:var(--tx2);text-decoration:none}
+@media(max-width:860px){
+  .grid{grid-template-columns:minmax(0,1fr)}
+  .privacy{margin-left:0;order:3}
+  h1{font-size:19px}
+  .tab{max-width:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="4" y="13" width="24" height="15" rx="3" fill="#f5a623"/><path d="M10 13v-3a6 6 0 0 1 12 0v3" fill="none" stroke="#f5a623" stroke-width="3"/><circle cx="16" cy="20" r="2.4" fill="#101216"/></svg>
+    <h1><span class="en">LETTERLOCK</span> · 密信胶囊</h1>
+    <span class="privacy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/></svg>全程本地加密 · 数据不出浏览器</span>
+  </header>
+  <p class="sub">把一段话<b>锁进一个单文件 HTML</b>：胶囊自带解密器，对方用任意浏览器打开、输入密码即可阅读——不装软件、不联网、服务器上什么都没有。</p>
+
+  <div class="tabs" role="tablist">
+    <div class="tab" id="tabC" role="tab" aria-selected="true">🔒 铸造胶囊</div>
+    <div class="tab" id="tabO" role="tab" aria-selected="false">🔓 开胶囊 / 验证</div>
+  </div>
+
+  <div class="grid">
+    <!-- ===== 铸造 ===== -->
+    <section class="panel" id="paneC">
+      <h2><span class="n">1</span>写一封只有密码能打开的信</h2>
+      <label for="msg">密信内容</label>
+      <textarea id="msg" placeholder="写点什么秘密的……例如：服务器 root 密码、给未来自己的话、一份惊喜清单。" maxlength="100000"></textarea>
+      <div class="count"><span id="cnt">0</span> 字符</div>
+
+      <label for="pwd">密码（用于加密，不会存进任何地方）</label>
+      <div class="pwdrow">
+        <input type="password" id="pwd" placeholder="设定一个只有收信人知道的密码" autocomplete="new-password">
+        <button class="eye" id="eye" title="显示/隐藏密码" aria-label="显示或隐藏密码">👁</button>
+      </div>
+      <div class="meter" aria-hidden="true"><i id="m0"></i><i id="m1"></i><i id="m2"></i><i id="m3"></i></div>
+      <div class="mlabel" id="mlabel">至少 4 个字符；越长越难破解</div>
+
+      <label for="hint">密码提示（可选，<b>明文</b>存入胶囊，请勿写密码本身）</label>
+      <input type="text" id="hint" maxlength="80" placeholder="例如：我们第一次见面的那家店">
+
+      <button class="btn primary" id="mint">⚡ 铸造胶囊</button>
+      <div id="mintOut"></div>
+
+      <div class="or">先试试看</div>
+      <button class="btn ghost" id="sample" style="width:100%">🎲 载入示例密信</button>
+
+      <div class="howto">
+        <b style="color:var(--tx2)">原理</b>：密码经 <code>PBKDF2-SHA256 × 310,000</code> 次迭代派生密钥，信件用 <code>AES-256-GCM</code> 加密（随机盐 + 随机 IV）。密文以 <code>LKLK1.</code> 开头嵌入胶囊 HTML，除此之外胶囊不含任何明文。密码错误时 GCM 校验必然失败，不可能「碰运气解开」。
+      </div>
+    </section>
+
+    <!-- ===== 开启 ===== -->
+    <section class="panel" id="paneO" hidden>
+      <h2><span class="n">2</span>打开一个胶囊</h2>
+      <label for="pl">粘贴密文（<code>LKLK1.</code> 开头的那串）</label>
+      <textarea id="pl" placeholder="LKLK1.xxxxxxxx……" style="min-height:88px;font-family:var(--mono);font-size:12px"></textarea>
+      <div class="or">或载入胶囊文件</div>
+      <div class="drop" id="drop">
+        拖入 .html 胶囊文件到这里，或点此选择
+        <input type="file" id="file" accept=".html,.htm,.txt">
+      </div>
+      <label for="opwd">密码</label>
+      <div class="pwdrow">
+        <input type="password" id="opwd" placeholder="输入密码" autocomplete="off">
+        <button class="eye" id="eye2" title="显示/隐藏密码" aria-label="显示或隐藏密码">👁</button>
+      </div>
+      <div class="mlabel" id="hintBox" hidden></div>
+      <button class="btn primary" id="open">🔓 解密阅读</button>
+      <div id="openOut"></div>
+    </section>
+  </div>
+
+  <footer>LETTERLOCK · 每日创意小工具 #25 · <a href="https://github.com/xiangjianan/daily-tools/tree/main/letterlock-20261007" target="_blank" rel="noopener">GitHub 源码</a></footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- 常量与工具 ---------- */
+var MAGIC = "LKLK1.";
+var PBKDF2_ITER = 310000;
+var $ = function(id){ return document.getElementById(id); };
+var te = new TextEncoder(), td = new TextDecoder();
+
+function b64(buf){
+  var u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf), s = "";
+  for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+  return btoa(s);
+}
+function unb64(str){
+  var s = atob(str), u8 = new Uint8Array(s.length);
+  for (var i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+  return u8;
+}
+var toastTimer = null;
+function toast(msg, isErr){
+  var t = $("toast");
+  t.textContent = msg;
+  t.style.borderColor = isErr ? "rgba(255,107,107,.5)" : "";
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove("show"); }, 2600);
+}
+function copyText(text, okMsg){
+  function fallback(){
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast(okMsg); }
+    catch(e){ toast("复制失败，请手动选择复制", true); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(function(){ toast(okMsg); }, fallback);
+  } else fallback();
+}
+
+/* ---------- 密码学核心 ---------- */
+function deriveKey(pwd, salt, iterations){
+  return crypto.subtle.importKey("raw", te.encode(pwd), "PBKDF2", false, ["deriveKey"])
+    .then(function(km){
+      return crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt: salt, iterations: iterations, hash: "SHA-256" },
+        km, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    });
+}
+function mintPayload(msg, pwd, hint){
+  var salt = crypto.getRandomValues(new Uint8Array(16));
+  var iv = crypto.getRandomValues(new Uint8Array(12));
+  return deriveKey(pwd, salt, PBKDF2_ITER).then(function(key){
+    return crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, te.encode(msg));
+  }).then(function(ct){
+    var obj = { v: 1, it: PBKDF2_ITER, s: b64(salt), i: b64(iv), c: b64(ct) };
+    if (hint) obj.h = hint;
+    return MAGIC + b64(te.encode(JSON.stringify(obj)));
+  });
+}
+function parsePayload(raw){
+  var s = String(raw || "").trim().replace(/\s+/g, "");
+  var at = s.indexOf(MAGIC);
+  if (at === -1) return null;
+  s = s.slice(at + MAGIC.length);
+  try { return JSON.parse(td.decode(unb64(s))); }
+  catch(e){ return null; }
+}
+function openPayload(raw, pwd){
+  return new Promise(function(resolve, reject){
+    var obj = parsePayload(raw);
+    if (!obj || !obj.s || !obj.i || !obj.c) { reject(new Error("这不是有效的胶囊密文")); return; }
+    var it = (typeof obj.it === "number" && obj.it >= 1000 && obj.it <= 2000000) ? obj.it : PBKDF2_ITER;
+    deriveKey(pwd, unb64(obj.s), it).then(function(key){
+      return crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(obj.i) }, key, unb64(obj.c));
+    }).then(function(pt){ resolve(td.decode(pt)); },
+      function(){ reject(new Error("密码不对——GCM 校验失败，一个字符之差都打不开")); });
+  });
+}
+
+/* ---------- 胶囊 HTML 生成（文件本身即解密器） ---------- */
+function capsuleHTML(payload, hint){
+  var h = hint ? String(hint).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;") : "";
+  return "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"UTF-8\">\n" +
+  "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n" +
+  "<title>\U0001F512 一封加密的信 — 输入密码阅读</title>\n" +
+  "<link rel=\"icon\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='13' width='24' height='15' rx='3' fill='%23f5a623'/%3E%3Cpath d='M10 13v-3a6 6 0 0 1 12 0v3' fill='none' stroke='%23f5a623' stroke-width='3'/%3E%3C/svg%3E\">\n" +
+  "<style>body{background:#101216;color:#e8eaf0;font-family:system-ui,sans-serif;display:flex;min-height:100vh;margin:0;align-items:center;justify-content:center;padding:20px}.b{width:100%;max-width:440px}.i{width:38px;margin-bottom:10px}h1{font-size:18px;margin:0 0 4px}p.s{color:#9aa3b2;font-size:13px;margin:0 0 16px}input{width:100%;box-sizing:border-box;background:#151820;border:1px solid #2a2f3a;border-radius:10px;color:#e8eaf0;font-size:15px;padding:11px 13px}input:focus{outline:none;border-color:#f5a623}button{width:100%;margin-top:10px;border:0;border-radius:10px;background:#f5a623;color:#151719;font-size:15px;font-weight:700;padding:11px;cursor:pointer}.o{margin-top:16px;background:#151820;border:1px solid rgba(78,207,138,.4);border-radius:10px;padding:14px;font-size:14.5px;white-space:pre-wrap;word-break:break-word;line-height:1.65}.e{border-color:rgba(255,107,107,.5);color:#ff6b6b;font-size:13.5px}.h{color:#6b7482;font-size:12px;margin-top:10px}@keyframes sh{20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}.sh{animation:sh .4s}</style>\n</head>\n<body>\n" +
+  "<div class=\"b\"><svg class=\"i\" viewBox=\"0 0 32 32\"><rect x=\"4\" y=\"13\" width=\"24\" height=\"15\" rx=\"3\" fill=\"#f5a623\"/><path d=\"M10 13v-3a6 6 0 0 1 12 0v3\" fill=\"none\" stroke=\"#f5a623\" stroke-width=\"3\"/><circle cx=\"16\" cy=\"20\" r=\"2.4\" fill=\"#101216\"/></svg>\n" +
+  "<h1>\U0001F512 一封加密的信</h1>\n<p class=\"s\">输入密码即可在本机解密阅读，全程离线。</p>\n" +
+  "<input id=\"p\" type=\"password\" placeholder=\"密码\" autocomplete=\"off\">\n" +
+  "<button id=\"u\">解密阅读</button>\n" + (h ? "<div class=\"h\">提示：" + h + "</div>\n" : "") +
+  "<div id=\"o\"></div></div>\n<script>\n" +
+  "\"use strict\";var P=\"" + payload + "\",M=\"" + MAGIC + "\",IT=" + PBKDF2_ITER + ";" +
+  "var te=new TextEncoder(),td=new TextDecoder();" +
+  "function u8(b){var s=atob(b),a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return a}" +
+  "function sb(s){var u8a=new Uint8Array(s.length);for(var j=0;j<s.length;j++)u8a[j]=s.charCodeAt(j);return btoa(String.fromCharCode.apply(null,u8a))}" +
+  "function go(){" +
+  "var pw=document.getElementById('p').value;if(!pw){document.getElementById('o').className='e o';document.getElementById('o').textContent='先输入密码';return}" +
+  "var s=P.slice(P.indexOf(M)+M.length),ob;try{ob=JSON.parse(td.decode(u8(s)))}catch(e){}" +
+  "var out=document.getElementById('o');" +
+  "if(!ob||!ob.s||!ob.i||!ob.c){out.className='e o';out.textContent='胶囊数据损坏';return}" +
+  "var it=(typeof ob.it==='number'&&ob.it>=1000)?ob.it:IT;" +
+  "crypto.subtle.importKey('raw',te.encode(pw),'PBKDF2',false,['deriveKey'])" +
+  ".then(function(k){return crypto.subtle.deriveKey({name:'PBKDF2',salt:u8(ob.s),iterations:it,hash:'SHA-256'},k,{name:'AES-GCM',length:256},false,['decrypt'])})" +
+  ".then(function(k){return crypto.subtle.decrypt({name:'AES-GCM',iv:u8(ob.i)},k,u8(ob.c))})" +
+  ".then(function(pt){out.className='o';out.textContent=td.decode(pt);document.getElementById('u').textContent='\u2713 已解密';document.getElementById('u').disabled=true;document.getElementById('p').disabled=true})" +
+  ".catch(function(){out.className='e o';out.textContent='\u274C 密码不对';var b=document.querySelector('.b');b.classList.remove('sh');void b.offsetWidth;b.classList.add('sh')})}" +
+  "document.getElementById('u').onclick=go;" +
+  "document.getElementById('p').addEventListener('keydown',function(e){if(e.key==='Enter')go()});" +
+  "<\/script>\n</body>\n</html>";
+}
+
+/* ---------- 密码强度（诚实估计：字符集 × 长度的熵下界） ---------- */
+function pwdScore(p){
+  if (!p) return { score: -1, label: "" };
+  var sets = 0;
+  if (/[a-z]/.test(p)) sets += 26;
+  if (/[A-Z]/.test(p)) sets += 26;
+  if (/[0-9]/.test(p)) sets += 10;
+  if (/[^a-zA-Z0-9]/.test(p)) sets += 33;
+  var bits = p.length * (Math.log2(sets || 1));
+  var score = bits < 28 ? 0 : bits < 40 ? 1 : bits < 55 ? 2 : bits < 75 ? 3 : 4;
+  var labels = ["太弱了——几秒就能试出来", "偏弱——加长一点", "还行——建议 12 位以上", "较强", "很强 ✓"];
+  return { score: score, label: labels[score] + "（约 " + Math.round(bits) + " bit 熵）", warn: score <= 0 };
+}
+
+/* ---------- UI：标签页 ---------- */
+function showTab(which){
+  var c = which === "c";
+  $("tabC").setAttribute("aria-selected", c ? "true" : "false");
+  $("tabO").setAttribute("aria-selected", c ? "false" : "true");
+  $("paneC").hidden = !c;
+  $("paneO").hidden = c;
+}
+$("tabC").addEventListener("click", function(){ showTab("c"); });
+$("tabO").addEventListener("click", function(){ showTab("o"); });
+
+/* ---------- 铸造侧 ---------- */
+$("msg").addEventListener("input", function(){ $("cnt").textContent = String(this.value.length); });
+function bindEye(btnId, inputId){
+  $(btnId).addEventListener("click", function(){
+    var inp = $(inputId);
+    inp.type = inp.type === "password" ? "text" : "password";
+    this.textContent = inp.type === "password" ? "\U0001F441" : "\U0001F648";
+  });
+}
+bindEye("eye", "pwd"); bindEye("eye2", "opwd");
+
+$("pwd").addEventListener("input", function(){
+  var r = pwdScore(this.value), ml = $("mlabel");
+  for (var i = 0; i < 4; i++) $("m" + i).className = (r.score >= 0 && i < r.score) ? ("on" + r.score) : "";
+  ml.textContent = r.label || "至少 4 个字符；越长越难破解";
+  ml.className = "mlabel" + (r.warn ? " warn" : "");
+});
+
+$("mint").addEventListener("click", function(){
+  var msg = $("msg").value, pwd = $("pwd").value, hint = $("hint").value.trim();
+  var out = $("mintOut");
+  if (!msg.trim()) { toast("先写点内容再铸造", true); $("msg").focus(); return; }
+  if (pwd.length < 4) { toast("密码至少 4 个字符", true); $("pwd").focus(); return; }
+  var btn = this;
+  btn.disabled = true; btn.textContent = "⏳ 正在派生密钥并加密…";
+  mintPayload(msg, pwd, hint).then(function(payload){
+    btn.disabled = false; btn.textContent = "⚡ 铸造胶囊";
+    var html = capsuleHTML(payload, hint);
+    window.__lastCapsule = html;
+    out.innerHTML = "";
+    var card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = "<b>\u2713 胶囊已铸好</b> —— 下载这个 .html 发给对方，或把密文粘给 TA。";
+    var peek = document.createElement("div");
+    peek.className = "payloadpeek";
+    peek.textContent = payload.slice(0, 72) + "…";
+    card.appendChild(peek);
+    var row = document.createElement("div");
+    row.className = "btnrow";
+    var bDl = document.createElement("button"); bDl.className = "btn ghost"; bDl.textContent = "\u2B07 下载胶囊 .html";
+    var bCp = document.createElement("button"); bCp.className = "btn ghost"; bCp.textContent = "\u2398 复制密文";
+    var bTry = document.createElement("button"); bTry.className = "btn ghost"; bTry.textContent = "\U0001F513 在本页试开";
+    bDl.addEventListener("click", function(){
+      var blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "letterlock-capsule.html";
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 800);
+      toast("胶囊已开始下载");
+    });
+    bCp.addEventListener("click", function(){ copyText(payload, "密文已复制"); });
+    bTry.addEventListener("click", function(){
+      $("pl").value = payload; $("opwd").value = ""; $("openOut").innerHTML = "";
+      showTab("o"); $("opwd").focus();
+    });
+    row.appendChild(bDl); row.appendChild(bCp); row.appendChild(bTry);
+    card.appendChild(row); out.appendChild(card);
+    toast("铸造完成 ✓ 全程本地，密钥已随内存释放");
+  }).catch(function(e){
+    btn.disabled = false; btn.textContent = "⚡ 铸造胶囊";
+    toast("铸造失败：" + (e && e.message ? e.message : e), true);
+  });
+});
+
+$("sample").addEventListener("click", function(){
+  $("msg").value = "给 2036 年的自己：\n\n如果这封信真的被打开了，说明密码你还记得——那家雨天躲过雨的书店，店名叫「拾光」。\n\n别忘了当时说好的事：把那台吃灰的树莓派做成天气站。\n\n—— 2026.10.07 的你";
+  $("pwd").value = "shiguang-bookstore-2026";
+  $("hint").value = "那家书店的全名（拼音小写连字符）";
+  $("msg").dispatchEvent(new Event("input"));
+  $("pwd").dispatchEvent(new Event("input"));
+  toast("示例已载入，点「铸造胶囊」试试");
+});
+
+/* ---------- 开启侧 ---------- */
+function extractFromFileText(text){
+  var m = text.match(new RegExp(MAGIC + "[A-Za-z0-9+/=]+"));
+  return m ? m[0] : null;
+}
+function tryOpen(){
+  var payload = $("pl").value, pwd = $("opwd").value, out = $("openOut");
+  if (!payload.trim()) { toast("先粘贴密文或载入胶囊文件", true); return; }
+  if (!pwd) { toast("输入密码", true); $("opwd").focus(); return; }
+  var obj = parsePayload(payload);
+  var hb = $("hintBox");
+  if (obj && obj.h) { hb.hidden = false; hb.innerHTML = "\U0001F4AC 密码提示：<b style=\"color:var(--tx2)\"></b>"; hb.querySelector("b").textContent = obj.h; }
+  else hb.hidden = true;
+  $("open").disabled = true; $("open").textContent = "⏳ 解密中…";
+  openPayload(payload, pwd).then(function(msg){
+    $("open").disabled = false; $("open").textContent = "\U0001F513 解密阅读";
+    out.innerHTML = "";
+    var r = document.createElement("div");
+    r.className = "result ok";
+    r.textContent = msg;
+    out.appendChild(r);
+    var row = document.createElement("div"); row.className = "btnrow";
+    var bCp = document.createElement("button"); bCp.className = "btn ghost"; bCp.textContent = "\u2398 复制内容";
+    bCp.addEventListener("click", function(){ copyText(msg, "内容已复制"); });
+    row.appendChild(bCp); out.appendChild(row);
+  }).catch(function(e){
+    $("open").disabled = false; $("open").textContent = "\U0001F513 解密阅读";
+    out.innerHTML = "";
+    var r = document.createElement("div");
+    r.className = "result err shake";
+    r.textContent = "\u274C " + (e && e.message ? e.message : "解密失败");
+    out.appendChild(r);
+  });
+}
+$("open").addEventListener("click", tryOpen);
+$("opwd").addEventListener("keydown", function(e){ if (e.key === "Enter") tryOpen(); });
+
+var drop = $("drop"), file = $("file");
+drop.addEventListener("click", function(){ file.click(); });
+drop.addEventListener("dragover", function(e){ e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", function(){ drop.classList.remove("over"); });
+drop.addEventListener("drop", function(e){ e.preventDefault(); drop.classList.remove("over"); handleFile(e.dataTransfer.files); });
+file.addEventListener("change", function(){ handleFile(this.files); });
+function handleFile(files){
+  if (!files || !files.length) return;
+  var f = files[0];
+  if (f.size > 8 * 1024 * 1024) { toast("文件超过 8MB，不太像胶囊", true); return; }
+  var rd = new FileReader();
+  rd.onload = function(){
+    var payload = extractFromFileText(String(rd.result || ""));
+    if (payload) { $("pl").value = payload; toast("已从文件提取密文 ✓"); }
+    else toast("这个文件里没有找到 LKLK1. 密文", true);
+  };
+  rd.onerror = function(){ toast("文件读取失败", true); };
+  rd.readAsText(f);
+}
+</script>
+</body>
+</html>

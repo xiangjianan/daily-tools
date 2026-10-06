@@ -8,6 +8,7 @@ One original single-file creative micro-tool per day — local-first, zero-depen
 
 | # | Date | Demo | Idea | Source |
 | --- | --- | --- | --- | --- |
+| #25 | 2026-10-07 | [LETTERLOCK](letterlock-20261007/) | LETTERLOCK: lock a note inside a self-decrypting HTML capsule — the file itself decrypts it offline, AES-256-GCM + PBKDF2, fully local | [source](letterlock-20261007) |
 | #24 | 2026-10-06 | [SUBSLIDE](subslide-20261006/) | SUBSLIDE: subtitles out of sync? drag the whole track on a timeline, two-point sync fixes frame-rate drift, export a fixed SRT — fully local | [source](subslide-20261006) |
 | #23 | 2026-10-05 | [ShotFramer](shotframer-20261005/) | ShotFramer: drop a screenshot, get a ready-to-post image — browser/phone frame, gradient backdrop, tilt & shadow, 2× PNG export, fully local | [source](shotframer-20261005) |
 | #22 | 2026-10-04 | [JWT Checkup](jwt-checkup-20261004/) | JWT Checkup: paste a token, get a checkup report — plain-language claims, lifecycle timeline, security review, all local | [source](jwt-checkup-20261004) |
