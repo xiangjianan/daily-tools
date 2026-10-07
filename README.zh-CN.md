@@ -8,6 +8,7 @@ English switch: [English](README.md)
 
 | # | Date | 在线试玩 | Idea | 源码 |
 | --- | --- | --- | --- | --- |
+| #26 | 2026-10-08 | [UUIDSCOPE（UUID 解剖镜）](uuidscope-20261008/) | 粘贴一批 UUID 看清每颗的真身：版本徽章、v1/v6/v7 内嵌时间戳画成时间带，乱序与 MAC 泄漏一眼看穿，全程本地 | [source](uuidscope-20261008) |
 | #25 | 2026-10-07 | [LETTERLOCK（密信胶囊）](letterlock-20261007/) | 把一段话锁进一个自解密的 HTML 胶囊：文件本身就是解密器，浏览器打开输密码即读，AES-256-GCM 全程本地 | [source](letterlock-20261007) |
 | #24 | 2026-10-06 | [SUBSLIDE（字幕轨拖拽）](subslide-20261006/) | 字幕不同步？像拖音频块一样拖整条字幕轨，双参考点修帧率漂移，导出修复 SRT，全程本地 | [source](subslide-20261006) |
 | #23 | 2026-10-05 | [ShotFramer（截图装裱机）](shotframer-20261005/) | 拖入截图一键装裱成成品图：浏览器/手机相框、渐变背景、倾斜投影，2× PNG 下载/复制，全程本地 | [source](shotframer-20261005) |

@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>UUIDSCOPE · UUID 解剖镜</title>
+<meta name="description" content="Paste a batch of UUIDs and see each one's version, variant and embedded timestamp (v1/v6/v7) instantly — timeline view, out-of-order & duplicate detection. 100% local.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔬</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2230;--fg:#e6edf3;--mut:#8b949e;
+  --line:#21262d;--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--err:#f85149;
+  --v1:#bc8cff;--v6:#39c5cf;--v7:#f778ba;--v4:#58a6ff;--vh:#8b949e;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom))}
+main{max-width:860px;margin:0 auto}
+header h1{font-size:24px;letter-spacing:.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h1 .lens{font-size:26px}
+.tagline{color:var(--mut);font-size:13.5px;margin:6px 0 4px}
+.badges{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 20px}
+.badge{font-size:11.5px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:2px 10px;background:var(--panel)}
+.badge b{color:var(--ok);font-weight:600}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+.card h2{font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px;font-weight:600}
+textarea{width:100%;min-height:120px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+  padding:12px;font:13px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:vertical;word-break:break-all}
+textarea:focus{outline:none;border-color:var(--acc)}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+button{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--fg);border-radius:8px;
+  padding:7px 14px;font-size:13.5px;cursor:pointer;transition:border-color .15s,background .15s;touch-action:manipulation}
+button:hover{border-color:var(--acc);background:#232b3b}
+button:active{transform:translateY(1px)}
+button.primary{background:#1f4a7a;border-color:#2f6cb3}
+button.primary:hover{background:#27598f}
+button:disabled{opacity:.45;cursor:default;transform:none}
+.hint{color:var(--mut);font-size:12.5px;margin-top:10px}
+#status{font-size:13.5px;margin-top:12px;color:var(--mut)}
+#status.err{color:var(--err)}
+#status.ok{color:var(--ok)}
+/* summary chips */
+#summary{display:none;gap:8px;flex-wrap:wrap}
+.chip{font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:5px 12px;background:var(--bg)}
+.chip b{font-variant-numeric:tabular-nums}
+.chip.v1 b{color:var(--v1)}.chip.v6 b{color:var(--v6)}.chip.v7 b{color:var(--v7)}.chip.v4 b{color:var(--v4)}
+.chip.bad b{color:var(--err)}
+.chip.dup b{color:var(--warn)}
+/* timeline */
+#tlwrap{display:none}
+#timeline{position:relative;height:74px;margin:6px 0 4px;background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+#tlaxis{position:absolute;left:10px;right:10px;top:38px;height:2px;background:var(--line)}
+.dot{position:absolute;top:30px;width:18px;height:18px;margin-left:-9px;border-radius:50%;cursor:pointer;
+  border:2px solid var(--bg);box-shadow:0 0 0 1.5px currentColor;transition:transform .12s;touch-action:manipulation}
+.dot:hover,.dot.sel{transform:scale(1.35)}
+.dot.bad{box-shadow:0 0 0 1.5px var(--err);border-radius:4px}
+#tlrange{display:flex;justify-content:space-between;color:var(--mut);font-size:11.5px;font-variant-numeric:tabular-nums;padding:0 10px}
+.tlcap{color:var(--mut);font-size:12px;margin-top:2px}
+/* rows */
+#rows{display:flex;flex-direction:column;gap:8px}
+.row{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+.row.sel{border-color:var(--acc)}
+.row.badrow{border-color:#5a2d2d}
+.rowtop{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.idx{color:var(--mut);font-size:11.5px;min-width:20px;font-variant-numeric:tabular-nums}
+.uid{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all;color:var(--fg);flex:1;min-width:200px}
+.cp{border:none;background:none;color:var(--mut);font-size:12px;padding:2px 6px}
+.cp:hover{color:var(--acc);background:none;border:none}
+.cp:active{transform:none}
+.vchip{font-size:11px;font-weight:700;border-radius:6px;padding:1px 8px;letter-spacing:.5px;background:var(--panel2)}
+.vchip.v1{color:var(--v1)}.vchip.v6{color:var(--v6)}.vchip.v7{color:var(--v7)}.vchip.v4{color:var(--v4)}
+.vchip.v3,.vchip.v5{color:#d2a8ff}.vchip.v2{color:#ffa657}.vchip.v8{color:#7ee787}
+.vchip.nil,.vchip.max{color:var(--mut)}
+.varchip{font-size:11px;color:var(--mut);border:1px solid var(--line);border-radius:6px;padding:1px 8px}
+.meta{display:flex;gap:14px;flex-wrap:wrap;margin-top:7px;color:var(--mut);font-size:12.5px}
+.meta .m b{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
+.meta .m.rel{color:var(--acc)}
+.warnline{margin-top:6px;font-size:12.5px;color:var(--warn)}
+.errline{margin-top:6px;font-size:12.5px;color:var(--err)}
+.nodechip{font-family:ui-monospace,monospace;font-size:12px}
+/* report */
+#reportbox{display:none;margin-top:12px}
+#reportpre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;
+  font:12px/1.7 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;max-height:280px;overflow:auto;color:var(--mut)}
+/* how */
+.how{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.how .hv{border:1px solid var(--line);border-radius:8px;padding:9px 12px;background:var(--bg)}
+.how .hv b{display:block;font-size:13px;margin-bottom:2px}
+.how .hv span{color:var(--mut);font-size:12px;line-height:1.5;display:block}
+footer{margin-top:26px;color:var(--mut);font-size:12px;line-height:1.7}
+footer a{color:var(--acc);text-decoration:none}
+@media(max-width:560px){
+  body{padding-left:10px;padding-right:10px}
+  header h1{font-size:20px}
+  .uid{min-width:140px;font-size:12px}
+  .meta{gap:10px}
+  #timeline{height:64px}
+  .dot{top:26px}
+  #tlaxis{top:34px}
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1><span class="lens">🔬</span>UUIDSCOPE <span style="font-size:14px;color:var(--mut);font-weight:400">UUID 解剖镜</span></h1>
+  <p class="tagline">粘贴一批 UUID，看清每颗 ID 的版本、变体与内嵌时间戳 —— v7 的前 48 位就是毫秒时间，v1 藏着生成主机。</p>
+  <div class="badges">
+    <span class="badge"><b>●</b> 100% 浏览器本地解析，数据不出设备</span>
+    <span class="badge">RFC 9562 (v1–v8)</span>
+    <span class="badge">支持 v1 / v6 / v7 时间戳还原</span>
+  </div>
+</header>
+
+<section class="card">
+  <h2>输入 · 每行一颗（也支持逗号 / 空格分隔）</h2>
+  <textarea id="in" placeholder="0197d3e2-6f1a-7cc2-b5aa-5fd3a2e11f90&#10;2b5e7f60-8a1e-11d0-9f8c-08002b104afb&#10;…粘进来就出结果" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+  <div class="btns">
+    <button class="primary" id="btnSample">载入示例</button>
+    <button id="btnGen4">生成 v4 ↓</button>
+    <button id="btnGen7">生成 v7 ↓</button>
+    <button id="btnClear">清空</button>
+    <button id="btnReport">复制报告 📋</button>
+  </div>
+  <div id="status">粘贴或点击「载入示例」开始解剖。</div>
+</section>
+
+<section class="card">
+  <h2>统计</h2>
+  <div id="summary"></div>
+</section>
+
+<section class="card" id="tlwrap">
+  <h2>内嵌时间带 · 时间承载型 ID（v1 / v6 / v7）</h2>
+  <div id="timeline"><div id="tlaxis"></div></div>
+  <div id="tlrange"><span id="tlmin">—</span><span id="tlmax">—</span></div>
+  <p class="tlcap">点圆点定位对应 ID · 红色方块 = 乱序（时间倒挂，数据库按 ID 排序时会乱）</p>
+</section>
+
+<section class="card">
+  <h2>解剖结果</h2>
+  <div id="rows"></div>
+  <div id="reportbox">
+    <div class="btns"><button id="btnCopyRep">复制文本报告</button><button id="btnHideRep">收起</button></div>
+    <pre id="reportpre"></pre>
+  </div>
+</section>
+
+<section class="card">
+  <h2>各版本长什么样</h2>
+  <div class="how">
+    <div class="hv"><b style="color:var(--v1)">v1 时间+MAC</b><span>60 位 1582 纪元时间，末 6 字节常是生成主机 MAC（有随机位则匿名）。</span></div>
+    <div class="hv"><b style="color:#d2a8ff">v3 / v5 命名空间</b><span>MD5 / SHA-1 对「命名空间+名字」的摘要，不可逆，无内嵌时间。</span></div>
+    <div class="hv"><b style="color:var(--v4)">v4 随机</b><span>122 位纯随机，无结构可言 —— 但隐私性最好。</span></div>
+    <div class="hv"><b style="color:var(--v6)">v6 重排 v1</b><span>v1 字段按高位在前重排，可按字符串排序，时间信息不变。</span></div>
+    <div class="hv"><b style="color:var(--v7)">v7 Unix 毫秒</b><span>前 48 位 = Unix 毫秒时间戳，天然按时间有序，数据库友好（PG18 已内置）。</span></div>
+    <div class="hv"><b style="color:#7ee787">v8 自定义</b><span>厂商自定义布局，除版本/变体位外不保证任何结构。</span></div>
+  </div>
+</section>
+
+<footer>
+  UUIDSCOPE · 每日创意小工具 #26 · <a href="https://github.com/xiangjianan/daily-tools/tree/main/uuidscope-20261008">源码</a>
+  · 纯前端零依赖，输入永不上传。<br>
+  诚实声明：本工具只做结构解剖，不验证 v3/v5 的名字与命名空间（不可逆），也不校验 UUID 是否真的由声称的系统签发。
+</footer>
+</main>
+
+<script>
+"use strict";
+/* ============ 纯函数区（可独立测试） ============ */
+var V1_EPOCH_MS = -12219292800000; // 1582-10-15T00:00:00Z
+
+function normInput(text) {
+  return String(text || '').split(/[\s,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+function parseUuid(raw) {
+  var s = String(raw || '').trim()
+    .replace(/^urn:uuid:/i, '')
+    .replace(/^\{|\}$/g, '')
+    .toLowerCase();
+  var compact = s.replace(/-/g, '');
+  if (!/^[0-9a-f]{32}$/.test(compact)) {
+    return { ok: false, reason: '不是 32 位十六进制' };
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)) {
+    return { ok: false, reason: '十六进制合法但连字符位置不对（应为 8-4-4-4-12）' };
+  }
+  var b = new Uint8Array(16);
+  for (var i = 0; i < 16; i++) b[i] = parseInt(compact.substr(i * 2, 2), 16);
+  var hex = s;
+  var ver = b[6] >> 4;
+  var varBits = b[8] >> 6;
+  var variant = varBits === 2 ? 'rfc' : varBits === 3 ? 'microsoft' : varBits === 0 ? 'ncs' : 'reserved';
+  var variantLabel = variant === 'rfc' ? 'RFC 9562' : variant === 'microsoft' ? 'Microsoft' : variant === 'ncs' ? 'NCS(遗留)' : '保留';
+
+  var out = {
+    ok: true, input: raw, hex: hex, ver: ver, variant: variant, variantLabel: variantLabel,
+    kind: 'opaque', timeMs: null, hasTime: false, warnings: [], extras: []
+  };
+  if (ver === 0 && /^0{32}$/.test(compact)) { out.kind = 'nil'; return out; }
+  if (ver === 15 && /^f{32}$/.test(compact)) { out.kind = 'max'; return out; }
+
+  if (ver === 1 || ver === 6) {
+    var t;
+    if (ver === 1) {
+      var lo = (b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]) >>> 0;
+      var mid = (b[4] << 8 | b[5]) >>> 0;
+      var hi = ((b[6] & 0x0f) << 8 | b[7]) >>> 0;
+      t = (BigInt(hi) << 48n) | (BigInt(mid) << 32n) | BigInt(lo);
+    } else {
+      var hi32 = (b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]) >>> 0;
+      var mid6 = (b[4] << 8 | b[5]) >>> 0;
+      var lo12 = ((b[6] & 0x0f) << 8 | b[7]) >>> 0;
+      t = (BigInt(hi32) << 28n) | (BigInt(mid6) << 12n) | BigInt(lo12);
+    }
+    var ms = Number(t) / 10000 + V1_EPOCH_MS;
+    var d = new Date(ms);
+    out.hasTime = true; out.timeMs = ms; out.timeDate = d; out.kind = 'gregorian';
+    var clk = ((b[8] & 0x3f) << 8 | b[9]) >>> 0;
+    var nodeBytes = b.slice(10, 16);
+    var isRandom = (nodeBytes[0] & 0x01) === 1;
+    var nodeHex = Array.prototype.map.call(nodeBytes, function (x) { return ('0' + x.toString(16)).slice(-2); }).join(':');
+    out.extras.push({ k: '时钟序列', v: '0x' + clk.toString(16).toUpperCase() });
+    if (isRandom) {
+      out.extras.push({ k: '节点', v: nodeHex + '（随机位=1，匿名）' });
+    } else {
+      out.extras.push({ k: '节点 MAC', v: nodeHex });
+      out.warnings.push('末 6 字节是真实 MAC —— 可能暴露生成设备的身份');
+    }
+    if (ms > Date.now() + 365 * 86400000) out.warnings.push('内嵌时间在未来一年以上，可疑');
+    if (d.getFullYear() < 1970) out.warnings.push('时间早于 1970，多半是手填/损坏的 ID');
+  } else if (ver === 7) {
+    var t7 = (BigInt(b[0]) << 40n) | (BigInt(b[1]) << 32n) | (BigInt(b[2]) << 24n) | (BigInt(b[3]) << 16n) | (BigInt(b[4]) << 8n) | BigInt(b[5]);
+    var ms7 = Number(t7);
+    var d7 = new Date(ms7);
+    out.hasTime = true; out.timeMs = ms7; out.timeDate = d7; out.kind = 'unixms';
+    var counter = ((b[6] & 0x0f) << 8 | b[7]) >>> 0;
+    if (counter === 0) out.extras.push({ k: 'rand_a', v: '0（未用单调计数器？）' });
+    else out.extras.push({ k: '段内随机/计数', v: '0x' + counter.toString(16).toUpperCase() });
+    if (ms7 > Date.now() + 365 * 86400000) out.warnings.push('内嵌时间在未来一年以上，可疑');
+  } else if (ver === 2) {
+    out.kind = 'dce';
+    var dom = b[9];
+    var domName = dom === 0 ? 'Person(UID)' : dom === 1 ? 'Group(GID)' : dom === 2 ? 'Org' : '未知域 ' + dom;
+    var idv = (b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]) >>> 0;
+    out.extras.push({ k: '本地标识', v: String(idv) });
+    out.extras.push({ k: '域', v: domName });
+  } else if (ver === 3) {
+    out.kind = 'named'; out.extras.push({ k: '来源', v: 'MD5(命名空间+名字)，不可逆' });
+  } else if (ver === 5) {
+    out.kind = 'named'; out.extras.push({ k: '来源', v: 'SHA-1(命名空间+名字)，不可逆' });
+  } else if (ver === 8) {
+    out.kind = 'custom'; out.extras.push({ k: '来源', v: '厂商自定义布局，无标准结构' });
+  }
+  return out;
+}
+
+function relTime(ms, now) {
+  var diff = Math.abs(now - ms), s = Math.floor(diff / 1000);
+  var suf = ms <= now ? '前' : '后';
+  if (s < 60) return s + ' 秒' + suf;
+  if (s < 3600) return Math.floor(s / 60) + ' 分钟' + suf;
+  if (s < 86400) return Math.floor(s / 3600) + ' 小时' + suf;
+  if (s < 86400 * 365) return Math.floor(s / 86400) + ' 天' + suf;
+  return (diff / 86400000 / 365).toFixed(1) + ' 年' + suf;
+}
+
+function fmtLocal(d) {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return '—';
+  var p = function (n) { return (n < 10 ? '0' : '') + n; };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+    p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+
+function verLabel(r) {
+  if (r.kind === 'nil') return 'NIL';
+  if (r.kind === 'max') return 'MAX';
+  return 'v' + r.ver;
+}
+
+function analyze(text, now) {
+  var tokens = normInput(text);
+  var results = [], badCount = 0, verHist = {}, dupBy = {};
+  for (var i = 0; i < tokens.length; i++) {
+    var r = parseUuid(tokens[i]);
+    r.index = i + 1;
+    if (!r.ok) { r.input = tokens[i]; badCount++; results.push(r); continue; }
+    var vl = verLabel(r);
+    verHist[vl] = (verHist[vl] || 0) + 1;
+    if (dupBy[r.hex] !== undefined) {
+      r.duplicateOf = dupBy[r.hex];
+      r.warnings = r.warnings || [];
+      r.warnings.push('与第 ' + dupBy[r.hex] + ' 颗重复');
+    } else dupBy[r.hex] = i + 1;
+    results.push(r);
+  }
+  // 时间承载型：乱序检测（按输入顺序，时间应单调不减才对 ID 排序友好）
+  var timeBearing = results.filter(function (r) { return r.ok && r.hasTime; });
+  var ordered = true;
+  for (var j = 1; j < timeBearing.length; j++) {
+    if (timeBearing[j].timeMs < timeBearing[j - 1].timeMs) {
+      timeBearing[j].outOfOrder = true;
+      ordered = false;
+    }
+  }
+  return { results: results, badCount: badCount, verHist: verHist, timeBearing: timeBearing, ordered: ordered, total: tokens.length };
+}
+
+function buildReport(a, now) {
+  var lines = ['# UUIDSCOPE 解剖报告', '', '- 解析时间：' + fmtLocal(new Date(now)), '- 总计：' + a.total + ' 颗（无效 ' + a.badCount + '）', ''];
+  a.results.forEach(function (r) {
+    if (!r.ok) { lines.push(r.index + '. ⚠️ 无法解析'); return; }
+    var l = r.index + '. ' + verLabel(r) + ' ' + r.hex;
+    if (r.hasTime) l += ' ｜ ' + fmtLocal(r.timeDate) + '（' + relTime(r.timeMs, now) + '）';
+    r.extras.forEach(function (e) { l += ' ｜ ' + e.k + ': ' + e.v; });
+    lines.push(l);
+    (r.warnings || []).forEach(function (w) { lines.push('   ⚠️ ' + w); });
+  });
+  if (a.timeBearing.length >= 2 && !a.ordered) lines.push('', '⚠️ 时间承载型 ID 存在乱序：按 ID 排序 ≠ 按时间排序。');
+  return lines.join('\n');
+}
+
+function genV4() {
+  var b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  return hexOf(b);
+}
+function genV7(ms) {
+  if (ms === undefined) ms = Date.now();
+  if (typeof ms !== 'bigint') ms = BigInt(Math.round(ms));
+  var b = new Uint8Array(16);
+  for (var i = 5; i >= 0; i--) { b[i] = Number(ms % 256n); ms = ms / 256n; }
+  crypto.getRandomValues(b.subarray(6));
+  b[6] = (b[6] & 0x0f) | 0x70; b[8] = (b[8] & 0x3f) | 0x80;
+  return hexOf(b);
+}
+function hexOf(b) {
+  var h = Array.prototype.map.call(b, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+  return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+}
+
+function genV6(ms) {
+  // 60-bit gregorian like v1, reordered hi-first
+  ms = Number(ms);
+  var t = BigInt(Math.round(ms - V1_EPOCH_MS)) * 10000n;
+  var hi32 = (t >> 28n) & 0xffffffffn, mid12 = (t >> 12n) & 0xffffn, low12 = t & 0xfffn;
+  var b = new Uint8Array(16);
+  var h = hi32;
+  for (var i = 3; i >= 0; i--) { b[i] = Number(h & 0xffn); h >>= 8n; }
+  b[4] = Number((mid12 >> 8n) & 0xffn); b[5] = Number(mid12 & 0xffn);
+  b[6] = (Number(low12 >> 8n) & 0x0f) | 0x60; b[7] = Number(low12 & 0xffn);
+  b[8] = 0x80; b[9] = 0x00;
+  for (var j = 10; j < 16; j++) b[j] = (j * 7 + 3) & 0xff;
+  b[10] &= 0xfe; b[10] |= 0x01; // multicast bit → 随机节点
+  return hexOf(b);
+}
+
+function makeSample() {
+  var now = Date.now();
+  // 运行时生成时间敏感样例：v7 三颗（含一颗乱序）+ v1（含 MAC）+ v6 + v4 + v5 形 + 一颗坏值
+  var lines = [
+    genV7(BigInt(now) - 3600000n),
+    genV7(BigInt(now)),
+    genV4(),
+    '306c3a2f-4c31-11d0-9f8c-08002b104afb', // v1 形（真实 MAC 位）
+    genV6(BigInt(now) - 86400000n * 3n),
+    genV7(BigInt(now) - 60000n), // 乱序：比上一颗 v7 更早
+    'f4a3b6c2-9d1e-5f47-8a2b-3c5d6e7f8a9b', // v5 形
+    'not-a-uuid'
+  ];
+  return lines.join('\n');
+}
+
+/* 供逻辑仿真 require */
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { normInput: normInput, parseUuid: parseUuid, relTime: relTime, fmtLocal: fmtLocal, analyze: analyze, buildReport: buildReport, genV4: genV4, genV7: genV7, genV6: genV6, makeSample: makeSample, hexOf: hexOf };
+}
+
+/* ============ DOM 区 ============ */
+if (typeof document !== 'undefined' && document.getElementById) {
+var $ = function (id) { return document.getElementById(id); };
+var state = { analysis: null, now: Date.now() };
+
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+function colorFor(r) {
+  if (r.ver === 1) return 'var(--v1)';
+  if (r.ver === 6) return 'var(--v6)';
+  if (r.ver === 7) return 'var(--v7)';
+  return 'var(--v4)';
+}
+
+function copyText(t, btn) {
+  var done = function () {
+    if (!btn) return;
+    var old = btn.textContent;
+    btn.textContent = '已复制 ✓';
+    setTimeout(function () { btn.textContent = old; }, 1200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(t).then(done, function () { fallbackCopy(t); done(); });
+  } else { fallbackCopy(t); done(); }
+}
+function fallbackCopy(t) {
+  var ta = document.createElement('textarea');
+  ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+function render() {
+  var text = $('in').value;
+  var a = analyze(text, Date.now());
+  state.analysis = a;
+  var st = $('status');
+  $('summary').style.display = 'flex';
+  $('rows').innerHTML = '';
+
+  if (!a.total) {
+    st.className = ''; st.textContent = '粘贴或点击「载入示例」开始解剖。';
+    $('summary').innerHTML = '<span class="chip">空输入 — 等待 ID</span>';
+    $('tlwrap').style.display = 'none';
+    $('reportbox').style.display = 'none';
+    return;
+  }
+  st.className = a.badCount && !a.results.some(function (r) { return r.ok; }) ? 'err' : 'ok';
+  st.textContent = '已解析 ' + a.total + ' 个输入 · 有效 ' + (a.total - a.badCount) + ' · 无效 ' + a.badCount;
+
+  // summary chips
+  var chips = ['<span class="chip">共 <b>' + a.total + '</b></span>'];
+  ['v7', 'v6', 'v1', 'v4'].forEach(function (v) {
+    if (a.verHist[v]) chips.push('<span class="chip ' + v + '">' + v + ' × <b>' + a.verHist[v] + '</b></span>');
+  });
+  Object.keys(a.verHist).forEach(function (v) {
+    if (['v7', 'v6', 'v1', 'v4'].indexOf(v) < 0) chips.push('<span class="chip">' + esc(v) + ' × <b>' + a.verHist[v] + '</b></span>');
+  });
+  if (a.badCount) chips.push('<span class="chip bad">无效 <b>' + a.badCount + '</b></span>');
+  var dupCount = a.results.filter(function (r) { return r.ok && r.duplicateOf; }).length;
+  if (dupCount) chips.push('<span class="chip dup">重复 <b>' + dupCount + '</b></span>');
+  if (a.timeBearing.length >= 2 && !a.ordered) chips.push('<span class="chip dup">检测到乱序</span>');
+  $('summary').innerHTML = chips.join('');
+
+  // timeline
+  renderTimeline(a);
+
+  // rows
+  a.results.forEach(function (r, i) {
+    var div = document.createElement('div');
+    div.className = 'row' + (r.outOfOrder ? ' badrow' : '');
+    div.id = 'row' + i;
+    if (!r.ok) {
+      div.className += ' badrow';
+      div.innerHTML = '<div class="rowtop"><span class="idx">#' + r.index + '</span>' +
+        '<span class="uid" style="color:var(--err)">' + esc(r.input.slice(0, 60)) + '</span></div>' +
+        '<div class="errline">✕ ' + esc(r.reason) + '</div>';
+    } else {
+      var meta = '';
+      if (r.hasTime) {
+        meta += '<span class="m">内嵌时间 <b>' + fmtLocal(r.timeDate) + '</b></span>' +
+          '<span class="m rel">' + relTime(r.timeMs, Date.now()) + '</span>';
+      }
+      if (r.kind === 'nil' || r.kind === 'max') meta += '<span class="m">特殊保留值</span>';
+      r.extras.forEach(function (e) {
+        meta += '<span class="m">' + esc(e.k) + ' <b class="nodechip">' + esc(e.v) + '</b></span>';
+      });
+      var warns = (r.warnings || []).map(function (w) { return '<div class="warnline">⚠ ' + esc(w) + '</div>'; }).join('');
+      div.innerHTML = '<div class="rowtop"><span class="idx">#' + r.index + '</span>' +
+        '<span class="vchip ' + (r.kind === 'nil' || r.kind === 'max' ? 'nil' : 'v' + r.ver) + '">' + verLabel(r) + '</span>' +
+        '<span class="varchip">' + esc(r.variantLabel) + '</span>' +
+        '<span class="uid">' + esc(r.hex) + '</span>' +
+        '<button class="cp" data-i="' + i + '">复制</button></div>' +
+        (meta ? '<div class="meta">' + meta + '</div>' : '') + warns;
+    }
+    $('rows').appendChild(div);
+  });
+  var cps = document.querySelectorAll('.cp');
+  for (var k = 0; k < cps.length; k++) {
+    cps[k].addEventListener('click', function () {
+      var r = state.analysis.results[+this.getAttribute('data-i')];
+      copyText(r.hex, this);
+    });
+  }
+}
+
+function renderTimeline(a) {
+  var tb = a.timeBearing;
+  var wrap = $('tlwrap'), tl = $('timeline');
+  tl.innerHTML = '<div id="tlaxis"></div>';
+  if (tb.length < 2) {
+    wrap.style.display = tb.length === 1 ? 'block' : 'none';
+    if (tb.length === 1) $('tlmin').textContent = fmtLocal(tb[0].timeDate), $('tlmax').textContent = '';
+    return;
+  }
+  wrap.style.display = 'block';
+  var lo = tb[0].timeMs, hi = tb[0].timeMs;
+  tb.forEach(function (r) { if (r.timeMs < lo) lo = r.timeMs; if (r.timeMs > hi) hi = r.timeMs; });
+  var span = Math.max(hi - lo, 1);
+  var xs = tb.map(function (r) { return 2 + 96 * (r.timeMs - lo) / span; });
+  // beeswarm 两遍法：先从左到右推右保证最小间距 2.2%，再从右到左夹回不越右缘
+  for (var xi = 1; xi < xs.length; xi++) {
+    if (xs[xi] < xs[xi - 1] + 2.2) xs[xi] = xs[xi - 1] + 2.2;
+  }
+  var bound = 97;
+  for (var xj = xs.length - 1; xj >= 0; xj--) {
+    if (xs[xj] > bound) xs[xj] = bound;
+    bound = xs[xj] - 2.2;
+  }
+  tb.forEach(function (r, idx) {
+    var x = xs[idx];
+    var dot = document.createElement('div');
+    dot.className = 'dot' + (r.outOfOrder ? ' bad' : '');
+    dot.style.left = x + '%';
+    dot.style.top = (idx % 2 === 0 ? 24 : 44) + 'px'; // 交错高度，近距点不互相遮挡
+    dot.style.color = colorFor(r);
+    dot.style.background = colorFor(r);
+    dot.setAttribute('data-row', String(a.results.indexOf(r)));
+    dot.title = '#' + r.index + ' ' + fmtLocal(r.timeDate) + (r.outOfOrder ? '（乱序）' : '');
+    tl.appendChild(dot);
+  });
+  $('tlmin').textContent = fmtLocal(new Date(lo));
+  $('tlmax').textContent = fmtLocal(new Date(hi));
+  var dots = tl.querySelectorAll('.dot');
+  for (var i = 0; i < dots.length; i++) {
+    dots[i].addEventListener('click', function () {
+      var prev = tl.querySelector('.dot.sel');
+      if (prev) prev.classList.remove('sel');
+      var prevRow = document.querySelector('.row.sel');
+      if (prevRow) prevRow.classList.remove('sel');
+      this.classList.add('sel');
+      var row = document.getElementById('row' + this.getAttribute('data-row'));
+      if (row) { row.classList.add('sel'); row.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    });
+  }
+}
+
+$('in').addEventListener('input', function () { render(); });
+$('btnSample').addEventListener('click', function () { $('in').value = makeSample(); render(); });
+$('btnClear').addEventListener('click', function () { $('in').value = ''; render(); $('in').focus(); });
+$('btnGen4').addEventListener('click', function () { $('in').value = ($('in').value.trim() ? $('in').value.trim() + '\n' : '') + genV4(); render(); });
+$('btnGen7').addEventListener('click', function () { $('in').value = ($('in').value.trim() ? $('in').value.trim() + '\n' : '') + genV7(); render(); });
+$('btnReport').addEventListener('click', function () {
+  if (!state.analysis || !state.analysis.total) return;
+  var rep = buildReport(state.analysis, Date.now());
+  $('reportbox').style.display = 'block';
+  $('reportpre').textContent = rep;
+  $('reportbox').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+$('btnCopyRep').addEventListener('click', function () { copyText($('reportpre').textContent, this); });
+$('btnHideRep').addEventListener('click', function () { $('reportbox').style.display = 'none'; });
+}
+</script>
+</body>
+</html>
