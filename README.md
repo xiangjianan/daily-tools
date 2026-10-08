@@ -8,6 +8,7 @@ One original single-file creative micro-tool per day — local-first, zero-depen
 
 | # | Date | Demo | Idea | Source |
 | --- | --- | --- | --- | --- |
+| #27 | 2026-10-09 | [BRAILLEPIC](braillepic-20261009/) | BRAILLEPIC: drop an image, get Unicode braille pixel art — 2×4 dots per glyph = 8× the resolution of ASCII art, dithering for depth, paste anywhere as plain text, fully local | [source](braillepic-20261009) |
 | #26 | 2026-10-08 | [UUIDSCOPE](uuidscope-20261008/) | UUIDSCOPE: paste a batch of UUIDs and see what each really is — version badge, embedded v1/v6/v7 timestamps on a timeline, out-of-order & MAC-leak detection, fully local | [source](uuidscope-20261008) |
 | #25 | 2026-10-07 | [LETTERLOCK](letterlock-20261007/) | LETTERLOCK: lock a note inside a self-decrypting HTML capsule — the file itself decrypts it offline, AES-256-GCM + PBKDF2, fully local | [source](letterlock-20261007) |
 | #24 | 2026-10-06 | [SUBSLIDE](subslide-20261006/) | SUBSLIDE: subtitles out of sync? drag the whole track on a timeline, two-point sync fixes frame-rate drift, export a fixed SRT — fully local | [source](subslide-20261006) |
