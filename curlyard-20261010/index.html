@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>CURLYARD — turn any curl command into code</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Ctext x='16' y='22' font-size='15' font-family='monospace' font-weight='bold' fill='%2350e3c2' text-anchor='middle'%3E%26gt;_%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2d333b;
+  --txt:#e6edf3; --dim:#8b949e; --faint:#6e7681;
+  --accent:#50e3c2; --accent2:#f0b429; --danger:#ff6b6b;
+  --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--txt); font-family:var(--sans);
+  min-height:100vh; padding:calc(12px + env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom));
+}
+.wrap{max-width:1180px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding:10px 2px 16px}
+.logo{font-family:var(--mono);font-weight:700;font-size:22px;letter-spacing:-.5px}
+.logo b{color:var(--accent)}
+.tagline{color:var(--dim);font-size:13.5px}
+.privacy{margin-left:auto;font-size:12px;color:var(--faint);display:flex;align-items:center;gap:5px}
+.privacy svg{flex:none}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+@media(max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
+.card-head .num{font-family:var(--mono);color:var(--accent);text-transform:none;letter-spacing:0}
+textarea#input{
+  width:100%;min-height:190px;background:transparent;border:0;outline:0;resize:vertical;
+  color:var(--txt);font-family:var(--mono);font-size:13px;line-height:1.55;padding:12px 14px;
+}
+textarea#input::placeholder{color:var(--faint)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 12px}
+.chip{
+  border:1px solid var(--line);background:var(--panel2);color:var(--dim);border-radius:20px;
+  padding:4px 11px;font-size:12px;cursor:pointer;user-select:none;transition:all .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#0d1117;font-weight:600}
+/* request card */
+.req{padding:14px}
+.badges{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.method{
+  font-family:var(--mono);font-weight:700;font-size:13px;padding:3px 10px;border-radius:6px;
+  background:var(--accent);color:#0d1117;letter-spacing:.5px;
+}
+.method[data-m="POST"],.method[data-m="PUT"],.method[data-m="PATCH"]{background:var(--accent2)}
+.method[data-m="DELETE"]{background:var(--danger)}
+.method[data-m="HEAD"],.method[data-m="OPTIONS"]{background:var(--dim)}
+.url-main{font-family:var(--mono);font-size:13px;word-break:break-all;line-height:1.5;color:var(--txt)}
+.url-main .warn{color:var(--danger)}
+table.parts{width:100%;border-collapse:collapse;margin-top:10px;font-family:var(--mono);font-size:12px}
+table.parts td{padding:5px 8px;border-top:1px solid var(--line);vertical-align:top;word-break:break-all}
+table.parts td:first-child{color:var(--faint);white-space:nowrap;width:1%}
+table.parts td:last-child{color:var(--dim)}
+table.parts td:last-child b{color:var(--txt);font-weight:500}
+section.hdrblock{margin-top:12px}
+.hdr{display:flex;gap:8px;padding:5px 8px;border-radius:6px;font-family:var(--mono);font-size:12px;align-items:baseline}
+.hdr:nth-child(odd){background:var(--panel2)}
+.hdr .k{color:var(--accent);min-width:130px;word-break:break-all}
+.hdr .v{color:var(--dim);word-break:break-all;flex:1}
+.hdr.sens{background:rgba(255,107,107,.08)}
+.hdr.sens .k{color:var(--danger)}
+.hdr .flag{font-size:10px;flex:none;cursor:help}
+.bodyblock{margin-top:12px}
+.bodyblock .lbl,.hdrblock .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint);margin-bottom:5px}
+pre.bodyraw{font-family:var(--mono);font-size:12px;background:var(--panel2);border-radius:8px;padding:10px;white-space:pre-wrap;word-break:break-all;color:var(--txt)}
+/* code out */
+.tabs{display:flex;flex-wrap:wrap;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--line)}
+.tab{
+  border:0;background:transparent;color:var(--dim);font-family:var(--mono);font-size:12.5px;
+  padding:8px 13px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;
+  -webkit-tap-highlight-color:transparent;
+}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+.codewrap{position:relative}
+pre#code{
+  font-family:var(--mono);font-size:12.5px;line-height:1.6;padding:14px;overflow:auto;
+  max-height:420px;white-space:pre;color:var(--txt);cursor:pointer;
+}
+pre#code .cm{color:var(--faint)} pre#code .kw{color:#ff7b72} pre#code .st{color:#a5d6ff} pre#code .fn{color:var(--accent)}
+.copybtn{
+  position:absolute;top:10px;right:10px;border:1px solid var(--line);background:var(--panel2);
+  color:var(--dim);border-radius:6px;padding:5px 10px;font-size:11.5px;cursor:pointer;font-family:var(--mono);
+}
+.copybtn:hover{color:var(--accent);border-color:var(--accent)}
+.empty{padding:34px 20px;text-align:center;color:var(--faint);font-size:13.5px;line-height:1.7}
+.empty svg{opacity:.5;margin-bottom:10px}
+.toast{
+  position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+  background:var(--accent);color:#0d1117;font-weight:600;font-size:13px;padding:9px 18px;border-radius:8px;
+  opacity:0;pointer-events:none;transition:all .25s;z-index:50;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+footer{margin-top:18px;text-align:center;color:var(--faint);font-size:12px;line-height:1.8}
+footer a{color:var(--dim)}
+@media(max-width:860px){
+  pre#code{max-height:340px;font-size:12px}
+  .privacy{margin-left:0;width:100%}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="logo">CURL<b>YARD</b></div>
+  <div class="tagline">paste a curl command → read it, understand it, ship it in your language</div>
+  <div class="privacy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>100% local · nothing leaves your browser</div>
+</header>
+
+<div class="grid">
+  <!-- LEFT: input -->
+  <div>
+    <div class="card">
+      <div class="card-head">curl command <span class="num" id="parseState"></span></div>
+      <textarea id="input" spellcheck="false" placeholder="curl 'https://api.example.com/v1/users?limit=10' \
+  -H 'Authorization: Bearer eyJhbG...' \
+  -H 'Content-Type: application/json' \
+  -d '{&quot;name&quot;:&quot;ada&quot;}'"></textarea>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="card" id="reqCard" style="margin-top:14px;display:none">
+      <div class="card-head">parsed request</div>
+      <div class="req" id="reqBody"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: code out -->
+  <div>
+    <div class="card">
+      <div class="card-head">translated code <span class="num" id="langLabel"></span></div>
+      <div class="tabs" id="tabs"></div>
+      <div class="codewrap">
+        <button class="copybtn" id="copyBtn">copy</button>
+        <pre id="code" title="click to copy"></pre>
+      </div>
+    </div>
+    <div class="empty" id="empty">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><br>
+      Paste any <b>curl</b> command above — from DevTools “Copy as cURL”,<br>
+      API docs, or a README. Everything is parsed locally.
+    </div>
+  </div>
+</div>
+
+<footer>
+  CURLYARD · daily-tools issue #28 · runs entirely offline in your browser ·
+  <a href="https://github.com/xiangjianan/daily-tools/tree/main/curlyard-20261010">source</a>
+</footer>
+</div>
+<div class="toast" id="toast">Copied ✓</div>
+
+<script>
+/* ============================================================
+   CURLYARD — curl → structured request → multi-language code
+   ============================================================ */
+var $ = function(id){ return document.getElementById(id); };
+
+var SAMPLES = [
+  { label:'GET + auth header', curl:
+"curl 'https://api.github.com/repos/torvalds/linux/commits?per_page=5&page=2' \\\n  -H 'Authorization: Bearer ghp_16charsEXAMPLEtoken' \\\n  -H 'Accept: application/vnd.github+json' \\\n  -H 'User-Agent: my-script/1.0'" },
+  { label:'POST JSON body', curl:
+"curl -X POST 'https://hooks.example.com/services/T000/B000/XXXX' \\\n  -H 'Content-Type: application/json' \\\n  --data-raw '{\"text\":\"deploy finished 🎉\",\"channel\":\"#ops\"}' \\\n  --compressed" },
+  { label:'form login + cookie jar', curl:
+"curl 'https://auth.example.test/session' \\\n  -b 'sid=abc123; theme=dark' \\\n  -d 'user=ada@lovelace.dev' \\\n  -d 'pass=hunter2!' \\\n  -e 'https://auth.example.test/login' \\\n  -A 'Mozilla/5.0 curlYardDemo'" },
+  { label:'tricky shell quoting', curl:
+"curl $'https://api.example.test/search?q=a\\tb&x=1' \\\n  -H $'X-Tag: row\\u200b1' \\\n  --url 'https://api.example.test/final' \\\n  -u 'admin:s3cret' \\\n  -G --data-urlencode 'q=hello world & more'" }
+];
+
+var SENSITIVE = /^(authorization|cookie|set-cookie|x-api-key|proxy-authorization|x-auth-token|x-csrf-token|x-access-token|api-key)$/i;
+var SENSITIVE_U = /^_*(session|auth|token|secret|passwd|password|api[_-]?key|sid|jwt)/i;
+
+/* ---------- shell tokenizer: quotes, \, $'...' ---------- */
+function tokenize(src){
+  src = src.replace(/\\\r?\n/g, '');           // line continuations
+  var out = [], i = 0, n = src.length, cur = '', started = false;
+  function push(){ if(started){ out.push(cur); cur=''; started=false; } }
+  while(i < n){
+    var c = src[i];
+    if(c === '\\' && i+1 < n){ cur += src[i+1]; i += 2; started = true; continue; }
+    if(c === "'"){                              // literal
+      var j = src.indexOf("'", i+1);
+      if(j < 0){ cur += src.slice(i+1); i = n; started = true; break; }
+      cur += src.slice(i+1, j); i = j+1; started = true; continue;
+    }
+    if(c === '"'){                              // double quotes, allow \escapes
+      i++; started = true;
+      while(i < n && src[i] !== '"'){
+        if(src[i] === '\\' && i+1 < n && '"\\$`\n'.indexOf(src[i+1]) >= 0){ cur += src[i+1]; i += 2; }
+        else { cur += src[i]; i++; }
+      }
+      i++; continue;
+    }
+    if(c === '$' && src[i+1] === "'"){          // ANSI-C quoting
+      i += 2; started = true;
+      while(i < n && src[i] !== "'"){
+        if(src[i] === '\\'){
+          var e = src[i+1];
+          var map = {n:'\n', t:'\t', r:'\r', '\\':'\\', "'":"'", '"':'"', a:'\x07', b:'\b', f:'\f', v:'\v', e:'\x1b'};
+          if(map[e] !== undefined){ cur += map[e]; i += 2; }
+          else if(e === 'u' || e === 'x'){
+            var len = e === 'u' ? 4 : 2;
+            var hex = src.substr(i+2, len);
+            if(/^[0-9a-fA-F]+$/.test(hex)){ cur += String.fromCodePoint(parseInt(hex,16)); i += 2 + hex.length; }
+            else { cur += e; i += 2; }
+          }
+          else { cur += '\\' + e; i += 2; }
+        } else { cur += src[i]; i++; }
+      }
+      i++; continue;
+    }
+    if(c === ' ' || c === '\t' || c === '\n' || c === '\r'){ push(); i++; continue; }
+    cur += c; started = true; i++;
+  }
+  push();
+  return out;
+}
+
+/* ---------- curl argv → structured request ---------- */
+function parseCurl(src){
+  var t = tokenize(src);
+  if(!t.length) return null;
+  var k = 0;
+  if(/^curl(-[\w.]+)?$/i.test(t[0])) k = 1;
+  var req = {
+    method:null, url:null, headers:[], dataParts:[], flags:{},
+    notes:[], formParts:[], urlencode:false, getMode:false
+  };
+  var flagAliases = {
+    '-X':'method', '--request':'method',
+    '-H':'header', '--header':'header',
+    '-d':'data', '--data':'data', '--data-raw':'data', '--data-binary':'data', '--data-ascii':'data',
+    '--data-urlencode':'dataurl',
+    '-F':'form', '--form':'form',
+    '-u':'user', '--user':'user',
+    '-A':'ua', '--user-agent':'ua',
+    '-e':'referer', '--referer':'referer',
+    '-b':'cookie', '--cookie':'cookie',
+    '--url':'url', '--json':'json'
+  };
+  var boolFlags = {
+    '-L':'follow','--location':'follow','-k':'insecure','--insecure':'insecure',
+    '-s':'silent','--silent':'silent','-I':'head','--head':'head','-G':'get','--get':'get',
+    '--compressed':'compressed','-v':'verbose','--verbose':'verbose','-f':'fail','--fail':'fail'
+  };
+  function valOf(a){
+    if(a.indexOf('=') > 0 && /^--/.test(a)){ var p = a.indexOf('='); return [a.slice(0,p), a.slice(p+1)]; }
+    return null;
+  }
+  for(; k < t.length; k++){
+    var a = t[k];
+    var vv = valOf(a);
+    if(vv){ a = vv[0]; t.splice(k+1, 0, vv[1]); }
+    var key = null;
+    if(flagAliases[a]) key = flagAliases[a];
+    else if(boolFlags[a]){ req.flags[boolFlags[a]] = true; continue; }
+    else if(a[0] === '-' && a !== '-'){ req.flags[a.slice(1)] = true; req.notes.push('flag '+a+' kept as note'); continue; }
+    else { if(!req.url) req.url = a; continue; }
+    var v = t[k+1];
+    if(v === undefined){ req.notes.push('flag '+a+' missing value'); break; }
+    k++;
+    switch(key){
+      case 'method': req.method = v.toUpperCase(); break;
+      case 'header': {
+        var ci = v.indexOf(':');
+        if(ci > 0) req.headers.push({k:v.slice(0,ci).trim(), v:v.slice(ci+1).trim()});
+        else if(v.slice(-1) === ';') req.headers.push({k:v.slice(0,-1).trim(), v:''}); // curl: header unset
+        break;
+      }
+      case 'data': req.dataParts.push(v); break;
+      case 'dataurl': req.urlencode = true; req.dataParts.push(v); break;
+      case 'form': req.formParts.push(v); break;
+      case 'user': {
+        var ui = v.indexOf(':');
+        var b64;
+        try { b64 = btoa(ui >= 0 ? v : v + ':'); } catch(e){ b64 = null; }
+        req.headers.push({k:'Authorization', v:'Basic ' + (b64 || '<base64 of '+v+'>')});
+        break;
+      }
+      case 'ua': req.headers.push({k:'User-Agent', v:v}); break;
+      case 'referer': req.headers.push({k:'Referer', v:v}); break;
+      case 'cookie': req.headers.push({k:'Cookie', v:v}); break;
+      case 'json':
+        req.headers.push({k:'Content-Type', v:'application/json'});
+        req.headers.push({k:'Accept', v:'application/json'});
+        req.dataParts.push(v);
+        break;
+      case 'url': req.url = v; break;
+    }
+  }
+  if(req.flags.head && !req.method) req.method = 'HEAD';
+  if(req.flags.get && req.dataParts.length){
+    req.getMode = true;
+    if(req.url){
+      try{
+        var qsAdd = req.urlencode
+          ? req.dataParts.map(function(p){ return encDataUrlPart(p); }).join('&')
+          : req.dataParts.join('&');
+        var u2 = new URL(req.url); u2.search += (u2.search?'&':'') + qsAdd; req.url = u2.toString();
+      }catch(e){}
+    }
+    req.dataParts = [];
+  }
+  if(!req.method){
+    req.method = (req.dataParts.length || req.formParts.length) ? 'POST' : 'GET';
+  }
+  return req;
+}
+
+/* --data-urlencode 'a=b c' → 'a=b%20c' (curl URL-encodes name and value) */
+function encDataUrlPart(part){
+  var eq = part.indexOf('=');
+  if(eq < 0) return encodeURIComponent(part).replace(/%20/g,'+');
+  var k = part.slice(0, eq), v = part.slice(eq+1);
+  return encodeURIComponent(k).replace(/%20/g,'+') + '=' + encodeURIComponent(v).replace(/%20/g,'+');
+}
+function splitKV(part){
+  var eq = part.indexOf('=');
+  return eq < 0 ? [part, ''] : [part.slice(0,eq), part.slice(eq+1)];
+}
+function bodyString(req){
+  if(req.formParts.length) return req.formParts.join('&');
+  return req.urlencode
+    ? req.dataParts.map(function(p){ return encDataUrlPart(p); }).join('&')
+    : req.dataParts.join('&');
+}
+
+/* ---------- render request card ---------- */
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function renderReq(req){
+  var html = '<div class="badges"><span class="method" data-m="'+esc(req.method)+'">'+esc(req.method)+'</span>';
+  if(req.flags.follow) html += '<span class="chip" style="cursor:default">-L follows redirects</span>';
+  if(req.flags.insecure) html += '<span class="chip" style="cursor:default;color:var(--danger);border-color:var(--danger)">-k insecure TLS</span>';
+  html += '</div>';
+
+  var host='?', path='?', qs=null, scheme='';
+  try {
+    var u = new URL(req.url);
+    scheme = u.protocol.replace(':',''); host = u.host; path = u.pathname || '/';
+    qs = u.search ? u.search.slice(1) : null;
+    if(scheme === 'http') html += '<div class="url-main"><span class="warn">http://</span>' + esc(host+path) + '</div>';
+    else html += '<div class="url-main">' + esc(req.url) + '</div>';
+  } catch(e){
+    html += '<div class="url-main"><span class="warn">⚠ not a valid absolute URL:</span> ' + esc(req.url||'—') + '</div>';
+  }
+  html += '<table class="parts">';
+  html += '<tr><td>scheme</td><td><b>'+esc(scheme||'?')+'</b></td></tr>';
+  html += '<tr><td>host</td><td><b>'+esc(host)+'</b></td></tr>';
+  html += '<tr><td>path</td><td><b>'+esc(path)+'</b></td></tr>';
+  if(qs){
+    var rows = '';
+    qs.split('&').forEach(function(p){
+      if(!p) return;
+      var eq = p.indexOf('=');
+      var pk = eq>=0 ? p.slice(0,eq) : p, pv = eq>=0 ? p.slice(eq+1) : '';
+      var dk, dv;
+      try { dk = decodeURIComponent(pk.replace(/\+/g,' ')); } catch(e){ dk = pk; }
+      try { dv = decodeURIComponent(pv.replace(/\+/g,' ')); } catch(e){ dv = pv; }
+      var sens = SENSITIVE_U.test(dk) ? ' <span class="warn" title="query param looks credential-ish">⚠</span>' : '';
+      rows += '<tr><td>? '+esc(dk)+sens+'</td><td><b>'+esc(dv)+'</b></td></tr>';
+    });
+    html += rows;
+  }
+  html += '</table>';
+
+  if(req.headers.length){
+    html += '<section class="hdrblock"><div class="lbl">headers ('+req.headers.length+')</div>';
+    req.headers.forEach(function(h){
+      var sens = SENSITIVE.test(h.k);
+      html += '<div class="hdr'+(sens?' sens':'')+'"><span class="k">'+esc(h.k)+'</span><span class="v">'+esc(h.v||'(empty)')+'</span>'+(sens?'<span class="flag" title="sensitive — don’t share this command publicly">⚠ sensitive</span>':'')+'</div>';
+    });
+    html += '</section>';
+  }
+  if(req.formParts.length){
+    html += '<section class="bodyblock"><div class="lbl">multipart form (-F) · '+req.formParts.length+' field(s)</div><pre class="bodyraw">';
+    html += esc(req.formParts.join('\n'));
+    html += '</pre></section>';
+  }
+  if(req.dataParts.length){
+    var body = bodyString(req);
+    var pretty = body;
+    try {
+      if(/^\s*[\[{]/.test(body)) pretty = JSON.stringify(JSON.parse(body), null, 2);
+    } catch(e){}
+    html += '<section class="bodyblock"><div class="lbl">'+(req.urlencode?'url-encoded body':'body')+'</div><pre class="bodyraw">'+esc(pretty)+'</pre></section>';
+  }
+  if(req.notes.length){
+    html += '<section class="bodyblock"><div class="lbl">notes</div><pre class="bodyraw" style="color:var(--faint)">'+esc(req.notes.join('\n'))+'</pre></section>';
+  }
+  return html;
+}
+
+/* ---------- code generators ---------- */
+function headerEntries(req){
+  var m = {};
+  req.headers.forEach(function(h){ m[h.k] = h.v; });
+  return Object.keys(m).map(function(k){ return {k:k, v:m[k], sens:SENSITIVE.test(k)}; });
+}
+function genFetch(req){
+  var hs = headerEntries(req);
+  var hlines = hs.map(function(h){ return '    ' + JSON.stringify(h.k) + ': ' + JSON.stringify(h.v) + ','; });
+  var opts = [];
+  opts.push('  method: ' + JSON.stringify(req.method) + ',');
+  if(hs.length){ opts.push('  headers: {\n' + hlines.join('\n').replace(/,$/,'') + '\n  },'); }
+  var hasBody = (req.formParts.length || req.dataParts.length) && req.method !== 'GET' && req.method !== 'HEAD';
+  if(hasBody){
+    var bexpr = null;
+    if(req.urlencode) bexpr = 'new URLSearchParams(' + JSON.stringify(req.dataParts.map(splitKV)) + ')';
+    else if(req.formParts.length) bexpr = 'new URLSearchParams(' + JSON.stringify(req.formParts.map(splitKV)) + ')';
+    else bexpr = JSON.stringify(bodyString(req));
+    opts.push('  body: ' + bexpr + ',');
+  }
+  var s = '// ' + req.method + ' ' + req.url + '\n';
+  s += 'const res = await fetch(' + JSON.stringify(req.url) + ', {\n' + opts.join('\n').replace(/,$/,'') + '\n});\n';
+  s += 'if (!res.ok) throw new Error(`HTTP ${res.status}`);\nconst data = await res.json();\nconsole.log(data);';
+  return s;
+}
+function genAxios(req){
+  var hs = headerEntries(req);
+  var hasBody = (req.formParts.length || req.dataParts.length) && req.method !== 'GET' && req.method !== 'HEAD';
+  var s = 'import axios from "axios";\n\n';
+  s += 'const { data } = await axios({\n';
+  s += '  method: ' + JSON.stringify(req.method.toLowerCase()) + ',\n';
+  s += '  url: ' + JSON.stringify(req.url) + ',\n';
+  if(hs.length){
+    s += '  headers: {\n' + hs.map(function(h){ return '    ' + JSON.stringify(h.k) + ': ' + JSON.stringify(h.v); }).join(',\n') + '\n  },\n';
+  }
+  if(hasBody){
+    var dexpr;
+    if(req.urlencode) dexpr = 'new URLSearchParams(' + JSON.stringify(req.dataParts.map(splitKV)) + ')';
+    else if(req.formParts.length) dexpr = 'new URLSearchParams(' + JSON.stringify(req.formParts.map(splitKV)) + ')';
+    else dexpr = JSON.stringify(bodyString(req));
+    s += '  data: ' + dexpr + ',\n';
+  }
+  s += '});\nconsole.log(data);';
+  return s;
+}
+function pyStr(s){ return JSON.stringify(s); } // JSON escaping ≈ python-safe for common cases
+function genPython(req){
+  var hs = headerEntries(req);
+  var hasBody = (req.formParts.length || req.dataParts.length) && req.method !== 'GET' && req.method !== 'HEAD';
+  var s = 'import requests\n\n';
+  s += 'res = requests.request(\n';
+  s += '    ' + pyStr(req.method) + ',\n';
+  s += '    ' + pyStr(req.url) + ',\n';
+  if(hs.length) s += '    headers=' + dictPy(hs) + ',\n';
+  if(hasBody){
+    if(req.formParts.length) s += '    data=' + listTuplesPy(req.formParts.map(splitKV)) + ',\n';
+    else s += '    data=' + pyStr(bodyString(req)) + ',\n';
+  }
+  if(req.flags.follow) s += '    allow_redirects=True,\n';
+  if(req.flags.insecure) s += '    verify=False,  # curl -k: insecure TLS\n';
+  s += ')\n';
+  s += 'res.raise_for_status()\nprint(res.json())';
+  return s;
+}
+function dictPy(hs){
+  var inner = hs.map(function(h){ return '        ' + pyStr(h.k) + ': ' + pyStr(h.v) + ','; }).join('\n');
+  return '{\n' + inner.replace(/,$/,'') + '\n    }';
+}
+function listTuplesPy(pairs){
+  var inner = pairs.map(function(p){ return '        (' + pyStr(p[0]) + ', ' + pyStr(p[1]) + '),'; }).join('\n');
+  return '[\n' + inner.replace(/,$/,'') + '\n    ]';
+}
+function genGo(req){
+  var hs = headerEntries(req);
+  var hasBody = (req.formParts.length || req.dataParts.length) && req.method !== 'GET' && req.method !== 'HEAD';
+  var body = hasBody ? bodyString(req) : '';
+  var s = 'package main\n\nimport (\n\t"fmt"\n\t"io"\n\t"net/http"\n)\n\n';
+  s += 'func main() {\n';
+  if(body){
+    s += '\tbody := strings.NewReader(' + goStr(body) + ')\n';
+    s += '\treq, err := http.NewRequest(' + goStr(req.method) + ', ' + goStr(req.url) + ', body)\n';
+  } else {
+    s += '\treq, err := http.NewRequest(' + goStr(req.method) + ', ' + goStr(req.url) + ', nil)\n';
+  }
+  s += '\tif err != nil {\n\t\tpanic(err)\n\t}\n';
+  hs.forEach(function(h){ s += '\treq.Header.Set(' + goStr(h.k) + ', ' + goStr(h.v) + ')\n'; });
+  s += '\tresp, err := http.DefaultClient.Do(req)\n';
+  s += '\tif err != nil {\n\t\tpanic(err)\n\t}\n\tdefer resp.Body.Close()\n\n';
+  s += '\tdata, _ := io.ReadAll(resp.Body)\n\tfmt.Println(resp.Status, string(data))\n}';
+  if(body) s = s.replace('"io"\n\t"net/http"', '"io"\n\t"net/http"\n\t"strings"');
+  return s;
+}
+function goStr(s){
+  return '"' + s.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\n/g,'\\n').replace(/\t/g,'\\t') + '"';
+}
+function genHttpie(req){
+  var hs = headerEntries(req);
+  var m = req.method;
+  var s = '# httpie\n';
+  var cmd = (m === 'GET' && !req.dataParts.length && !req.formParts.length) ? 'http GET' : 'http ' + m;
+  s += cmd + ' ' + req.url + ' \\\n';
+  hs.forEach(function(h){ s += "  '" + h.k + ":" + h.v.replace(/'/g, "'\\''") + "' \\\n"; });
+  var hasBody = (req.formParts.length || req.dataParts.length) && req.method !== 'GET' && req.method !== 'HEAD';
+  if(hasBody){
+    var items = req.urlencode
+      ? req.dataParts.map(function(p){ return encDataUrlPart(p); })
+      : (req.formParts.length ? req.formParts : req.dataParts);
+    var joined = items.join('&');
+    if(/^\s*[\[{]/.test(joined)){
+      s += '  ' + joined.replace(/'/g, "'\\''") + '\n';
+    } else {
+      items.forEach(function(p){ s += '  ' + p.replace(/'/g, "'\\''") + ' \\\n'; });
+      s = s.replace(/ \\\n$/, '\n');
+    }
+  } else s = s.replace(/ \\\n$/, '\n');
+  return s;
+}
+
+var LANGS = [
+  { id:'fetch',  label:'fetch',  gen:genFetch },
+  { id:'axios',  label:'axios',  gen:genAxios },
+  { id:'python', label:'python', gen:genPython },
+  { id:'go',     label:'go',     gen:genGo },
+  { id:'httpie', label:'httpie', gen:genHttpie }
+];
+
+/* ---------- state & wiring ---------- */
+var curReq = null, curLang = 'fetch';
+
+function buildTabs(){
+  $('tabs').innerHTML = LANGS.map(function(l){
+    return '<button class="tab'+(l.id===curLang?' on':'')+'" data-lang="'+l.id+'">'+l.label+'</button>';
+  }).join('');
+  $('tabs').querySelectorAll('.tab').forEach(function(b){
+    b.addEventListener('click', function(){
+      curLang = b.getAttribute('data-lang');
+      buildTabs(); renderCode();
+    });
+  });
+}
+
+function simpleHL(code, lang){
+  var e = esc(code);
+  if(lang === 'python' || lang === 'go' || lang === 'httpie'){
+    return e.replace(/(#[^\n]*)/g, '<span class="cm">$1</span>')
+            .replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;)/g, '<span class="st">$1</span>');
+  }
+  return e
+    .replace(/(\/\/[^\n]*)/g, '<span class="cm">$1</span>')
+    .replace(/\b(const|await|async|function|import|from|new|if|throw|let|var|return)\b/g, '<span class="kw">$1</span>')
+    .replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;|'(?:[^'])*?')/g, '<span class="st">$1</span>');
+}
+
+function renderCode(){
+  var emptyEl = $('empty');
+  if(!curReq){
+    $('reqCard').style.display = 'none';
+    $('code').innerHTML = '';
+    emptyEl.style.display = '';
+    $('parseState').textContent = '';
+    $('langLabel').textContent = '';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  $('reqCard').style.display = '';
+  $('reqBody').innerHTML = renderReq(curReq);
+  var gen = LANGS.find(function(l){ return l.id === curLang; });
+  var code = gen.gen(curReq);
+  $('langLabel').textContent = gen.label;
+  $('code').innerHTML = simpleHL(code, gen.id);
+  $('code').setAttribute('data-raw', code);
+}
+
+var toastTimer = null;
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 1600);
+}
+function copyText(txt, msg){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){ toast(msg); }, function(){ fallbackCopy(txt, msg); });
+  } else fallbackCopy(txt, msg);
+}
+function fallbackCopy(txt, msg){
+  var ta = document.createElement('textarea');
+  ta.value = txt;
+  ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); toast(msg); } catch(e){ toast('Copy failed'); }
+  document.body.removeChild(ta);
+}
+
+$('copyBtn').addEventListener('click', function(ev){
+  ev.stopPropagation();
+  var raw = $('code').getAttribute('data-raw');
+  if(raw) copyText(raw, 'Code copied ✓');
+});
+$('code').addEventListener('click', function(){
+  var raw = $('code').getAttribute('data-raw');
+  if(raw) copyText(raw, 'Code copied ✓');
+});
+
+function buildChips(){
+  $('chips').innerHTML = SAMPLES.map(function(s, i){
+    return '<button class="chip" data-i="'+i+'">'+esc(s.label)+'</button>';
+  }).join('') ;
+  $('chips').querySelectorAll('.chip').forEach(function(c){
+    c.addEventListener('click', function(){
+      $('input').value = SAMPLES[+c.getAttribute('data-i')].curl;
+      onInput();
+    });
+  });
+}
+
+function onInput(){
+  var src = $('input').value;
+  if(!src.trim()){ curReq = null; renderCode(); return; }
+  try {
+    curReq = parseCurl(src);
+  } catch(e){
+    curReq = null;
+    $('parseState').textContent = 'parse error';
+  }
+  if(curReq){
+    $('parseState').textContent = curReq.method + ' · ' + (curReq.headers.length) + ' header(s)';
+  }
+  renderCode();
+}
+$('input').addEventListener('input', onInput);
+
+buildChips();
+buildTabs();
+renderCode();
+
+/* load default sample so first paint shows a full pipeline (empty state still visible via chips row) */
+$('input').value = SAMPLES[0].curl;
+onInput();
+window.__curlyard = { parseCurl: parseCurl, tokenize: tokenize, SAMPLES: SAMPLES };
+</script>
+</body>
+</html>
