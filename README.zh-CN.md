@@ -8,6 +8,7 @@ English switch: [English](README.md)
 
 | # | Date | 在线试玩 | Idea | 源码 |
 | --- | --- | --- | --- | --- |
+| #29 | 2026-10-11 | [MAKEWAVES（Makefile 执行波可视化）](makewaves-20261011/) | 粘贴 Makefile 看清 make -j 的并行波次：点目标高亮依赖闭包与配方，环检测红 CYCLE 泳道，一键导出 MD 执行计划，全程本地 | [source](makewaves-20261011) |
 | #28 | 2026-10-10 | [CURLYARD（curl 翻译官）](curlyard-20261010/) | 粘贴 curl 命令即出结构化请求卡片：敏感头打 ⚠，一键译成 fetch/axios/Python/Go/HTTPie，全程本地 | [source](curlyard-20261010) |
 | #27 | 2026-10-09 | [BRAILLEPIC（盲文点阵画）](braillepic-20261009/) | 图片拖进来变 Unicode 盲文字符画：每字符 2×4 点阵，分辨率是 ASCII art 的 8 倍，抖动出层次，复制即贴 README，全程本地 | [source](braillepic-20261009) |
 | #26 | 2026-10-08 | [UUIDSCOPE（UUID 解剖镜）](uuidscope-20261008/) | 粘贴一批 UUID 看清每颗的真身：版本徽章、v1/v6/v7 内嵌时间戳画成时间带，乱序与 MAC 泄漏一眼看穿，全程本地 | [source](uuidscope-20261008) |

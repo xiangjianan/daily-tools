@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MAKEWAVES · Makefile 执行波可视化</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M5 22c3-6 6-6 9 0s6 6 9 0' stroke='%2356d4dd' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#262c36;
+  --text:#e6edf3; --dim:#8b949e; --accent:#56d4dd; --accent2:#a5d6ff;
+  --warn:#e3b341; --bad:#f85149; --ok:#3fb950; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:15px/1.6 -apple-system,"PingFang SC","Noto Sans SC",sans-serif;padding:0 16px calc(28px + env(safe-area-inset-bottom))}
+a{color:var(--accent)}
+header{max-width:1080px;margin:0 auto;padding:26px 0 14px}
+h1{font-size:24px;letter-spacing:.5px}
+h1 .mk{color:var(--accent)}
+.tagline{color:var(--dim);font-size:14px;margin-top:2px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:18px}
+@media(max-width:860px){.wrap{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.card h2{font-size:13px;color:var(--dim);font-weight:600;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px}
+textarea{width:100%;min-height:300px;resize:vertical;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font:12.5px/1.55 var(--mono);tab-size:4}
+textarea:focus{outline:none;border-color:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+button{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.primary{background:var(--accent);color:#06262a;border-color:var(--accent);font-weight:600}
+button.primary:hover{filter:brightness(1.1);color:#06262a}
+.hint{color:var(--dim);font-size:12.5px;margin-top:8px}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chip{background:var(--panel2);border:1px solid var(--border);border-radius:20px;padding:3px 12px;font-size:12.5px;color:var(--dim)}
+.chip b{color:var(--text);font-family:var(--mono)}
+.chip.acc b{color:var(--accent)}
+.gwrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--panel2)}
+svg{display:block}
+.gnode{cursor:pointer}
+.gnode rect{fill:#232b3b;stroke:#3a4356;stroke-width:1}
+.gnode text{fill:var(--text);font:12px var(--mono)}
+.gnode.sel rect{stroke:var(--accent);stroke-width:2;fill:#1d3742}
+.gnode.sel text{fill:var(--accent)}
+.gnode.phony text{font-style:italic}
+.gnode.dim{opacity:.32}
+.gnode.cycrect rect{stroke:var(--bad);stroke-width:2;fill:#3b1d22}
+.gnode.cycrect text{fill:#ff8a80}
+.edge{fill:none;stroke:#3a4356;stroke-width:1.2}
+.edge.hot{stroke:var(--accent);stroke-width:1.8}
+.edge.dim{opacity:.18}
+.lanelabel{fill:var(--dim);font:11px var(--mono)}
+.wavebadge{fill:#232b3b;stroke:#3a4356}
+.wavebadgetext{fill:var(--accent);font:10px var(--mono)}
+.detail{margin-top:12px}
+.detail .tt{font:600 15px var(--mono);color:var(--accent);margin-bottom:4px}
+.detail .sub{color:var(--dim);font-size:12.5px;margin-bottom:6px}
+.detail pre{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;font:12px/1.55 var(--mono);overflow-x:auto;white-space:pre}
+.warnbox{margin-top:12px}
+.warnbox .w{border-left:3px solid var(--warn);background:rgba(227,179,65,.08);padding:6px 10px;border-radius:0 8px 8px 0;font-size:13px;margin-bottom:6px}
+.warnbox .w.bad{border-color:var(--bad);background:rgba(248,81,73,.08)}
+.empty{border:1px dashed var(--border);border-radius:8px;color:var(--dim);text-align:center;padding:44px 16px;font-size:14px}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);background:var(--accent);color:#06262a;font-weight:600;font-size:13px;border-radius:8px;padding:8px 16px;opacity:0;pointer-events:none;transition:all .25s;z-index:9}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+footer{max-width:1080px;margin:18px auto 0;color:var(--dim);font-size:12px;text-align:center}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="mk">MAKE</span>WAVES</h1>
+  <div class="tagline">Makefile 执行波可视化 —— 粘贴构建文件，看 make -j 时谁和谁并行、关键路径多长、环卡在哪。全程本地解析，零上传。</div>
+</header>
+
+<div class="wrap">
+  <section class="card">
+    <h2>Makefile 输入</h2>
+    <textarea id="input" spellcheck="false" placeholder="# 粘贴 Makefile，或拖入文件&#10;all: build test&#10;build: assets&#10;&#9;cc -o app main.c"></textarea>
+    <div class="row">
+      <button id="btnSample" class="primary">载入示例</button>
+      <button id="btnCycle">载入带环反例</button>
+      <button id="btnClear">清空</button>
+      <button id="btnCopy">复制执行计划 (MD)</button>
+    </div>
+    <div class="hint">支持：变量 $(VAR) 展开、\ 续行、多目标规则、.PHONY、模式规则识别、注释。拖拽 .mk 文件到输入框也行。</div>
+  </section>
+
+  <section class="card">
+    <h2>执行波</h2>
+    <div class="stats" id="stats" hidden></div>
+    <div id="empty" class="empty">左边粘贴 Makefile 或点「载入示例」<br>每个横向层是一波：同一波里的目标在 make -j 下并行执行</div>
+    <div id="graphWrap" class="gwrap" hidden></div>
+    <div id="detail" class="detail" hidden></div>
+    <div id="warnbox" class="warnbox" hidden></div>
+  </section>
+</div>
+
+<footer>MAKEWAVES · issue #29 of <a href="https://github.com/xiangjianan/daily-tools">daily-tools</a> · 纯前端本地解析，数据不出浏览器</footer>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- helpers ---------- */
+function $(id){ return document.getElementById(id); }
+function toast(msg){
+  var t=$("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(toast._h); toast._h=setTimeout(function(){ t.classList.remove("show"); },1800);
+}
+function el(tag,attrs,kids){
+  var n=document.createElementNS("http://www.w3.org/2000/svg",tag);
+  if(attrs) for(var k in attrs) n.setAttribute(k,attrs[k]);
+  if(kids) kids.forEach(function(c){ n.appendChild(c); });
+  return n;
+}
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+/* ---------- pure core: parse / waves / closure / plan ---------- */
+var SPECIAL_TARGETS = { ".PHONY":1, ".SUFFIXES":1, ".DEFAULT":1, ".PRECIOUS":1, ".INTERMEDIATE":1,
+  ".SECONDARY":1, ".SECONDEXPANSION":1, ".DELETE_ON_ERROR":1, ".IGNORE":1, ".LOW_RESOLUTION_TIME":1,
+  ".SILENT":1, ".EXPORT_ALL_VARIABLES":1, ".NOTPARALLEL":1, ".ONESHELL":1, ".POSIX":1, ".DEFAULT_GOAL":1 };
+
+function joinContinuations(text){
+  var raw = text.replace(/\r\n?/g,"\n").split("\n");
+  var out = [];
+  for(var i=0;i<raw.length;i++){
+    var line = raw[i];
+    while(/\\$/.test(line) && i+1 < raw.length){
+      line = line.slice(0,-1).replace(/\s+$/,"") + " " + raw[++i].replace(/^\s+/,"");
+    }
+    out.push(line);
+  }
+  return out;
+}
+function stripComment(line){
+  var res="", i=0;
+  for(;i<line.length;i++){
+    if(line[i]==="\\" && line[i+1]==="#"){ res+="#"; i++; continue; }
+    if(line[i]==="#") break;
+    res+=line[i];
+  }
+  return res;
+}
+function parseMake(text){
+  var lines = joinContinuations(String(text||""));
+  var rules = {};          // name -> {deps:[], cmds:[], line:int, dup:bool}
+  var order = [];          // first-seen target order
+  var phonies = {};
+  var vars = {};           // name -> value (last wins for =, immediate for :=)
+  var patterns = [];       // pattern rule labels
+  var ignored = [];        // unparseable non-empty lines
+  var recipeBooked = false;
+  var afterPattern = false;
+
+  function defineRule(name, deps, cmds, ln){
+    if(rules[name]){ rules[name].dup = true; if(deps.length) rules[name].deps = rules[name].deps.concat(deps); }
+    else { rules[name] = {deps:deps, cmds:cmds, line:ln, dup:false}; order.push(name); }
+  }
+
+  for(var i=0;i<lines.length;i++){
+    var line = lines[i];
+    if(/^\t/.test(line)){
+      var cmd = line.slice(1).trim();
+      if(cmd && recipeBooked && rules[recipeBooked]) rules[recipeBooked].cmds.push(expandVars(cmd, vars));
+      else if(cmd && afterPattern){ /* pattern-rule recipe: silently kept out of the graph */ }
+      else if(cmd) ignored.push({line:i+1, text:line});
+      continue;
+    }
+    var noCmt = stripComment(line);
+    if(!noCmt.trim()) continue;
+    var trimmed = noCmt.trim();
+
+    /* variable assignment: NAME op value (strict op right after name, so "a: b" never matches) */
+    var m = trimmed.match(/^([A-Za-z_][A-Za-z0-9_.]*)\s*(:=|\?=|\+=|=)\s*(.*)$/);
+    if(m){
+      var name=m[1], op=m[2], val=m[3].trim();
+      if(op==="=") vars[name]=val;
+      else if(op===":=") vars[name]=expandVars(val,vars);
+      else if(op==="?="){ if(!(name in vars)) vars[name]=val; }
+      else if(op==="+="){ vars[name]=(name in vars? vars[name]+" ":"")+val; }
+      continue;
+    }
+    /* rule: targets : prereqs (;cmd)? */
+    var rm = trimmed.match(/^([^\s:][^:]*?)\s*:(.*)$/);
+    if(rm){
+      var targets = rm[1].trim().split(/\s+/);
+      var rest = rm[2];
+      var inlineCmd = "";
+      var semi = rest.indexOf(";");
+      if(semi>=0){ inlineCmd = rest.slice(semi+1).trim(); rest = rest.slice(0,semi); }
+      var deps = expandVars(rest.trim(),vars).split(/\s+/).filter(function(d){ return d && d!==":"; });
+      var lastBooked = null;
+      for(var t=0;t<targets.length;t++){
+        var tg = targets[t];
+        if(tg.indexOf("%")>=0){ patterns.push(tg); lastBooked=null; afterPattern=true; continue; }
+        if(SPECIAL_TARGETS[tg]){
+          if(tg===".PHONY") deps.forEach(function(d){ phonies[d]=1; });
+          lastBooked=null; afterPattern=false; continue;
+        }
+        defineRule(tg, deps, [], i+1);
+        if(inlineCmd) rules[tg].cmds.push(expandVars(inlineCmd, vars));
+        lastBooked = tg;
+      }
+      recipeBooked = lastBooked;
+      if(lastBooked) afterPattern = false;
+      continue;
+    }
+    ignored.push({line:i+1, text:line});
+  }
+  var defaultGoal = order.length ? order[0] : null;
+  return {rules:rules, order:order, phonies:phonies, vars:vars, patterns:patterns, ignored:ignored, default:defaultGoal};
+}
+function expandVars(str, vars, depth){
+  depth = depth||0;
+  if(depth>8) return str;
+  var out = String(str).replace(/\$[({]([A-Za-z_][A-Za-z0-9_]*)[)}]/g, function(_,n){
+    return (n in vars) ? vars[n] : "";
+  });
+  if(out.indexOf("$(")>=0 || out.indexOf("${")>=0) return expandVars(out, vars, depth+1);
+  return out;
+}
+/* waves: wave(t)=0 for leaves, else 1+max(wave(deps)); returns {wave:{}, cyc:Set} */
+function computeWaves(rules, order){
+  var wave={}, state={}, cyc={};
+  function visit(name, stack){
+    if(state[name]===2) return wave[name];
+    if(state[name]===1){ // cycle: mark members from stack occurrence
+      var k = stack.indexOf(name);
+      for(var i=k;i<stack.length;i++) cyc[stack[i]]=1;
+      return 0;
+    }
+    state[name]=1; stack.push(name);
+    var r = rules[name], w = 0;
+    for(var i=0;i<r.deps.length;i++){
+      var d=r.deps[i];
+      if(!rules[d]) continue;             // external file dep (source files) — ground
+      var dw = visit(d, stack);
+      if(dw+1 > w) w = dw+1;
+    }
+    stack.pop(); state[name]=2; wave[name]=w;
+    return w;
+  }
+  order.forEach(function(n){ visit(n, []); });
+  return {wave:wave, cyc:cyc};
+}
+/* closure: all deps reachable from target (including itself) */
+function closureOf(rules, target){
+  var seen={}, q=[target]; seen[target]=1;
+  while(q.length){
+    var n=q.shift();
+    var r=rules[n]; if(!r) continue;
+    r.deps.forEach(function(d){ if(rules[d] && !seen[d]){ seen[d]=1; q.push(d); } });
+  }
+  return seen;
+}
+function reverseDeps(rules){
+  var rev={};
+  Object.keys(rules).forEach(function(n){
+    rules[n].deps.forEach(function(d){
+      if(rules[d]){ (rev[d]=rev[d]||[]).push(n); }
+    });
+  });
+  return rev;
+}
+function buildPlanMd(model, parsed, waves){
+  var lines = ["# MAKEWAVES 执行计划","","- 默认目标：`"+(parsed.default||"—")+"`",
+    "- 目标数：**"+Object.keys(parsed.rules).length+"** · 波次：**"+(waves.maxWave+1)+"** · 峰值并行：**"+waves.peak+"**",""];
+  for(var w=0; w<=waves.maxWave; w++){
+    var names = waves.levels[w]||[];
+    lines.push("## Wave "+w+"（"+names.length+" 个目标并行）");
+    names.forEach(function(n){
+      var r = parsed.rules[n];
+      var tag = parsed.phonies[n] ? " `phony`" : "";
+      lines.push("- `"+n+"`"+tag+" — "+(r.cmds.length? r.cmds.length+" 条命令":"无配方"));
+    });
+    lines.push("");
+  }
+  if(waves.cycList && waves.cycList.length){
+    lines.push("⚠️ 检测到循环依赖：`"+waves.cycList.join("` `")+"`");
+  }
+  return lines.join("\n");
+}
+
+/* ---------- model build ---------- */
+var MODEL = { parsed:null, waves:null, rev:null, selected:null };
+function rebuild(){
+  var text = $("input").value;
+  MODEL.selected = null;
+  if(!text.trim()){ MODEL.parsed=null; MODEL.waves=null; render(); return; }
+  var parsed = parseMake(text);
+  var cw = computeWaves(parsed.rules, parsed.order);
+  var levels = [];
+  var maxWave = -1, peak = 0;
+  Object.keys(parsed.rules).forEach(function(n){
+    if(cw.cyc[n]) return;
+    var w = cw.wave[n]||0;
+    (levels[w]=levels[w]||[]).push(n);
+    if(w>maxWave) maxWave=w;
+  });
+  for(var i=0;i<levels.length;i++) if(levels[i]) peak=Math.max(peak, levels[i].length);
+  var cycList = Object.keys(cw.cyc);
+  MODEL.parsed = parsed;
+  MODEL.waves = {wave:cw.wave, cyc:cw.cyc, cycList:cycList, levels:levels, maxWave:maxWave, peak:peak};
+  MODEL.rev = reverseDeps(parsed.rules);
+  render();
+}
+
+/* ---------- render ---------- */
+var NW_MIN=64, NW_PAD=18, NW_CH=7.4, NH=32, LANE_H=84, GAPX=18, PAD=16, LABEL_W=64;
+function render(){
+  var statsEl=$("stats"), wrap=$("graphWrap"), emptyEl=$("empty"), det=$("detail"), wb=$("warnbox");
+  if(!MODEL.parsed || !Object.keys(MODEL.parsed.rules).length){
+    statsEl.hidden=true; wrap.hidden=true; emptyEl.hidden=false; det.hidden=true; wb.hidden=true;
+    return;
+  }
+  var P=MODEL.parsed, W=MODEL.waves;
+  emptyEl.hidden=true; wrap.hidden=false;
+
+  /* stats */
+  var nTargets=Object.keys(P.rules).length;
+  var nPhony=Object.keys(P.phonies).filter(function(p){return P.rules[p];}).length;
+  var nCmds=0; Object.keys(P.rules).forEach(function(n){ nCmds+=P.rules[n].cmds.length; });
+  statsEl.hidden=false;
+  statsEl.innerHTML =
+    '<span class="chip">目标 <b>'+nTargets+'</b></span>'+
+    '<span class="chip acc">波次 <b>'+(W.maxWave+1)+'</b></span>'+
+    '<span class="chip acc">峰值并行 <b>'+W.peak+'</b></span>'+
+    (W.cycList.length?'<span class="chip" style="color:var(--bad)">环 <b>'+W.cycList.length+'</b></span>':'')+
+    '<span class="chip">phony <b>'+nPhony+'</b></span>'+
+    '<span class="chip">命令 <b>'+nCmds+'</b></span>'+
+    '<span class="chip">默认 <b>'+esc(P.default||"—")+'</b></span>';
+
+  /* svg layout: executable waves, then a red CYCLE lane if needed */
+  var rows=[];
+  for(var wv=0; wv<=W.maxWave; wv++) rows.push((W.levels[wv]||[]).slice().sort());
+  var cycLane = W.cycList.length ? W.cycList.slice().sort() : null;
+  if(cycLane) rows.push(cycLane);
+  var pos={}; var maxRight=0;
+  var rowY = rows.map(function(_,i){ return PAD + 20 + i*LANE_H; });
+  rows.forEach(function(row,wi){
+    var x=PAD+LABEL_W;
+    row.forEach(function(name){
+      var nw=Math.max(NW_MIN, Math.round(name.length*NW_CH)+NW_PAD);
+      pos[name]={x:x, y:rowY[wi], w:nw};
+      x+=nw+GAPX;
+    });
+    if(x>maxRight) maxRight=x;
+  });
+  var svgW=Math.max(360,maxRight+PAD), svgH=PAD+20+rows.length*LANE_H+4;
+  wrap.innerHTML="";
+  var svg=el("svg",{width:svgW,height:svgH,viewBox:"0 0 "+svgW+" "+svgH,role:"img","aria-label":"执行波次图"});
+
+  var sel = MODEL.selected;
+  var inClosure = sel ? closureOf(P.rules, sel) : null;
+
+  /* lane labels + guides */
+  rows.forEach(function(row,wi){
+    var y=rowY[wi];
+    svg.appendChild(el("line",{x1:8,y1:y+NH/2,x2:svgW-8,y2:y+NH/2,stroke:"#262c36","stroke-dasharray":"3 5"}));
+    var lab=el("text",{x:12,y:y+NH/2-6,"class":"lanelabel"});
+    var isCycLane = cycLane && wi===rows.length-1;
+    lab.textContent = isCycLane ? "CYCLE · 不会执行"
+      : "WAVE "+wi+((!cycLane && wi===W.maxWave)?" · 完成":"");
+    svg.appendChild(lab);
+  });
+
+  /* edges first (under nodes) */
+  var edgeEls=[];
+  Object.keys(P.rules).forEach(function(name){
+    P.rules[name].deps.forEach(function(d){
+      if(!pos[d]||!pos[name]) return;
+      var a=pos[d], b=pos[name];
+      var x1=a.x+a.w/2, y1=a.y+NH, x2=b.x+b.w/2, y2=b.y;
+      var midY=(y1+y2)/2;
+      var hot = inClosure ? (inClosure[d]&&inClosure[name]) : false;
+      var dimd = inClosure ? !hot : false;
+      var p=el("path",{d:"M"+x1+" "+y1+" C"+x1+" "+midY+","+x2+" "+midY+","+x2+" "+y2,
+        "class":"edge"+(hot?" hot":(dimd?" dim":""))});
+      svg.appendChild(p); edgeEls.push(p);
+    });
+  });
+
+  /* nodes */
+  Object.keys(pos).forEach(function(name){
+    var p=pos[name];
+    var g=el("g",{"class":"gnode"+(P.phonies[name]?" phony":"")+(MODEL.waves.cyc[name]?" cycrect":"")+
+      (sel===name?" sel":(inClosure&&!inClosure[name]?" dim":""))+" ", "data-target":name, tabindex:0, role:"button"});
+    g.appendChild(el("rect",{x:p.x,y:p.y,width:p.w,height:NH,rx:8}));
+    var tx=el("text",{x:p.x+p.w/2,y:p.y+NH/2+4,"text-anchor":"middle"});
+    tx.textContent=name;
+    g.appendChild(tx);
+    g.addEventListener("click", function(){ selectTarget(name); });
+    g.addEventListener("keydown", function(ev){ if(ev.key==="Enter"||ev.key===" "){ ev.preventDefault(); selectTarget(name); } });
+    svg.appendChild(g);
+  });
+  wrap.appendChild(svg);
+
+  /* warnings */
+  var warns=[];
+  if(W.cycList.length) warns.push({bad:true, html:"检测到 <b>循环依赖</b>："+
+    W.cycList.map(function(n){return "<code>"+esc(n)+"</code>";}).join("、")+
+    " —— make 会报 \u201cCircular dependency dropped\u201d，环上目标不会被执行"});
+  Object.keys(P.rules).forEach(function(n){ if(P.rules[n].dup)
+    warns.push({bad:false, html:"目标 <code>"+esc(n)+"</code> 被定义了多次（第 "+P.rules[n].line+" 行起）——后面的依赖会被合并，make 只会执行其中一个配方"});
+  });
+  if(P.patterns.length) warns.push({bad:false, html:"识别到模式规则 "+P.patterns.map(function(p){return "<code>"+esc(p)+"</code>";}).join("、")+"（未画入图中）"});
+  if(P.ignored.length) warns.push({bad:false, html:"有 "+P.ignored.length+" 行无法识别（如裸 shell 行），已忽略，首行：<code>"+esc(P.ignored[0].text.slice(0,60))+"</code>"});
+  if(warns.length){
+    wb.hidden=false;
+    wb.innerHTML=warns.map(function(w){ return '<div class="w'+(w.bad?" bad":"")+'">'+w.html+"</div>"; }).join("");
+  } else wb.hidden=true;
+
+  renderDetail();
+}
+function renderDetail(){
+  var det=$("detail");
+  var P=MODEL.parsed;
+  if(!MODEL.selected || !P || !P.rules[MODEL.selected]){ det.hidden=true; return; }
+  var name=MODEL.selected, r=P.rules[name];
+  var closure=closureOf(P.rules, name);
+  var cKeys=Object.keys(closure);
+  var rev=MODEL.rev[name]||[];
+  var wv=MODEL.waves.cyc[name]? "—（在环上）" : String(MODEL.waves.wave[name]);
+  var html='<div class="tt">'+esc(name)+'</div>'+
+    '<div class="sub">Wave '+esc(wv)+' · 依赖闭包 <b>'+cKeys.length+'</b> 个目标'+
+    (P.phonies[name]?' · <span style="color:var(--warn)">phony</span>':"")+
+    (r.dup?' · <span style="color:var(--warn)">重复定义</span>':"")+'</div>';
+  html+='<div class="sub">直接依赖：'+(r.deps.length? r.deps.map(function(d){
+    return P.rules[d]? "<code style='color:var(--accent2)'>"+esc(d)+"</code>" : "<code>"+esc(d)+"</code>（文件）";
+  }).join("、") : "无（叶子目标）")+"</div>";
+  html+='<div class="sub">被谁需要：'+(rev.length? rev.map(function(d){return "<code style='color:var(--accent2)'>"+esc(d)+"</code>";}).join("、") : "无——这已经是终点目标")+"</div>";
+  html+= r.cmds.length? "<pre>"+r.cmds.map(function(c){return esc(c);}).join("\n")+"</pre>"
+                      : '<div class="sub">无配方（纯依赖聚合点）</div>';
+  det.innerHTML=html; det.hidden=false;
+}
+function selectTarget(name){
+  MODEL.selected = (MODEL.selected===name)? null : name;
+  render();
+}
+
+/* ---------- copy plan ---------- */
+function copyPlan(){
+  if(!MODEL.parsed || !Object.keys(MODEL.parsed.rules).length){ toast("先载入一个 Makefile"); return; }
+  var md = buildPlanMd(MODEL, MODEL.parsed, MODEL.waves);
+  navigator.clipboard.writeText(md).then(function(){
+    toast("执行计划已复制 ✓");
+  }, function(){
+    fallbackCopy(md);
+  });
+}
+function fallbackCopy(text){
+  var ta=document.createElement("textarea");
+  ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand("copy"); toast("执行计划已复制 ✓"); }
+  catch(e){ toast("复制失败，请手动选择"); }
+  document.body.removeChild(ta);
+}
+
+/* ---------- samples ---------- */
+var SAMPLE = [
+"# 一个典型的 Web 项目构建文件",
+"CC = gcc",
+"CFLAGS = -O2 -Wall",
+"BUILD = dist",
+"",
+".PHONY: all clean deploy check",
+"",
+"all: bundle",
+"",
+"assets: icons.min.css fonts.stamp",
+"\t@echo merging assets",
+"",
+"icons.min.css: icon-a.svg icon-b.svg",
+"\tcat icon-a.svg icon-b.svg | minify > $@",
+"",
+"fonts.stamp: fetch-fonts",
+"\ttouch fonts.stamp",
+"",
+"fetch-fonts:",
+"\tcurl -o fonts.woff2 https://example.com/f.woff2",
+"",
+"bundle: assets app.js",
+"\tesbuild app.js --bundle --outfile=$(BUILD)/app.min.js",
+"",
+"app.js: src/main.c src/util.c",
+"\t$(CC) $(CFLAGS) -o app.js src/main.c src/util.c",
+"",
+"test: bundle",
+"\tnode test/run.js",
+"",
+"check: test lint",
+"\techo all checks passed",
+"",
+"lint:",
+"\teslint src/",
+"",
+"deploy: check",
+"\trsync -av $(BUILD)/ server:/var/www/",
+"",
+"clean:",
+"\trm -rf $(BUILD) fonts.stamp"
+].join("\n");
+
+var CYCLE_SAMPLE = [
+"# 反例：a 依赖 b，b 又依赖 a —— make 会拒绝执行",
+".PHONY: a b c",
+"a: b",
+"\techo A",
+"b: a",
+"\techo B",
+"c: b",
+"\techo C"
+].join("\n");
+
+/* ---------- wire up ---------- */
+$("btnSample").addEventListener("click", function(){ $("input").value=SAMPLE; rebuild(); toast("示例已载入"); });
+$("btnCycle").addEventListener("click", function(){ $("input").value=CYCLE_SAMPLE; rebuild(); toast("带环反例已载入"); });
+$("btnClear").addEventListener("click", function(){ $("input").value=""; rebuild(); });
+$("btnCopy").addEventListener("click", copyPlan);
+$("input").addEventListener("input", rebuild);
+$("input").addEventListener("drop", function(ev){
+  ev.preventDefault();
+  var f=ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+  if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){ $("input").value=String(rd.result); rebuild(); toast("已载入 "+f.name); };
+  rd.readAsText(f);
+});
+$("input").addEventListener("dragover", function(ev){ ev.preventDefault(); });
+
+/* export for logic-sim (node) */
+if(typeof module!=="undefined" && module.exports){
+  module.exports={ parseMake:parseMake, expandVars:expandVars, computeWaves:computeWaves,
+    closureOf:closureOf, reverseDeps:reverseDeps, buildPlanMd:buildPlanMd, joinContinuations:joinContinuations };
+}
+</script>
+</body>
+</html>
