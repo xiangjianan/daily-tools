@@ -8,6 +8,7 @@ One original single-file creative micro-tool per day — local-first, zero-depen
 
 | # | Date | Demo | Idea | Source |
 | --- | --- | --- | --- | --- |
+| #30 | 2026-10-12 | [PIXDIET](pixdiet-20261012/) | PIXDIET: drop in an image, state a size budget (e.g. ≤100 KB) — a bisection search finds the exact compression quality that fits, with a before/after diet report, fully local | [source](pixdiet-20261012) |
 | #29 | 2026-10-11 | [MAKEWAVES](makewaves-20261011/) | MAKEWAVES: paste a Makefile, see the parallel waves of `make -j` — click a target to light up its dependency closure and resolved recipe, cycles flagged in a red CYCLE lane, one-click Markdown plan export, fully local | [source](makewaves-20261011) |
 | #28 | 2026-10-10 | [CURLYARD](curlyard-20261010/) | CURLYARD: paste a curl command, get a structured request card — sensitive headers flagged ⚠, one-click translate to fetch/axios/Python/Go/HTTPie, fully local | [source](curlyard-20261010) |
 | #27 | 2026-10-09 | [BRAILLEPIC](braillepic-20261009/) | BRAILLEPIC: drop an image, get Unicode braille pixel art — 2×4 dots per glyph = 8× the resolution of ASCII art, dithering for depth, paste anywhere as plain text, fully local | [source](braillepic-20261009) |

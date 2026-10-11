@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PIXDIET · 图片本地减肥 — 压到目标大小，零上传</title>
+<meta name="description" content="拖入图片，输入目标大小（如 100KB），自动搜索压缩质量并给出前后对比报告。全程浏览器本地处理，图片永不上传。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f1418'/%3E%3Crect x='10' y='18' width='34' height='34' rx='6' fill='none' stroke='%2356d4ad' stroke-width='4'/%3E%3Crect x='22' y='10' width='32' height='30' rx='6' fill='%230f1418' stroke='%23e8b64c' stroke-width='4'/%3E%3Cpath d='M38 16v8m0 0l-4-4m4 4l4-4' stroke='%23e8b64c' stroke-width='3.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0f1418; --bg2:#151c22; --bg3:#1b242c;
+  --line:#26323c; --line2:#31414e;
+  --tx:#e6edf2; --tx2:#93a4b0; --tx3:#5d7180;
+  --accent:#56d4ad; --accent2:#e8b64c; --bad:#e8735c;
+  --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg); color:var(--tx);
+  font-family:ui-sans-serif,-apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  line-height:1.55; min-height:100vh;
+  padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 40px);
+}
+.wrap{max-width:980px;margin:0 auto}
+header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+h1{font-size:26px;letter-spacing:.5px}
+h1 .lite{color:var(--accent)}
+.tagline{color:var(--tx2);font-size:14px}
+.privacy{
+  display:inline-flex;align-items:center;gap:6px;margin:10px 0 18px;
+  font-size:12.5px;color:var(--accent);background:rgba(86,212,173,.08);
+  border:1px solid rgba(86,212,173,.25);border-radius:999px;padding:4px 12px;
+}
+main{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px}
+@media(max-width:760px){main{grid-template-columns:1fr}}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--tx3);margin-bottom:12px;font-weight:600}
+
+/* dropzone */
+#drop{
+  border:2px dashed var(--line2);border-radius:var(--radius);
+  min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;color:var(--tx2);text-align:center;padding:22px;cursor:pointer;
+  transition:border-color .15s,background .15s;position:relative;
+}
+#drop:hover,#drop.over{border-color:var(--accent);background:rgba(86,212,173,.05)}
+#drop .big{font-size:16px;color:var(--tx)}
+#drop small{font-size:12.5px;color:var(--tx3)}
+#fileInput{position:absolute;inset:0;opacity:0;cursor:pointer}
+#previewWrap{display:none;flex-direction:column;gap:10px}
+#previewCanvas{
+  max-width:100%;max-height:340px;border-radius:10px;background:
+  conic-gradient(#1c262e 25%,#232f39 0 50%,#1c262e 0 75%,#232f39 0) 0 0/20px 20px;
+  display:block;margin:0 auto;
+}
+.metaRow{display:flex;gap:8px;flex-wrap:wrap}
+.chip{font-size:12px;color:var(--tx2);background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:3px 9px}
+.chip.warn{color:var(--accent2);border-color:rgba(232,182,76,.35)}
+.linkbtn{background:none;border:none;color:var(--accent);font-size:12.5px;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:3px}
+
+/* controls */
+.field{margin-bottom:16px}
+.field:last-child{margin-bottom:0}
+.field label{display:flex;justify-content:space-between;font-size:13px;color:var(--tx2);margin-bottom:7px}
+.field label b{color:var(--tx);font-weight:600}
+.seg{display:flex;background:var(--bg3);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+.seg button{
+  flex:1;border:none;background:none;color:var(--tx2);font-size:13.5px;
+  padding:8px 4px;border-radius:8px;cursor:pointer;font-family:inherit;
+}
+.seg button.on{background:var(--accent);color:#08221a;font-weight:600}
+input[type=range]{width:100%;accent-color:var(--accent);height:28px;touch-action:pan-y}
+input[type=number],select{
+  width:100%;background:var(--bg3);border:1px solid var(--line2);color:var(--tx);
+  border-radius:10px;padding:9px 11px;font-size:15px;font-family:inherit;
+}
+input[type=number]:focus,select:focus{outline:none;border-color:var(--accent)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hint{font-size:12px;color:var(--tx3);margin-top:6px}
+#qualityField{display:none}
+.quickRow{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.quickRow button{
+  background:var(--bg3);border:1px solid var(--line2);color:var(--tx2);
+  border-radius:8px;font-size:12px;padding:4px 10px;cursor:pointer;font-family:inherit;
+}
+.quickRow button:hover{border-color:var(--accent);color:var(--accent)}
+
+/* result */
+#resultCard{display:none}
+.afterBar{height:10px;border-radius:6px;background:var(--bg3);overflow:hidden;display:flex;margin:12px 0 8px}
+.afterBar i{height:100%}
+.afterBar .keep{background:var(--accent)}
+.afterBar .save{background:repeating-linear-gradient(-45deg,#243138 0 6px,#2b3944 6px 12px)}
+.sizeLine{display:flex;justify-content:space-between;font-size:13.5px;color:var(--tx2)}
+.sizeLine b{color:var(--tx);font-variant-numeric:tabular-nums}
+.savedBig{
+  font-size:34px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;
+  margin:4px 0 2px;letter-spacing:-.5px;
+}
+.savedBig small{font-size:14px;font-weight:500;color:var(--tx2)}
+#reportNote{font-size:12.5px;color:var(--tx3);margin-top:8px}
+#reportNote.bad{color:var(--accent2)}
+#reportNote.ok{color:var(--tx2)}
+.dl{
+  display:block;width:100%;margin-top:14px;text-align:center;
+  background:var(--accent);color:#08221a;border:none;border-radius:10px;
+  font-size:15.5px;font-weight:700;padding:12px;cursor:pointer;font-family:inherit;
+  text-decoration:none;
+}
+.dl:hover{filter:brightness(1.08)}
+#qOut{font-variant-numeric:tabular-nums}
+#statusLine{font-size:12.5px;color:var(--tx3);margin-top:10px;min-height:18px}
+#statusLine.busy{color:var(--accent2)}
+footer{margin-top:22px;text-align:center;font-size:12px;color:var(--tx3)}
+footer a{color:var(--tx2)}
+#toast{
+  position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 24px);transform:translateX(-50%) translateY(20px);
+  background:#2a1c18;color:#ffb4a2;border:1px solid rgba(232,115,92,.4);
+  padding:10px 18px;border-radius:10px;font-size:13.5px;opacity:0;pointer-events:none;
+  transition:opacity .25s,transform .25s;max-width:88vw;z-index:9;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.ok{background:#12271f;color:var(--accent);border-color:rgba(86,212,173,.4)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>PIX<span class="lite">DIET</span></h1>
+    <div class="tagline">图片本地减肥 · 压到目标大小，不调滑杆</div>
+  </header>
+  <div class="privacy">🔒 图片只在你的浏览器里处理，永不上传 — 断网也能用</div>
+
+  <main>
+    <section class="card">
+      <h2>① 放一张图进来</h2>
+      <div id="drop">
+        <div class="big">拖图片到这里，或点击选择</div>
+        <small>PNG / JPEG / WebP / GIF · 不装任何东西</small>
+        <input type="file" id="fileInput" accept="image/*">
+      </div>
+      <div id="previewWrap">
+        <canvas id="previewCanvas" width="10" height="10"></canvas>
+        <div class="metaRow" id="metaRow"></div>
+        <button class="linkbtn" id="resetBtn">← 换一张图</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>② 定个减肥目标</h2>
+      <div class="field">
+        <label><b>模式</b></label>
+        <div class="seg" id="modeSeg">
+          <button data-mode="target" class="on">🎯 压到目标大小</button>
+          <button data-mode="manual">🎚 手动调质量</button>
+        </div>
+      </div>
+      <div class="field" id="targetField">
+        <label><b>目标大小</b><span>不超过多少</span></label>
+        <div class="row2">
+          <input type="number" id="targetKB" value="100" min="3" max="20000" step="1" inputmode="decimal">
+          <select id="targetUnit">
+            <option value="1" selected>KB</option>
+            <option value="1024">MB</option>
+          </select>
+        </div>
+        <div class="quickRow">
+          <button data-kb="50">50K</button><button data-kb="100">100K</button>
+          <button data-kb="200">200K</button><button data-kb="500">500K</button>
+          <button data-kb="1024">1M</button>
+        </div>
+        <div class="hint">自动搜索压缩质量，直到刚好塞进目标以内</div>
+      </div>
+      <div class="field" id="qualityField">
+        <label><b>压缩质量</b><span id="qOut">75%</span></label>
+        <input type="range" id="quality" min="5" max="95" step="1" value="75">
+      </div>
+      <div class="field">
+        <label><b>最长边</b><span>缩小尺寸也省体积</span></label>
+        <select id="maxDim">
+          <option value="0">保持原始尺寸</option>
+          <option value="1920">≤ 1920 px（博客配图）</option>
+          <option value="1280">≤ 1280 px（聊天/网页）</option>
+          <option value="800">≤ 800 px（缩略图）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label><b>输出格式</b></label>
+        <select id="fmt">
+          <option value="image/webp" selected>WebP — 压得最狠，保透明</option>
+          <option value="image/jpeg">JPEG — 兼容性最好，透明变白底</option>
+        </select>
+      </div>
+      <div id="statusLine"></div>
+    </section>
+
+    <section class="card" id="resultCard" style="grid-column:1/-1">
+      <h2>③ 减肥报告</h2>
+      <div class="savedBig" id="savedPct">– <small></small></div>
+      <div class="afterBar"><i class="keep" id="barKeep" style="width:100%"></i><i class="save" id="barSave" style="width:0%"></i></div>
+      <div class="sizeLine"><span>原图 <b id="sizeBefore">–</b></span><span id="arrowMid">→</span><span>减肥后 <b id="sizeAfter">–</b> <span id="dimAfter" style="color:var(--tx3)"></span></span></div>
+      <div id="reportNote" class="ok">放入图片后这里会生成报告。</div>
+      <a class="dl" id="dlBtn" download style="display:none">⬇ 保存减肥后的图</a>
+    </section>
+  </main>
+
+  <footer>PIXDIET · 每天 1 个小工具的第 30 期 · <a href="https://github.com/xiangjianan/daily-tools/tree/main/pixdiet-20261012">源码</a> · 无依赖单文件</footer>
+</div>
+<div id="toast"></div>
+<script>
+"use strict";
+/* ===== helpers ===== */
+var $ = function(id){ return document.getElementById(id); };
+function fmtBytes(n){
+  if(n < 1024) return n + " B";
+  if(n < 1024*1024) return (n/1024).toFixed(1) + " KB";
+  return (n/1048576).toFixed(2) + " MB";
+}
+function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
+function scaleFor(w, h, maxDim){
+  if(!maxDim || maxDim <= 0) return 1;
+  var m = Math.max(w, h);
+  return m > maxDim ? maxDim / m : 1;
+}
+function extFor(mime){ return mime === "image/jpeg" ? ".jpg" : ".webp"; }
+function toast(msg, ok){
+  var t = $("toast");
+  t.textContent = msg;
+  t.className = "show" + (ok ? " ok" : "");
+  clearTimeout(toast._tm);
+  toast._tm = setTimeout(function(){ t.className = ""; }, 2600);
+}
+/* one canvas.encode step: draw scaled source to a canvas, return Blob promise */
+function encodeAt(src, w, h, mime, quality){
+  var c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(w));
+  c.height = Math.max(1, Math.round(h));
+  var ctx = c.getContext("2d");
+  if(mime === "image/jpeg"){ ctx.fillStyle = "#ffffff"; ctx.fillRect(0,0,c.width,c.height); }
+  ctx.drawImage(src, 0, 0, c.width, c.height);
+  return new Promise(function(res, rej){
+    c.toBlob(function(b){ b ? res(b) : rej(new Error("encode-failed")); }, mime, quality);
+  });
+}
+/* bisection: find highest quality whose blob fits under limitBytes.
+   encodeFn(q) -> Promise<{size:number}>. Returns {quality, size, hit} */
+function searchQuality(limitBytes, encodeFn, loQ, hiQ){
+  loQ = (typeof loQ === "number") ? loQ : 0.05;
+  hiQ = (typeof hiQ === "number") ? hiQ : 0.95;
+  var best = null; /* best fit under limit */
+  var missesBelow = 0;
+  var chain = Promise.resolve();
+  var attempts = [];
+  /* iterative bisection, sequential to keep memory calm */
+  function step(lo, hi, round){
+    if(round > 8) return Promise.resolve();
+    var q = Math.round(((lo + hi) / 2) * 20) / 20; /* 5% granularity */
+    if(attempts.indexOf(q) !== -1 && round > 2) return Promise.resolve();
+    attempts.push(q);
+    return encodeFn(q).then(function(r){
+      if(r.size <= limitBytes){
+        if(!best || q > best.quality) best = { quality: q, size: r.size };
+        lo = q; /* fits: try higher quality */
+      } else {
+        hi = q; missesBelow++;
+      }
+      if(hi - lo <= 0.049) return Promise.resolve();
+      return step(lo, hi, round + 1);
+    });
+  }
+  return step(loQ, hiQ, 1).then(function(){
+    return { quality: best ? best.quality : null, size: best ? best.size : null,
+             hit: !!best, missesBelow: missesBelow };
+  });
+}
+/* ===== state ===== */
+var st = {
+  img: null, srcName: "", srcSize: 0, srcW: 0, srcH: 0, srcType: "",
+  mode: "target", busy: false, lastUrl: "", lastBlob: null,
+  lastOutW: 0, lastOutH: 0
+};
+/* ===== dom refs ===== */
+var drop = $("drop"), fileInput = $("fileInput"), previewWrap = $("previewWrap"),
+    canvas = $("previewCanvas"), statusLine = $("statusLine");
+/* ===== load file ===== */
+function loadFile(f){
+  if(!f) return;
+  if(f.type && f.type.indexOf("image/") !== 0){
+    toast("这不是图片文件 — 换一张 PNG/JPEG/WebP 试试");
+    return;
+  }
+  var url = URL.createObjectURL(f);
+  var im = new Image();
+  im.onload = function(){
+    if(st.lastUrl) URL.revokeObjectURL(st.lastUrl);
+    st.lastUrl = url;
+    st.img = im; st.srcSize = f.size; st.srcType = f.type || "image/*";
+    st.srcName = f.name || "image";
+    st.srcW = im.naturalWidth; st.srcH = im.naturalHeight;
+    drop.style.display = "none";
+    previewWrap.style.display = "flex";
+    renderMeta();
+    recompute();
+  };
+  im.onerror = function(){
+    URL.revokeObjectURL(url);
+    toast("图片解码失败 — 文件可能损坏");
+  };
+  im.src = url;
+}
+function renderMeta(){
+  var row = $("metaRow");
+  row.innerHTML = "";
+  function chip(txt, warn){
+    var s = document.createElement("span");
+    s.className = "chip" + (warn ? " warn" : "");
+    s.textContent = txt;
+    row.appendChild(s);
+  }
+  chip(st.srcName.length > 26 ? st.srcName.slice(0,23)+"…" : st.srcName);
+  chip(st.srcW + "×" + st.srcH);
+  chip(fmtBytes(st.srcSize));
+  if(st.srcType === "image/gif") chip("GIF → 只取第一帧", true);
+  if(st.srcType === "image/png" && $("fmt").value === "image/jpeg") chip("透明区域将变白底", true);
+}
+/* ===== recompute pipeline ===== */
+function setStatus(msg, busy){
+  statusLine.textContent = msg || "";
+  statusLine.className = busy ? "busy" : "";
+}
+var recomputeTm = 0, runSeq = 0;
+function recompute(){
+  clearTimeout(recomputeTm);
+  recomputeTm = setTimeout(doCompute, 120);
+}
+function doCompute(){
+  if(!st.img) return;
+  if(st.busy){ /* busy 期间的输入不能丢：稍后重跑 */ setTimeout(doCompute, 250); return; }
+  st.busy = true;
+  var seq = ++runSeq;
+  var scale = scaleFor(st.srcW, st.srcH, parseInt($("maxDim").value, 10));
+  var w = Math.max(1, Math.round(st.srcW * scale));
+  var h = Math.max(1, Math.round(st.srcH * scale));
+  st.lastOutW = w; st.lastOutH = h;
+  var mime = $("fmt").value;
+  $("resultCard").style.display = "block";
+  var note = $("reportNote");
+  note.className = "ok";
+
+  function finish(outBlob, extra){
+    if(seq !== runSeq) return;
+    st.busy = false;
+    if(!outBlob){ setStatus(""); return; }
+    st.lastBlob = outBlob;
+    var pct = st.srcSize > 0 ? Math.round((1 - outBlob.size / st.srcSize) * 100) : 0;
+    $("savedPct").innerHTML = (pct > 0 ? "−" + pct : "+" + Math.abs(pct)) + "<small>% 体积</small>";
+    $("savedPct").style.color = pct > 0 ? "var(--accent)" : "var(--accent2)";
+    $("sizeBefore").textContent = fmtBytes(st.srcSize);
+    $("sizeAfter").textContent = fmtBytes(outBlob.size);
+    $("dimAfter").textContent = w + "×" + h;
+    var keep = clamp(outBlob.size / st.srcSize * 100, 2, 100);
+    $("barKeep").style.width = keep + "%";
+    $("barSave").style.width = (100 - keep) + "%";
+    var ext = extFor(mime);
+    var base = st.srcName.replace(/\.[^.]+$/, "");
+    var dl = $("dlBtn");
+    dl.href = URL.createObjectURL(outBlob);
+    dl.download = base + "-diet" + ext;
+    dl.style.display = "block";
+    note.className = extra && extra.miss ? "bad" : "ok";
+    note.textContent = extra && extra.msg ? extra.msg : "";
+    setStatus("");
+  }
+  function failErr(){
+    if(seq !== runSeq) return;
+    st.busy = false;
+    note.className = "bad";
+    note.textContent = "这个格式在你的浏览器里编码失败，换个输出格式试试。";
+    setStatus("");
+  }
+
+  if(st.mode === "manual"){
+    var q = parseInt($("quality").value, 10) / 100;
+    setStatus("压缩中…", true);
+    encodeAt(st.img, w, h, mime, q).then(function(b){ finish(b); }, failErr);
+  } else {
+    var limit = clamp(parseFloat($("targetKB").value) || 0, 0.1, 20480) * 1024 * parseInt($("targetUnit").value, 10);
+    if(limit < 1024){
+      note.className = "bad";
+      note.textContent = "目标太小了 — 至少给 1 KB 以上的空间。";
+      st.busy = false;
+      return;
+    }
+    if(limit >= st.srcSize * 1.6){
+      /* target already ≥ source: just re-encode at high quality */
+      setStatus("目标比原图还大，直接高保真转格式…", true);
+      encodeAt(st.img, w, h, mime, 0.92).then(function(b){
+        if(seq !== runSeq) return;
+        finish(b, { msg: "🎯 目标比原图还宽松 — 已按最高质量输出，图不会变大多少。", miss: false });
+      }, failErr);
+      return;
+    }
+    setStatus("搜索最优质量（二分，最多 8 轮）…", true);
+    searchQuality(limit, function(q){
+      return encodeAt(st.img, w, h, mime, q);
+    }).then(function(r){
+      if(seq !== runSeq) return;
+      if(r.hit){
+        var msg = "🎯 已塞进目标 " + fmtBytes(limit) + " — 最终质量 " + Math.round(r.quality*100) + "%。";
+        if(r.quality <= 0.1){
+          msg = "⚠️ 已经压到最低质量（" + Math.round(r.quality*100) + "%）才达标 " + fmtBytes(r.size) + "。想更小就缩小「最长边」。";
+        }
+        st.busy = true;
+        encodeAt(st.img, w, h, mime, r.quality).then(function(b){
+          if(seq !== runSeq) return;
+          st.busy = false;
+          finish(b, { msg: msg, miss: false });
+        }, failErr);
+      } else {
+        st.busy = true;
+        encodeAt(st.img, w, h, mime, 0.05).then(function(b){
+          if(seq !== runSeq) return;
+          st.busy = false;
+          finish(b, { msg: "⚠️ 达不到 " + fmtBytes(limit) + " 目标 — 已按最低质量（5%）输出 " + fmtBytes(b.size) + "。缩小「最长边」能再省很多。", miss: true });
+        }, failErr);
+      }
+    }, failErr);
+  }
+}
+/* ===== events ===== */
+fileInput.addEventListener("change", function(){ loadFile(fileInput.files[0]); });
+["dragenter","dragover"].forEach(function(ev){
+  drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add("over"); });
+});
+["dragleave","drop"].forEach(function(ev){
+  drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove("over"); });
+});
+drop.addEventListener("drop", function(e){
+  var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  loadFile(f);
+});
+$("resetBtn").addEventListener("click", function(){
+  previewWrap.style.display = "none";
+  drop.style.display = "flex";
+  $("resultCard").style.display = "none";
+  st.img = null; st.lastBlob = null; runSeq++;
+  fileInput.value = "";
+});
+$("modeSeg").addEventListener("click", function(e){
+  var b = e.target.closest("button"); if(!b) return;
+  var mode = b.getAttribute("data-mode");
+  st.mode = mode;
+  Array.prototype.forEach.call($("modeSeg").children, function(x){ x.classList.toggle("on", x === b); });
+  $("targetField").style.display = mode === "target" ? "block" : "none";
+  $("qualityField").style.display = mode === "manual" ? "block" : "none";
+  recompute();
+});
+$("quality").addEventListener("input", function(){
+  $("qOut").textContent = $("quality").value + "%";
+  recompute();
+});
+$("targetKB").addEventListener("input", recompute);
+$("targetUnit").addEventListener("change", recompute);
+$("maxDim").addEventListener("change", function(){ renderMeta(); recompute(); });
+$("fmt").addEventListener("change", function(){
+  renderMeta();
+  recompute();
+});
+document.querySelectorAll(".quickRow button").forEach(function(b){
+  b.addEventListener("click", function(){
+    $("targetKB").value = b.getAttribute("data-kb");
+    $("targetUnit").value = "1";
+    recompute();
+  });
+});
+window.addEventListener("dragover", function(e){ e.preventDefault(); });
+window.addEventListener("drop", function(e){ e.preventDefault(); });
+</script>
+</body>
+</html>
