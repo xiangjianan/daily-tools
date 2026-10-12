@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ICONKIT · 图标全家桶熔炉</title>
+<meta name="description" content="拖一张图或打两个字，本地熔出 favicon.ico + 全尺寸 PNG + ZIP，实时预览浏览器标签页/书签/手机主屏效果，零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧱</text></svg>">
+<style>
+:root{
+  --bg:#0e1116;--panel:#151a22;--panel2:#1b212c;--line:#262e3b;
+  --fg:#e7ecf3;--mut:#8b96a5;--acc:#5eead4;--acc2:#38bdf8;--warn:#fbbf24;--err:#f87171;
+  --rad:14px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom))}
+main{max-width:1060px;margin:0 auto}
+header h1{font-size:22px;letter-spacing:.5px}
+header h1 b{color:var(--acc)}
+header p{color:var(--mut);font-size:13px;margin-top:4px}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:16px;margin-top:18px}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--rad);padding:16px}
+.card h2{font-size:13px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+.tabs{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:14px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--mut);font:600 13.5px/1 inherit;
+  padding:9px 0;border-radius:8px;cursor:pointer;transition:.15s}
+.tabs button.on{background:var(--acc);color:#06281f}
+#drop{border:2px dashed var(--line);border-radius:12px;padding:26px 12px;text-align:center;color:var(--mut);
+  cursor:pointer;transition:.15s;font-size:13.5px}
+#drop:hover,#drop.over{border-color:var(--acc);color:var(--fg);background:rgba(94,234,212,.04)}
+#drop .big{font-size:30px;display:block;margin-bottom:6px}
+#drop.has{border-style:solid;border-color:var(--line);color:var(--fg)}
+#drop .fname{display:block;margin-top:6px;font-size:12px;color:var(--acc);word-break:break-all}
+.frow{margin-top:14px}
+.frow label{display:block;font-size:12.5px;color:var(--mut);margin-bottom:6px}
+#chars{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--fg);
+  font-size:22px;padding:10px 12px;letter-spacing:2px;text-align:center;outline:none}
+#chars:focus{border-color:var(--acc)}
+.swatches{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sw{width:30px;height:30px;border-radius:8px;border:2px solid transparent;cursor:pointer}
+.sw.on{border-color:var(--fg)}
+input[type=color]{width:30px;height:30px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);cursor:pointer;padding:2px}
+.slider{display:flex;align-items:center;gap:10px}
+.slider input[type=range]{flex:1;accent-color:var(--acc)}
+.slider output{font-size:12.5px;color:var(--mut);min-width:40px;text-align:right;font-variant-numeric:tabular-nums}
+/* 预览 */
+.pv-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px}
+.seg button{border:0;background:transparent;color:var(--mut);font:600 12px/1 inherit;padding:6px 12px;border-radius:6px;cursor:pointer}
+.seg button.on{background:var(--acc2);color:#04222f}
+.browser{border-radius:12px;overflow:hidden;border:1px solid var(--line);transition:.2s}
+.browser.light{background:#f5f6f8;color:#1c2430}
+.browser.dark{background:#20242c;color:#e7ecf3}
+.tbar{display:flex;align-items:center;gap:8px;padding:8px 10px}
+.browser.light .tbar{background:#e4e6ea;border-bottom:1px solid #d5d8de}
+.browser.dark .tbar{background:#171a20;border-bottom:1px solid #2a303b}
+.dots{display:flex;gap:5px}
+.dots i{width:10px;height:10px;border-radius:50%}
+.dots i:nth-child(1){background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
+.tab{display:flex;align-items:center;gap:6px;background:var(--tabbg,#fff);border-radius:7px 7px 0 0;
+  padding:6px 12px;font-size:12px;min-width:0;max-width:220px}
+.browser.light .tab{--tabbg:#fff;color:#333}
+.browser.dark .tab{--tabbg:#2c313a;color:#e7ecf3}
+.tab img{width:16px;height:16px;flex:none}
+.tab span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.abar{display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px}
+.browser.light .abar{background:#fff}
+.browser.dark .abar{background:#242933}
+.urlbox{flex:1;background:var(--urlbg,#eee);border-radius:999px;padding:5px 12px;color:inherit;opacity:.75;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.browser.light .urlbox{--urlbg:#f0f1f4}
+.browser.dark .urlbox{--urlbg:#171a20}
+.pv-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px}
+.pv-block{flex:1;min-width:200px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px}
+.pv-block h3{font-size:12px;color:var(--mut);font-weight:600;margin-bottom:10px;letter-spacing:.5px}
+.bmk{display:flex;gap:14px;flex-wrap:wrap}
+.bmk-it{display:flex;flex-direction:column;align-items:center;gap:5px;width:64px}
+.bmk-it img{width:32px;height:32px;border-radius:5px}
+.bmk-it span{font-size:10.5px;color:var(--mut);max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.phone{display:flex;align-items:center;gap:16px}
+.phone img{width:72px;height:72px;border-radius:16.1px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.phone span{font-size:11px;color:var(--mut)}
+/* 产物 */
+.out{margin-top:16px}
+.out-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.out-head h2{margin:0}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel2);color:var(--fg);border-radius:9px;
+  font:600 13px/1 inherit;padding:10px 14px;cursor:pointer;transition:.15s}
+.btn:hover{border-color:var(--acc);color:var(--acc)}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:#06281f}
+.btn.primary:hover{filter:brightness(1.08);color:#06281f}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.sizes{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px}
+.sz{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 8px;text-align:center;position:relative}
+.sz .box{height:48px;display:flex;align-items:center;justify-content:center}
+.sz img{image-rendering:auto}
+.sz.px16 img,.sz.px32 img{image-rendering:pixelated}
+.sz .lbl{font-size:11.5px;color:var(--fg);font-weight:600;margin-top:7px;font-variant-numeric:tabular-nums}
+.sz .by{font-size:10.5px;color:var(--mut)}
+.sz .bdg{position:absolute;top:6px;right:6px;font-size:9.5px;background:var(--acc2);color:#04222f;
+  border-radius:4px;padding:1px 5px;font-weight:700}
+.snip{margin-top:14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+  font:12.2px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#a5d6ff;overflow-x:auto;white-space:pre;position:relative}
+.snip .cp{position:absolute;top:8px;right:8px}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);opacity:0;
+  background:#f4f6f8;color:#15202b;border-radius:10px;padding:10px 18px;font-size:13.5px;font-weight:600;
+  pointer-events:none;transition:.25s;z-index:99;max-width:88vw}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.err{background:var(--err);color:#2b0606}
+footer{margin-top:26px;color:var(--mut);font-size:12px;text-align:center}
+footer a{color:var(--acc);text-decoration:none}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>🧱 <b>ICONKIT</b> · 图标全家桶熔炉</h1>
+  <p>拖一张图，或直接打两个字选个底色——立刻熔出 favicon.ico + 全尺寸 PNG + ZIP + 可复制的 HTML 引用码。实时预览浏览器标签页 / 书签栏 / 手机主屏的真实长相。全程本地，图片永不上传。</p>
+</header>
+
+<div class="grid">
+  <!-- 左：输入 -->
+  <section class="card">
+    <h2>① 素材</h2>
+    <div class="tabs" role="tablist">
+      <button id="tabImg" class="on" type="button">🖼️ 用图片</button>
+      <button id="tabTxt" type="button">✏️ 打两个字</button>
+    </div>
+
+    <div id="paneImg">
+      <div id="drop" role="button" aria-label="选择或拖入图片" tabindex="0">
+        <span class="big">🖼️</span>
+        点击选择 / 拖图片到这里<br>
+        <span style="font-size:11.5px">PNG · JPG · SVG · WebP · GIF（取首帧）</span>
+        <span class="fname" id="fname"></span>
+      </div>
+      <input type="file" id="file" accept="image/*" class="hidden">
+    </div>
+
+    <div id="paneTxt" class="hidden">
+      <div class="frow">
+        <label for="chars">图标文字（最多 2 个字符）</label>
+        <input id="chars" maxlength="2" placeholder="如：字 / 開 / Go" autocomplete="off">
+      </div>
+      <div class="frow">
+        <label>底色</label>
+        <div class="swatches" id="swatches">
+          <div class="sw on" data-c="#0f172a" style="background:#0f172a"></div>
+          <div class="sw" data-c="#0e7490" style="background:#0e7490"></div>
+          <div class="sw" data-c="#15803d" style="background:#15803d"></div>
+          <div class="sw" data-c="#b45309" style="background:#b45309"></div>
+          <div class="sw" data-c="#be123c" style="background:#be123c"></div>
+          <div class="sw" data-c="#7c3aed" style="background:#7c3aed"></div>
+          <div class="sw" data-c="#e2e8f0" style="background:#e2e8f0"></div>
+          <div class="sw" data-c="#ffffff" style="background:#ffffff"></div>
+          <input type="color" id="bgPick" value="#0f172a" aria-label="自定义底色">
+        </div>
+      </div>
+      <div class="frow">
+        <label>圆角</label>
+        <div class="slider">
+          <input type="range" id="radius" min="0" max="50" value="22">
+          <output id="radOut">22%</output>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--mut);margin-top:10px">文字自动撑满画布，深浅底自动配黑/白字，也可在「高级」里自定义。</p>
+      <div class="frow">
+        <label>文字颜色</label>
+        <div class="swatches">
+          <div class="sw on" data-c="auto" style="background:linear-gradient(135deg,#fff 50%,#111 50%)"></div>
+          <div class="sw" data-c="#ffffff" style="background:#ffffff"></div>
+          <div class="sw" data-c="#111111" style="background:#111111"></div>
+          <input type="color" id="fgPick" value="#ffffff" aria-label="自定义文字色">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 右：预览 -->
+  <section class="card">
+    <div class="pv-head">
+      <h2 style="margin:0">② 它在真实世界里的样子</h2>
+      <div class="seg">
+        <button id="pvLight" class="on" type="button">☀️ 亮</button>
+        <button id="pvDark" type="button">🌙 暗</button>
+      </div>
+    </div>
+    <div class="browser light" id="browser">
+      <div class="tbar">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <div class="tab"><img id="pvTab" alt=""><span>我的网站 · 首页</span></div>
+      </div>
+      <div class="abar"><div class="urlbox">https://example.com</div></div>
+    </div>
+    <div class="pv-row">
+      <div class="pv-block">
+        <h3>书签栏</h3>
+        <div class="bmk">
+          <div class="bmk-it"><img id="pvBmk1" alt=""><span>文档</span></div>
+          <div class="bmk-it"><img id="pvBmk2" alt=""><span>控制台</span></div>
+          <div class="bmk-it"><img id="pvBmk3" alt=""><span>首页</span></div>
+        </div>
+      </div>
+      <div class="pv-block">
+        <h3>手机主屏（apple-touch）</h3>
+        <div class="phone"><img id="pvPhone" alt=""><span>添加到主屏幕后的效果<br>iOS 会自己再加圆角遮罩</span></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 产物 -->
+<section class="card out" id="outCard">
+  <div class="out-head">
+    <h2>③ 产物 · 9 个尺寸 + 1 个 .ico</h2>
+    <div class="btns">
+      <button class="btn" id="btnIco" disabled>⬇️ favicon.ico</button>
+      <button class="btn primary" id="btnZip" disabled>⬇️ 打包 ZIP</button>
+      <button class="btn" id="btnCopy" disabled>📋 复制 HTML 引用码</button>
+    </div>
+  </div>
+  <div class="sizes" id="sizes"></div>
+  <div class="snip" id="snip"></div>
+</section>
+
+<footer>ICONKIT · 每日创意小工具 #31 · 所有缩放/打包/导出都在你的浏览器里完成，零上传零联网 · <a href="../">← 返回目录</a></footer>
+</main>
+<div id="toast" role="status"></div>
+
+<script>
+"use strict";
+/* ============ 状态 ============ */
+var SIZES = [16,32,48,64,96,128,180,192,512];
+var ICO_SIZES = [16,32,48];
+var state = {
+  mode: "img",            // img | txt
+  src: null,              // 512x512 源 canvas
+  hasImage: false,
+  chars: "", bg: "#0f172a", fg: "auto", radius: 22,
+  blobs: {},              // size -> {url, bytes}
+  ico: null               // ArrayBuffer
+};
+var $ = function(id){ return document.getElementById(id); };
+
+function toast(msg, isErr){
+  var t = $("toast");
+  t.textContent = msg;
+  t.className = "show" + (isErr ? " err" : "");
+  clearTimeout(toast._h);
+  toast._h = setTimeout(function(){ t.className = ""; }, 2400);
+}
+function fmtBytes(n){
+  if (n < 1024) return n + " B";
+  return (n/1024).toFixed(1) + " KB";
+}
+function isLight(hex){
+  var h = hex.replace("#","");
+  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  var r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+  return (0.299*r + 0.587*g + 0.114*b) > 155;
+}
+
+/* ============ 输入模式切换 ============ */
+$("tabImg").addEventListener("click", function(){ setMode("img"); });
+$("tabTxt").addEventListener("click", function(){ setMode("txt"); });
+function setMode(m){
+  state.mode = m;
+  $("tabImg").className = m === "img" ? "on" : "";
+  $("tabTxt").className = m === "txt" ? "on" : "";
+  $("paneImg").classList.toggle("hidden", m !== "img");
+  $("paneTxt").classList.toggle("hidden", m !== "txt");
+  rebuild();
+}
+
+/* ============ 图片输入 ============ */
+var drop = $("drop");
+drop.addEventListener("click", function(){ $("file").click(); });
+drop.addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
+$("file").addEventListener("change", function(e){
+  if (e.target.files && e.target.files[0]) loadFile(e.target.files[0]);
+});
+["dragenter","dragover"].forEach(function(ev){
+  drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add("over"); });
+});
+["dragleave","drop"].forEach(function(ev){
+  drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove("over"); });
+});
+drop.addEventListener("drop", function(e){
+  var f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+function loadFile(f){
+  if (!/^image\//.test(f.type)) { toast("这不是图片文件哦，换一张试试", true); return; }
+  $("fname").textContent = f.name + " · " + fmtBytes(f.size);
+  var url = URL.createObjectURL(f);
+  var im = new Image();
+  im.onload = function(){
+    URL.revokeObjectURL(url);
+    state.hasImage = true;
+    drop.classList.add("has");
+    state.imgEl = im;
+    rebuild();
+    toast("已载入，图标正在熔炼 🔥");
+  };
+  im.onerror = function(){
+    URL.revokeObjectURL(url);
+    toast("图片解码失败，换一张试试", true);
+  };
+  im.src = url;
+}
+
+/* ============ 文字输入 ============ */
+$("chars").addEventListener("input", function(e){
+  var v = e.target.value;
+  // 数一下"字符数"按码点（emoji 算一个）
+  var arr = Array.from(v);
+  if (arr.length > 2) { v = arr.slice(0,2).join(""); e.target.value = v; }
+  state.chars = v;
+  rebuild();
+});
+$("swatches").addEventListener("click", function(e){
+  var sw = e.target.closest(".sw");
+  if (!sw) return;
+  $$("#swatches .sw").forEach(function(x){ x.classList.remove("on"); });
+  sw.classList.add("on");
+  state.bg = sw.dataset.c;
+  rebuild();
+});
+$("bgPick").addEventListener("input", function(e){
+  $$("#swatches .sw").forEach(function(x){ x.classList.remove("on"); });
+  state.bg = e.target.value;
+  rebuild();
+});
+$("fgPick").addEventListener("input", function(e){
+  $$("#swatches .sw").forEach(function(x){ x.classList.remove("on"); });
+  state.fg = e.target.value;
+  rebuild();
+});
+$("radius").addEventListener("input", function(e){
+  state.radius = +e.target.value;
+  $("radOut").textContent = state.radius + "%";
+  if (state.mode === "txt") rebuild();
+});
+function $$(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+
+/* ============ 生成源画布 ============ */
+function buildSource(){
+  var c = document.createElement("canvas");
+  c.width = 512; c.height = 512;
+  var ctx = c.getContext("2d");
+  if (state.mode === "img"){
+    if (!state.hasImage || !state.imgEl) return null;
+    var im = state.imgEl;
+    var side = Math.min(im.naturalWidth || im.width, im.naturalHeight || im.height);
+    var sx = ((im.naturalWidth || im.width) - side) / 2;
+    var sy = ((im.naturalHeight || im.height) - side) / 2;
+    // SVG 无固有尺寸时兜底
+    if (!side) { sx = 0; sy = 0; side = Math.max(im.naturalWidth || 0, 512); }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(im, sx, sy, side, side, 0, 0, 512, 512);
+  } else {
+    var ch = state.chars.trim();
+    if (!ch) return null;
+    var bg = state.bg === "auto" ? "#0f172a" : state.bg;
+    var r = 512 * state.radius / 100;
+    ctx.fillStyle = bg;
+    if (r > 0){
+      ctx.beginPath();
+      var rr = Math.min(r, 256);
+      ctx.moveTo(rr,0); ctx.lineTo(512-rr,0); ctx.arcTo(512,0,512,rr,rr);
+      ctx.lineTo(512,512-rr); ctx.arcTo(512,512,512-rr,512,rr);
+      ctx.lineTo(rr,512); ctx.arcTo(0,512,0,512-rr,rr);
+      ctx.lineTo(0,rr); ctx.arcTo(0,0,rr,0,rr);
+      ctx.closePath(); ctx.fill();
+    } else ctx.fillRect(0,0,512,512);
+    var fg = state.fg === "auto" ? (isLight(bg) ? "#111318" : "#ffffff") : state.fg;
+    ctx.fillStyle = fg;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    var size = ch.length >= 2 ? 250 : 330;
+    ctx.font = "700 " + size + 'px -apple-system,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif';
+    ctx.fillText(ch, 256, 256 + size * 0.04);
+  }
+  return c;
+}
+
+/* ============ 尺寸渲染 ============ */
+function renderSize(src, px, opaque){
+  var c = document.createElement("canvas");
+  c.width = px; c.height = px;
+  var ctx = c.getContext("2d");
+  if (opaque){ ctx.fillStyle = "#ffffff"; ctx.fillRect(0,0,px,px); }
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, 0, 0, px, px);
+  return c;
+}
+function toBlob(canvas){
+  return new Promise(function(res){
+    canvas.toBlob(function(b){ res(b); }, "image/png");
+  });
+}
+
+/* ============ ICO 容器（PNG-in-ICO）============ */
+function buildIco(pngs){ // [{size, buf}]
+  pngs.sort(function(a,b){ return a.size - b.size; });
+  var count = pngs.length;
+  var headerLen = 6 + 16 * count;
+  var total = headerLen;
+  pngs.forEach(function(p){ total += p.buf.byteLength; });
+  var out = new ArrayBuffer(total);
+  var dv = new DataView(out);
+  var u8 = new Uint8Array(out);
+  dv.setUint16(0, 0, true);          // reserved
+  dv.setUint16(2, 1, true);          // type: icon
+  dv.setUint16(4, count, true);
+  var off = headerLen;
+  pngs.forEach(function(p, i){
+    var e = 6 + 16 * i;
+    var s = p.size >= 256 ? 0 : p.size;
+    u8[e] = s;                        // width
+    u8[e+1] = s;                      // height
+    u8[e+2] = 0;                      // palette
+    u8[e+3] = 0;                      // reserved
+    dv.setUint16(e+4, 1, true);       // color planes
+    dv.setUint16(e+6, 32, true);      // bits per pixel
+    dv.setUint32(e+8, p.buf.byteLength, true);
+    dv.setUint32(e+12, off, true);
+    u8.set(new Uint8Array(p.buf), off);
+    off += p.buf.byteLength;
+  });
+  return out;
+}
+
+/* ============ ZIP（STORE 法）============ */
+var CRC_TABLE = (function(){
+  var t = new Uint32Array(256);
+  for (var n = 0; n < 256; n++){
+    var c = n;
+    for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(u8){
+  var c = 0xFFFFFFFF;
+  for (var i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function buildZip(files){ // [{name, u8}]
+  var enc = new TextEncoder();
+  var chunks = [], centrals = [];
+  var offset = 0;
+  var now = new Date();
+  var dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+  var dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+  files.forEach(function(f){
+    var nameU8 = enc.encode(f.name);
+    var crc = crc32(f.u8);
+    var lh = new Uint8Array(30 + nameU8.length);
+    var dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint16(4, 20, true);        // version needed
+    dv.setUint16(6, 0, true);         // flags
+    dv.setUint16(8, 0, true);         // method: store
+    dv.setUint16(10, dosTime, true);
+    dv.setUint16(12, dosDate, true);
+    dv.setUint32(14, crc, true);
+    dv.setUint32(18, f.u8.length, true);
+    dv.setUint32(22, f.u8.length, true);
+    dv.setUint16(26, nameU8.length, true);
+    dv.setUint16(28, 0, true);
+    lh.set(nameU8, 30);
+    chunks.push(lh, f.u8);
+    var ce = new Uint8Array(46 + nameU8.length);
+    var cv = new DataView(ce.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, dosTime, true);
+    cv.setUint16(14, dosDate, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, f.u8.length, true);
+    cv.setUint32(24, f.u8.length, true);
+    cv.setUint16(28, nameU8.length, true);
+    cv.setUint32(42, offset, true);
+    ce.set(nameU8, 46);
+    centrals.push(ce);
+    offset += lh.length + f.u8.length;
+  });
+  var cdLen = centrals.reduce(function(a,c){ return a + c.length; }, 0);
+  var eocd = new Uint8Array(22);
+  var ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cdLen, true);
+  ev.setUint32(16, offset, true);
+  var all = chunks.concat(centrals, [eocd]);
+  var total = all.reduce(function(a,c){ return a + c.length; }, 0);
+  var out = new Uint8Array(total);
+  var pos = 0;
+  all.forEach(function(c){ out.set(c, pos); pos += c.length; });
+  return out;
+}
+
+/* ============ 主流程 ============ */
+var busy = false, pending = false;
+function rebuild(){
+  if (busy){ pending = true; return; }   // 忙时排队自续，输入不丢
+  busy = true;
+  var finish = function(){
+    busy = false;
+    if (pending){ pending = false; rebuild(); }
+  };
+  var src = buildSource();
+  if (!src){
+    clearOutputs();
+    busy = false;
+    return;
+  }
+  var jobs = SIZES.map(function(px){
+    var opaque = (px === 180);           // apple-touch 不透明，iOS 透明会垫黑
+    return toBlob(renderSize(src, px, opaque)).then(function(b){
+      return { px: px, blob: b, url: URL.createObjectURL(b), bytes: b.size };
+    });
+  });
+  Promise.all(jobs).then(function(items){
+    items.forEach(function(it){
+      var old = state.blobs[it.px];
+      if (old && old.url) URL.revokeObjectURL(old.url);
+      state.blobs[it.px] = it;
+    });
+    var icoParts = ICO_SIZES.map(function(px){
+      return blobToBuf(state.blobs[px].blob).then(function(buf){
+        return { size: px, buf: buf };
+      });
+    });
+    return Promise.all(icoParts).then(function(parts){
+      state.ico = buildIco(parts);
+      paintOutputs();
+      finish();
+    });
+  }).catch(function(err){
+    toast("生成失败：" + err.message, true);
+    finish();
+  });
+}
+function blobToBuf(b){
+  return new Promise(function(res, rej){
+    var fr = new FileReader();
+    fr.onload = function(){ res(fr.result); };
+    fr.onerror = function(){ rej(new Error("read blob")); };
+    fr.readAsArrayBuffer(b);
+  });
+}
+function paintOutputs(){
+  // 尺寸卡片
+  var html = "";
+  SIZES.forEach(function(px){
+    var it = state.blobs[px];
+    var show = Math.min(px, 48);
+    var bdg = px === 180 ? '<span class="bdg">iOS</span>' : (px === 512 ? '<span class="bdg">PWA</span>' : "");
+    html += '<div class="sz px' + px + '">' + bdg +
+      '<div class="box"><img src="' + it.url + '" width="' + show + '" height="' + show + '" alt="' + px + 'px"></div>' +
+      '<div class="lbl">' + px + '×' + px + '</div>' +
+      '<div class="by">' + fmtBytes(it.bytes) + '</div></div>';
+  });
+  $("sizes").innerHTML = html;
+  // 预览
+  $("pvTab").src = state.blobs[16].url;
+  $("pvBmk1").src = state.blobs[32].url;
+  $("pvBmk2").src = state.blobs[32].url;
+  $("pvBmk3").src = state.blobs[32].url;
+  $("pvPhone").src = state.blobs[180].url;
+  // snippet
+  $("snip").textContent =
+'<!-- 放到网站根目录后，在 <head> 里加： -->\n' +
+'<link rel="icon" href="/favicon.ico" sizes="48x48">\n' +
+'<link rel="icon" href="/favicon-32x32.png" sizes="32x32" type="image/png">\n' +
+'<link rel="icon" href="/favicon-16x16.png" sizes="16x16" type="image/png">\n' +
+'<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">\n' +
+'<!-- icon-192.png / icon-512.png 留给你的 PWA manifest -->';
+  ["btnIco","btnZip","btnCopy"].forEach(function(id){ $(id).disabled = false; });
+}
+function clearOutputs(){
+  $("sizes").innerHTML = '<div style="grid-column:1/-1;color:var(--mut);font-size:13px;text-align:center;padding:8px 0">' +
+    (state.mode === "txt" ? "输入 1-2 个字，图标立刻开始熔炼 🔥" : "先放一张图进来 🖼️") + '</div>';
+  $("pvTab").removeAttribute("src");
+  $("pvBmk1").removeAttribute("src");
+  $("pvBmk2").removeAttribute("src");
+  $("pvBmk3").removeAttribute("src");
+  $("pvPhone").removeAttribute("src");
+  $("snip").textContent = "";
+  ["btnIco","btnZip","btnCopy"].forEach(function(id){ $(id).disabled = true; });
+}
+
+/* ============ 下载/复制 ============ */
+function download(u8OrBlob, name){
+  var blob = u8OrBlob instanceof Blob ? u8OrBlob : new Blob([u8OrBlob], { type: "application/octet-stream" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 800);
+}
+$("btnIco").addEventListener("click", function(){
+  if (state.ico) download(state.ico, "favicon.ico");
+});
+$("btnZip").addEventListener("click", function(){
+  var enc = new TextEncoder();
+  var files = [{ name: "favicon.ico", u8: new Uint8Array(state.ico) }];
+  var names = { 16:"favicon-16x16.png", 32:"favicon-32x32.png", 48:"favicon-48x48.png",
+    64:"icon-64.png", 96:"icon-96.png", 128:"icon-128.png",
+    180:"apple-touch-icon.png", 192:"icon-192.png", 512:"icon-512.png" };
+  var jobs = SIZES.map(function(px){
+    return blobToBuf(state.blobs[px].blob).then(function(buf){
+      files.push({ name: names[px], u8: new Uint8Array(buf) });
+    });
+  });
+  Promise.all(jobs).then(function(){
+    files.push({ name: "html-snippet.txt", u8: enc.encode($("snip").textContent) });
+    download(buildZip(files), "iconkit-full-set.zip");
+    toast("ZIP 已打包（STORE 直存，无损）📦");
+  });
+});
+$("btnCopy").addEventListener("click", function(){
+  var txt = $("snip").textContent;
+  var done = function(){ toast("HTML 引用码已复制 📋"); };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done, function(){ fallbackCopy(txt); done(); });
+  } else fallbackCopy(txt), done();
+});
+function fallbackCopy(txt){
+  var ta = document.createElement("textarea");
+  ta.value = txt;
+  ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); } catch(e){}
+  ta.remove();
+}
+
+/* ============ 预览亮暗 ============ */
+$("pvLight").addEventListener("click", function(){ setPv("light"); });
+$("pvDark").addEventListener("click", function(){ setPv("dark"); });
+function setPv(m){
+  $("pvLight").className = m === "light" ? "on" : "";
+  $("pvDark").className = m === "dark" ? "on" : "";
+  var b = $("browser");
+  b.classList.toggle("light", m === "light");
+  b.classList.toggle("dark", m === "dark");
+}
+
+/* ============ 启动 ============ */
+clearOutputs();
+// 示例：默认给个文字图标，开箱即见效果
+state.mode = "txt";
+setMode("txt");
+$("chars").value = "Ik";
+state.chars = "Ik";
+state.bg = "#0e7490";
+$$("#swatches .sw").forEach(function(x){ x.classList.toggle("on", x.dataset.c === "#0e7490"); });
+rebuild();
+</script>
+</body>
+</html>

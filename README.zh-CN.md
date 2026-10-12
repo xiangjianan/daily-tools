@@ -8,6 +8,7 @@ English switch: [English](README.md)
 
 | # | Date | 在线试玩 | Idea | 源码 |
 | --- | --- | --- | --- | --- |
+| #31 | 2026-10-13 | [ICONKIT（图标全家桶熔炉）](iconkit-20261013/) | 拖一张图或打两个字选个底色，熔出 favicon.ico + 9 尺寸 PNG + ZIP + HTML 引用码，实时预览浏览器标签/书签/手机主屏效果，全程本地零上传 | [source](iconkit-20261013) |
 | #30 | 2026-10-12 | [PIXDIET（图片本地减肥）](pixdiet-20261012/) | 拖图进来报个预算（如 ≤100KB），自动二分搜索压缩质量刚好塞进目标，出前后对比减肥报告单，全程本地零上传 | [source](pixdiet-20261012) |
 | #29 | 2026-10-11 | [MAKEWAVES（Makefile 执行波可视化）](makewaves-20261011/) | 粘贴 Makefile 看清 make -j 的并行波次：点目标高亮依赖闭包与配方，环检测红 CYCLE 泳道，一键导出 MD 执行计划，全程本地 | [source](makewaves-20261011) |
 | #28 | 2026-10-10 | [CURLYARD（curl 翻译官）](curlyard-20261010/) | 粘贴 curl 命令即出结构化请求卡片：敏感头打 ⚠，一键译成 fetch/axios/Python/Go/HTTPie，全程本地 | [source](curlyard-20261010) |
