@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CheckLab · 校验位实验室</title>
+<meta name="description" content="粘贴号码自动识别类型，逐位展示校验算法的加权和过程，红绿判定，一键生成合法测试号。全程本地计算。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%230d1117'/><text x='50' y='.72em' font-size='58' text-anchor='middle'>🧪</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2129;--fg:#e6edf3;--mut:#8b949e;
+  --line:#21262d;--acc:#e3b341;--ok:#3fb950;--bad:#f85149;--chip:#21262d;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom))}
+main{max-width:760px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.4px;display:flex;align-items:center;gap:9px}
+h1 .logo{font-size:22px}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 20px}
+.sub b{color:var(--acc);font-weight:600}
+label.lab{display:block;font-size:12.5px;color:var(--mut);margin:0 0 7px;letter-spacing:.3px}
+textarea{width:100%;min-height:104px;resize:vertical;background:var(--panel);color:var(--fg);
+  border:1px solid var(--line);border-radius:10px;padding:12px 14px;font:15px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  outline:none;transition:border-color .15s}
+textarea:focus{border-color:var(--acc)}
+textarea::placeholder{color:#556070}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px;align-items:center}
+button{font:inherit;color:var(--fg);background:var(--chip);border:1px solid var(--line);
+  border-radius:8px;padding:7px 13px;cursor:pointer;transition:background .12s,border-color .12s}
+button:hover{background:var(--panel2);border-color:#30363d}
+button:active{transform:translateY(1px)}
+button.primary{background:var(--acc);border-color:var(--acc);color:#0d1117;font-weight:600}
+button.primary:hover{filter:brightness(1.08)}
+.hint{color:var(--mut);font-size:12.5px;margin-top:2px}
+.summary{margin:16px 0 6px;font-size:13px;color:var(--mut);min-height:20px}
+.summary b{color:var(--fg)}
+.summary .ok{color:var(--ok)}.summary .bad{color:var(--bad)}
+
+/* 验算卡 */
+.cards{display:flex;flex-direction:column;gap:14px;margin-top:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card.pass{border-left:3px solid var(--ok)}
+.card.fail{border-left:3px solid var(--bad)}
+.card-head{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;user-select:none;-webkit-user-select:none}
+.card-head:hover{background:var(--panel2)}
+.badge{font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 8px;border-radius:20px;
+  background:var(--chip);color:var(--acc);border:1px solid #30363d;white-space:nowrap}
+.num{flex:1;min-width:0;font:14px/1.4 ui-monospace,Menlo,Consolas,monospace;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;word-break:break-all}
+.verdict{font-size:12px;font-weight:700;letter-spacing:.4px;padding:3px 9px;border-radius:6px;white-space:nowrap}
+.verdict.ok{color:var(--ok);background:rgba(63,185,80,.12)}
+.verdict.bad{color:var(--bad);background:rgba(248,81,73,.12)}
+.arrow{color:var(--mut);font-size:12px;transition:transform .18s;flex-shrink:0}
+.card.open .arrow{transform:rotate(90deg)}
+.card-body{display:none;padding:2px 14px 14px;border-top:1px solid var(--line)}
+.card.open .card-body{display:block}
+.reason{color:var(--mut);font-size:13px;margin:10px 0 8px}
+.reason em{font-style:normal;color:var(--fg)}
+/* 逐位算式 */
+.digits{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 4px}
+.dcell{width:30px;text-align:center;border-radius:6px;padding:3px 0 4px;background:var(--chip);border:1px solid transparent}
+.dcell .d{font:15px/1.3 ui-monospace,Menlo,monospace}
+.dcell .w{font-size:10px;color:var(--mut);line-height:1.4}
+.dcell.dbl{background:rgba(227,179,65,.14);border-color:rgba(227,179,65,.35)}
+.dcell.dbl .w{color:var(--acc)}
+.dcell.chk{background:rgba(88,166,255,.12);border-color:rgba(88,166,255,.4)}
+.dcell.chk .w{color:#79b8ff}
+.dcell.letter .d{color:#79b8ff}
+.mathline{font:12.5px/1.8 ui-monospace,Menlo,monospace;color:var(--mut);margin-top:6px;word-break:break-all}
+.mathline b{color:var(--fg);font-weight:600}
+.mathline .acc{color:var(--acc)}
+.verdict-line{margin-top:8px;font-size:13px}
+.verdict-line .ok{color:var(--ok);font-weight:600}
+.verdict-line .bad{color:var(--bad);font-weight:600}
+.card-actions{display:flex;gap:8px;margin-top:10px}
+.card-actions button{font-size:12.5px;padding:5px 11px}
+
+/* 生成器 */
+.gen{margin-top:30px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 16px 18px}
+.gen h2{font-size:15px;margin-bottom:4px}
+.gen p.desc{color:var(--mut);font-size:12.5px;margin-bottom:12px}
+.gen-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.gen-row button{font-size:12.5px;padding:6px 12px}
+.gen-row button.on{background:rgba(227,179,65,.16);border-color:var(--acc);color:var(--acc);font-weight:600}
+.gen-out{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap}
+.gen-out code{flex:1;min-width:200px;display:block;background:var(--bg);border:1px solid var(--line);border-radius:8px;
+  padding:11px 13px;font:14px/1.5 ui-monospace,Menlo,monospace;color:var(--ok);word-break:break-all}
+footer{margin-top:36px;color:var(--mut);font-size:12px;line-height:1.8}
+footer a{color:var(--acc);text-decoration:none}
+.toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+  background:var(--panel2);border:1px solid var(--acc);color:var(--fg);border-radius:9px;padding:9px 18px;font-size:13px;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (max-width:520px){
+  .dcell{width:26px}
+  .num{font-size:13px}
+  h1{font-size:19px}
+}
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="logo">🧪</span>CheckLab · 校验位实验室</h1>
+  <p class="sub">粘一串号码，看它过不过<b>校验位</b>这一关：自动识别卡号 / IMEI / EAN / ISBN / 身份证 / IBAN，逐位展示加权求和的算术过程，红绿判定，还能一键造一个<b>合法测试号</b>。全部计算在你浏览器本地完成，不上传任何数据。</p>
+
+  <label class="lab" for="input">号码输入（一行一个，可批量；空格与连字符会自动忽略）</label>
+  <textarea id="input" spellcheck="false" autocomplete="off" placeholder="例如：&#10;4539 1488 0343 6467&#10;356938035643809&#10;4006381333930&#10;978-0-306-40615-7"></textarea>
+  <div class="toolbar">
+    <button class="primary" id="btn-sample">载入示例</button>
+    <button id="btn-clear">清空</button>
+    <span class="hint" id="hint">支持：银行卡(Luhn) · IMEI · EAN-8/13 · ISBN-10/13 · 居民身份证 · IBAN</span>
+  </div>
+
+  <div class="summary" id="summary"></div>
+  <div class="cards" id="cards"></div>
+
+  <div class="gen">
+    <h2>🎲 合法测试号生成器</h2>
+    <p class="desc">给表单调试和测试数据用：选一种类型，生成一个通过校验位验证的随机号码。</p>
+    <div class="gen-row" id="gen-row">
+      <button data-t="card" class="on">银行卡</button>
+      <button data-t="imei">IMEI</button>
+      <button data-t="ean13">EAN-13</button>
+      <button data-t="isbn10">ISBN-10</button>
+      <button data-t="isbn13">ISBN-13</button>
+      <button data-t="idcn">身份证</button>
+      <button data-t="iban">IBAN</button>
+    </div>
+    <div class="gen-out">
+      <code id="gen-out">—</code>
+      <button class="primary" id="btn-gen">生成</button>
+      <button id="btn-copy">复制</button>
+    </div>
+  </div>
+
+  <footer>CheckLab · 每日创意小工具 #32 · 校验位算法可视化，纯前端本地计算。<br>
+  参考：支付表单与测试数据校验的真实痛点 · Luhn / ISO 7064 / EAN / ISBN / GB 11643 / ISO 13616<br>
+  <a href="../">← 每日创意小工具目录</a></footer>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+/* ============ 校验算法（纯函数，可独立测试） ============ */
+
+// 提取数字串（去空格/连字符等分隔符），保留字母（IBAN/身份证X）
+function clean(raw){
+  return raw.replace(/[\s\-_.]/g,'').toUpperCase();
+}
+function digitsOf(s){ return s.replace(/\D/g,''); }
+
+// Luhn：返回 {ok, sum, cells:[{d,w,dbl}], chk}；s 为已 clean、全数字、长度>=2
+function luhnCheck(s){
+  var d = s.split('').map(Number);
+  var n = d.length, sum = 0, cells = [];
+  for (var i = n - 1; i >= 0; i--){
+    var w = 1, dbl = false, v = d[i];
+    if ((n - 1 - i) % 2 === 1){ w = 2; dbl = true; v = d[i] * 2; if (v > 9) v -= 9; }
+    sum += v;
+    cells.unshift({ d: d[i], w: w, dbl: dbl, eff: v });
+  }
+  return { ok: sum % 10 === 0, sum: sum, cells: cells };
+}
+
+// EAN/ISBN-13：前 n-1 位从右起 3,1,3 交替加权，校验位=(10-sum%10)%10
+function eanCheck(s){
+  var d = s.split('').map(Number);
+  var n = d.length, sum = 0, cells = [];
+  for (var i = 0; i < n - 1; i++){
+    var w = ((n - 2 - i) % 2 === 0) ? 3 : 1;
+    sum += d[i] * w;
+    cells.unshift({ d: d[i], w: w, dbl: false, eff: d[i] * w });
+  }
+  var expect = (10 - sum % 10) % 10;
+  return { ok: d[n-1] === expect, sum: sum, expect: expect, got: d[n-1], cells: cells };
+}
+
+// ISBN-10：sum = Σ d_i*(10-i)，i=0..8；校验位 = (11 - sum%11)%11，10 记 X
+function isbn10Check(s){
+  var chars = s.split('');
+  var sum = 0, cells = [];
+  for (var i = 0; i < 9; i++){
+    var v = chars[i];
+    if (!/[0-9X]/.test(v)) return null;
+    if (i < 9 && v === 'X') return null; // 前九位不允许 X
+    var d = +v;
+    var w = 10 - i;
+    sum += d * w;
+    cells.push({ d: v, w: w, dbl: false, eff: d * w });
+  }
+  var last = chars[9];
+  if (!/[0-9X]/.test(last)) return null;
+  var chkVal = last === 'X' ? 10 : +last;
+  var expect = (11 - sum % 11) % 11;
+  cells.push({ d: last, w: 'chk', dbl: false, chk: true, eff: chkVal });
+  return { ok: chkVal === expect, sum: sum, expect: expect, expectStr: expect === 10 ? 'X' : String(expect), got: last };
+}
+
+// 中国居民身份证 18 位：权重表 + mod 11 → 校验码表
+var IDCN_W = [7,9,10,5,8,4,2,1,6,3,7,9,10,5,8,4,2];
+var IDCN_MAP = ['1','0','X','9','8','7','6','5','4','3','2'];
+function idcnCheck(s){
+  var body = s.slice(0,17).split('').map(Number);
+  var sum = 0, cells = [];
+  for (var i = 0; i < 17; i++){ sum += body[i] * IDCN_W[i]; cells.push({ d: s[i], w: IDCN_W[i], dbl: false, eff: body[i]*IDCN_W[i] }); }
+  var expect = IDCN_MAP[sum % 11];
+  cells.push({ d: s[17], w: 'chk', dbl: false, chk: true, eff: s[17] === 'X' ? 'X' : +s[17] });
+  return { ok: s[17].toUpperCase() === expect, sum: sum, expect: expect, got: s[17].toUpperCase(), cells: cells };
+}
+
+// IBAN：重排 + mod 97 == 1（大数逐位取模防爆）
+var IBAN_LEN = { AL:28,AD:24,AT:20,AZ:28,BH:22,BE:16,BA:20,BR:29,BG:22,CR:22,HR:21,CY:28,CZ:24,DK:18,
+  DO:28,TL:23,EG:29,SV:28,EE:20,FO:18,FI:18,FR:27,GE:22,DE:22,GI:23,GR:27,GL:18,GT:28,HU:28,IS:26,IE:22,
+  IL:23,IT:27,JO:30,KZ:20,KW:30,LV:21,LB:28,LI:21,LT:20,LU:20,MK:19,MT:31,MR:27,MU:30,MC:27,MD:24,ME:22,
+  NL:18,NO:15,OM:23,PK:24,PS:29,PL:28,PT:25,QA:29,RO:24,SM:27,SA:24,RS:22,SC:31,SK:24,SI:19,ES:24,SE:24,
+  CH:21,TN:24,TR:26,UA:29,AE:23,GB:22,VG:24,XK:20 };
+function ibanCheck(s){
+  var cc = s.slice(0,2);
+  var expLen = IBAN_LEN[cc];
+  if (!expLen) return { ok:false, err:'未知国家码 ' + cc };
+  if (s.length !== expLen) return { ok:false, err:'长度应为 ' + expLen + ' 位，实际 ' + s.length };
+  var rearranged = s.slice(4) + s.slice(0,4);
+  var num = '';
+  for (var i = 0; i < rearranged.length; i++){
+    var c = rearranged[i];
+    if (c >= 'A' && c <= 'Z') num += (c.charCodeAt(0) - 55);
+    else if (c >= '0' && c <= '9') num += c;
+    else return { ok:false, err:'含非法字符 ' + c };
+  }
+  var rem = 0;
+  for (var j = 0; j < num.length; j++) rem = (rem * 10 + +num[j]) % 97;
+  return { ok: rem === 1, rem: rem };
+}
+
+/* ============ 类型识别 ============ */
+// 返回候选数组：每个 {type,label,check(fn结果),detail}
+function detect(raw){
+  var s = clean(raw);
+  var out = [];
+  if (!s) return out;
+  var d = digitsOf(s);
+  var isAllDigits = (d === s);
+
+  // IBAN：国家码字母开头
+  if (/^[A-Z]{2}[0-9A-Z]+$/.test(s) && s.length >= 15 && s.length <= 34){
+    var ib = ibanCheck(s);
+    out.push({ type:'iban', label:'IBAN 国际银行账号', r: ib });
+  }
+  // 中国居民身份证：17 数字 + 校验位（数字或 X）
+  if (/^\d{17}[\dX]$/.test(s)){
+    out.push({ type:'idcn', label:'中国居民身份证', r: idcnCheck(s) });
+  }
+  // ISBN-10：9 数字 + 校验位（数字或 X）
+  if (/^\d{9}[\dX]$/.test(s)){
+    var i10 = isbn10Check(s);
+    if (i10) out.push({ type:'isbn10', label:'ISBN-10 书号', r: i10 });
+  }
+  if (isAllDigits){
+    if (s.length === 13){
+      var isBook = /^97[89]/.test(s);
+      out.push({ type: isBook ? 'isbn13' : 'ean13', label: isBook ? 'ISBN-13 书号' : 'EAN-13 商品条码', r: eanCheck(s) });
+    }
+    if (s.length === 8){
+      out.push({ type:'ean8', label:'EAN-8 商品条码', r: eanCheck(s) });
+    }
+    // Luhn 家族：卡号 13-19 位、IMEI 15 位；978x 书号形态跳过以免噪音
+    var bookLike = (s.length === 13 && /^97[89]/.test(s));
+    if (s.length >= 13 && s.length <= 19 && !bookLike){
+      var lu = luhnCheck(s);
+      var brand = cardBrand(s);
+      out.push({ type:'card', label:'银行卡号' + (brand ? ' · ' + brand : ''), r: lu });
+      if (s.length === 15 && !/^3[47]/.test(s)){
+        out.push({ type:'imei', label:'IMEI 手机串号', r: luhnCheck(s) });
+      }
+    }
+  }
+  if (!out.length){
+    out.push({ type:'unknown', label:'未识别的号码形态', r:{ ok:false, err:'长度 ' + s.length + '、' + (isAllDigits ? '纯数字' : '含字母') + '——不在已支持算法内' } });
+  }
+  return out;
+}
+function cardBrand(s){
+  if (/^4/.test(s)) return 'Visa';
+  if (/^(5[1-5]|2[2-7])/.test(s)) return 'Mastercard';
+  if (/^3[47]/.test(s)) return 'Amex';
+  if (/^6(011|5|4[4-9])/.test(s)) return 'Discover';
+  if (/^3(0[0-5]|[68])/.test(s)) return 'Diners';
+  if (/^35/.test(s)) return 'JCB';
+  if (/^62/.test(s)) return 'UnionPay';
+  return '';
+}
+
+/* ============ 生成合法测试号 ============ */
+function rnd(n){
+  var s = '';
+  for (var i = 0; i < n; i++) s += Math.floor(Math.random() * 10);
+  return s;
+}
+function luhnChkDigit(body){
+  var d = body.split('').map(Number);
+  var sum = 0;
+  for (var i = d.length - 1; i >= 0; i--){
+    var v = d[i];
+    if ((d.length - i) % 2 === 1){ v *= 2; if (v > 9) v -= 9; }
+    sum += v;
+  }
+  return (10 - sum % 10) % 10;
+}
+function eanChkDigit(body){
+  var d = body.split('').map(Number), sum = 0;
+  for (var i = 0; i < d.length; i++){
+    var w = ((d.length - 1 - i) % 2 === 0) ? 3 : 1;
+    sum += d[i] * w;
+  }
+  return (10 - sum % 10) % 10;
+}
+var IDCN_AREA = ['110101','310104','440305','330106','510107','420102','610113','120101'];
+function makeGen(t){
+  switch(t){
+    case 'card': {
+      var prefixes = ['4539','5241','6011','3562'];
+      var body = prefixes[Math.floor(Math.random()*prefixes.length)] + rnd(11);
+      return body + luhnChkDigit(body);
+    }
+    case 'imei': {
+      var body = '35' + rnd(12);
+      return body + luhnChkDigit(body);
+    }
+    case 'ean13': {
+      var b13 = '69' + rnd(10);
+      return b13 + eanChkDigit(b13);
+    }
+    case 'isbn10': {
+      var body = '7' + rnd(8); // 9 位主体，1 开头模拟组区号
+      var sum = 0;
+      for (var i = 0; i < 9; i++) sum += +body[i] * (10 - i);
+      var chk = (11 - sum % 11) % 11;
+      return body + (chk === 10 ? 'X' : String(chk));
+    }
+    case 'isbn13': {
+      var body13 = '978' + rnd(9);
+      return body13 + eanChkDigit(body13);
+    }
+    case 'idcn': {
+      var area = IDCN_AREA[Math.floor(Math.random()*IDCN_AREA.length)];
+      var y = 1960 + Math.floor(Math.random()*45);
+      var m = 1 + Math.floor(Math.random()*12);
+      var day = 1 + Math.floor(Math.random()*27);
+      var birth = String(y) + String(m).padStart(2,'0') + String(day).padStart(2,'0');
+      var body17 = area + birth + rnd(3);
+      var sum = 0;
+      for (var j = 0; j < 17; j++) sum += +body17[j] * IDCN_W[j];
+      return body17 + IDCN_MAP[sum % 11];
+    }
+    case 'iban': {
+      var pick = [['DE',18],['GB',18],['FR',23],['NL',14]][Math.floor(Math.random()*4)];
+      var bodyIban = pick[0] + '00' + rnd(pick[1]);
+      var rearr = bodyIban.slice(4) + bodyIban.slice(0,4), num = '';
+      for (var k = 0; k < rearr.length; k++){
+        var c = rearr[k];
+        num += (c >= 'A' && c <= 'Z') ? (c.charCodeAt(0) - 55) : c;
+      }
+      var rem = 0;
+      for (var j2 = 0; j2 < num.length; j2++) rem = (rem * 10 + +num[j2]) % 97;
+      var chk2 = String(98 - rem).padStart(2,'0');
+      return pick[0] + chk2 + bodyIban.slice(4);
+    }
+  }
+  return '';
+}
+
+/* ============ UI 渲染 ============ */
+var $ = function(id){ return document.getElementById(id); };
+var SAMPLE = '4539 1488 0343 6467\n356938 035643809\n4006381333931\n978-0-306-40615-7\n0306406152\n110101 1990 0307 897X\nGB82 WEST 1234 5698 7654 32\n4539 1488 0343 6468';
+var GEN_LABEL = { card:'银行卡', imei:'IMEI', ean13:'EAN-13', isbn10:'ISBN-10', isbn13:'ISBN-13', idcn:'身份证', iban:'IBAN' };
+var genType = 'card';
+var lastGen = '';
+
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+function render(){
+  var raw = $('input').value;
+  var lines = raw.split('\n').map(function(x){ return x.trim(); }).filter(function(x){ return x; });
+  var host = $('cards');
+  if (!lines.length){
+    host.innerHTML = '';
+    $('summary').innerHTML = '等待输入——粘一个卡号 / ISBN / 身份证 / IBAN 试试，或点「载入示例」。';
+    return;
+  }
+  var pass = 0, total = 0, html = '';
+  lines.forEach(function(line, idx){
+    var cands = detect(line);
+    cands.forEach(function(c, ci){
+      total++;
+      if (c.r && c.r.ok) pass++;
+      html += cardHtml(line, c, idx, ci);
+    });
+  });
+  host.innerHTML = html;
+  var sv = total === 1 ? '' : '（' + lines.length + ' 行输入展开为 ' + total + ' 个候选）';
+  $('summary').innerHTML = '<b>' + pass + '</b> / ' + total + ' 通过校验 ' + esc(sv) + ' · 点卡片展开逐位算式';
+  bindCards();
+}
+
+function cardHtml(raw, c, idx, ci){
+  var ok = c.r && c.r.ok;
+  var verdict = ok ? '<span class="verdict ok">✓ 通过</span>' : '<span class="verdict bad">✗ 未通过</span>';
+  var body = detailHtml(c);
+  return '<div class="card ' + (ok ? 'pass' : 'fail') + (ci === 0 ? ' open' : '') + '" data-idx="' + idx + '-' + ci + '">' +
+    '<div class="card-head"><span class="badge">' + esc(c.label) + '</span>' +
+    '<span class="num">' + esc(clean(raw)) + '</span>' + verdict +
+    '<span class="arrow">▶</span></div>' +
+    '<div class="card-body">' + body + '</div></div>';
+}
+
+function detailHtml(c){
+  var r = c.r;
+  if (!r) return '<p class="reason">无法解析。</p>';
+  if (r.err) return '<p class="reason">⚠ ' + esc(r.err) + '</p>';
+  if (c.type === 'iban'){
+    return '<p class="reason">ISO 13616 mod-97：把前 4位移到尾部、字母展开成数字，大数对 97 取模，<em>余数必须恰好等于 1</em>。</p>' +
+      '<div class="mathline">重排后逐位 mod 97 → 余数 <b>' + r.rem + '</b> —— ' +
+      (r.ok ? '<span class="acc">余数 = 1 ✓</span>' : '<span class="acc">余数 ≠ 1 ✗</span>') + '</div>';
+  }
+  if (c.type === 'isbn10'){
+    return '<p class="reason">ISBN-10 加权和：每位乘 <em>10,9,8…2</em>（从左到右），校验位使总和 ≡ 0 (mod 11)，余 10 记作 <em>X</em>。</p>' +
+      mathHtml(r, r.got, r.expectStr) ;
+  }
+  if (c.type === 'idcn'){
+    return '<p class="reason">GB 11643：前 17 位乘固定权重表求和，<em>mod 11</em> 查表得校验码（可为 X）。</p>' +
+      mathHtml(r, r.got, r.expect);
+  }
+  // luhn / ean 家族：cells 可视化
+  if (c.type === 'card' || c.type === 'imei'){
+    var why = r.ok ? '总和 mod 10 = 0' : '总和 mod 10 = ' + r.sum % 10 + ' ≠ 0';
+    return '<p class="reason">Luhn 算法：从右起隔位 <em>×2</em>（大于 9 再减 9），<em>总和必须是 10 的倍数</em>。</p>' +
+      cellsHtml(r.cells) +
+      '<div class="mathline">加权和 = <b>' + r.sum + '</b> → ' + why + (r.ok ? ' <span class="acc">✓</span>' : ' <span class="acc">✗</span>') + '</div>';
+  }
+  if (c.type === 'ean8' || c.type === 'ean13' || c.type === 'isbn13'){
+    return '<p class="reason">EAN/ISBN-13 校验：前 ' + (c.type === 'ean8' ? 7 : 12) + ' 位从右起 <em>3,1 交替</em>加权，校验位 = (10 − 和 mod 10) mod 10。</p>' +
+      cellsHtml(r.cells) +
+      '<div class="mathline">加权和 = <b>' + r.sum + '</b> → 校验位应为 <span class="acc">' + r.expect + '</span>，实际 ' + r.got +
+      (r.ok ? ' <span class="acc">✓</span>' : ' <span class="acc">✗</span>') + '</div>';
+  }
+  return '';
+}
+
+function cellsHtml(cells){
+  var h = '<div class="digits">';
+  cells.forEach(function(cell){
+    var cls = 'dcell' + (cell.chk ? ' chk' : '') + (cell.dbl ? ' dbl' : '');
+    var wtxt = cell.chk ? '校验位' : '×' + cell.w + '→' + cell.eff;
+    h += '<div class="' + cls + '"><div class="d">' + esc(String(cell.d)) + '</div><div class="w">' + esc(wtxt) + '</div></div>';
+  });
+  return h + '</div>';
+}
+function mathHtml(r, got, expect){
+  return '<div class="mathline">加权和 = <b>' + r.sum + '</b> → 校验位应为 <span class="acc">' + esc(String(expect)) + '</span>，实际 ' + esc(String(got)) +
+    (r.ok ? ' <span class="acc">✓</span>' : ' <span class="acc">✗</span>') + '</div>';
+}
+
+function bindCards(){
+  var heads = document.querySelectorAll('.card-head');
+  Array.prototype.forEach.call(heads, function(h){
+    h.onclick = function(){ h.parentElement.classList.toggle('open'); };
+  });
+}
+
+/* ============ 生成器 UI ============ */
+function bindGen(){
+  var row = $('gen-row');
+  row.addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    genType = b.getAttribute('data-t');
+    Array.prototype.forEach.call(row.querySelectorAll('button'), function(x){ x.classList.toggle('on', x === b); });
+    doGen();
+  });
+  $('btn-gen').onclick = doGen;
+  $('btn-copy').onclick = function(){
+    if (!lastGen) return;
+    copyText(lastGen, '已复制测试号');
+  };
+  doGen();
+}
+function doGen(){
+  lastGen = makeGen(genType);
+  $('gen-out').textContent = lastGen || '—';
+  // 自证：生成号必须通过自家检测器
+  var cands = detect(lastGen);
+  var pass = cands.some(function(c){ return c.r && c.r.ok; });
+  if (!pass) $('gen-out').textContent = lastGen + '（自检未过!）';
+}
+
+/* ============ 杂项 ============ */
+var toastTimer = null;
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 1600);
+}
+function copyText(text, okMsg){
+  function fallback(){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast(okMsg + ' ✓'); } catch(e){ toast('复制失败'); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ toast(okMsg + ' ✓'); }, fallback);
+  } else fallback();
+}
+
+function bind(){
+  $('input').addEventListener('input', render);
+  $('btn-sample').onclick = function(){ $('input').value = SAMPLE; render(); toast('已载入示例'); };
+  $('btn-clear').onclick = function(){ $('input').value = ''; render(); $('input').focus(); };
+  bindGen();
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined' && document.getElementById){
+  bind();
+  render();
+}
+</script>
+</body>
+</html>
