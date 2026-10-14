@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RampSmith · 色阶锻炉</title>
+<meta name="description" content="Paste one brand color, forge a full OKLCH 50–950 palette locally. Contrast badges + one-click CSS/Tailwind/SCSS/JSON export. Zero upload.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+<style>
+:root{
+  --bg:#0f1115;--panel:#171a21;--panel2:#1d212b;--line:#262b36;
+  --fg:#e8ebf1;--mut:#8a93a6;--acc:#f5b83d;--ok:#4ade80;--bad:#f87171;
+  font-size:15px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom));}
+main{max-width:760px;margin:0 auto}
+header h1{font-size:21px;letter-spacing:.5px}
+header .sub{color:var(--mut);font-size:13px;margin:4px 0 20px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+.card h2{font-size:13px;color:var(--mut);font-weight:600;letter-spacing:.6px;text-transform:uppercase;margin-bottom:10px}
+
+/* input row */
+.inrow{display:flex;gap:10px;align-items:stretch}
+#cin{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  color:var(--fg);font:14px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  padding:10px 12px;outline:none}
+#cin:focus{border-color:var(--acc)}
+#pick{width:46px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
+  padding:2px;cursor:pointer}
+.presets{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center}
+.presets .lbl{color:var(--mut);font-size:12px;margin-right:2px}
+.sw{width:26px;height:26px;border-radius:7px;border:1px solid rgba(255,255,255,.12);cursor:pointer;
+  transition:transform .12s}
+.sw:hover{transform:scale(1.15)}
+#err{color:var(--bad);font-size:12.5px;margin-top:8px;min-height:1em}
+.sliders{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.slrow{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--mut)}
+.slrow b{width:64px;font-weight:600;color:var(--fg)}
+.slrow input[type=range]{flex:1;accent-color:var(--acc)}
+.slrow output{width:52px;text-align:right;font-variant-numeric:tabular-nums;color:var(--acc)}
+
+/* ramp */
+.step{display:flex;align-items:center;gap:12px;border-radius:10px;padding:10px 14px;margin-bottom:6px;
+  cursor:pointer;position:relative;overflow:hidden;border:1px solid transparent;
+  animation:pop .35s both}
+.step:hover{border-color:rgba(255,255,255,.35)}
+.step:nth-child(odd){animation-delay:.02s}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.step .lv{font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;width:34px}
+.step .hex{font:13px/1 ui-monospace,Menlo,Consolas,monospace;opacity:.85}
+.step .tags{margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.chip{font-size:10.5px;font-weight:700;letter-spacing:.4px;border-radius:99px;padding:2.5px 8px;
+  border:1px solid currentColor;opacity:.9;white-space:nowrap}
+.chip.anchor{background:rgba(0,0,0,.25)}
+.copyhint{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px;
+  background:rgba(0,0,0,.55);color:#fff;padding:3px 10px;border-radius:99px;opacity:0;
+  transition:opacity .15s;pointer-events:none}
+.step.copied .copyhint{opacity:1}
+
+/* legend */
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--mut);font-size:12px;margin-top:2px}
+.legend i{font-style:normal;margin-right:3px}
+
+/* preview */
+.prev{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.prev .btn{border:none;border-radius:9px;padding:9px 18px;font-size:14px;font-weight:600;cursor:default}
+.prev .badge{border-radius:99px;padding:4px 12px;font-size:12px;font-weight:700}
+.prev .alert{flex:1;min-width:200px;border-radius:9px;padding:9px 14px;font-size:13px}
+
+/* export */
+.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.tab{background:var(--panel2);border:1px solid var(--line);color:var(--mut);border-radius:8px;
+  padding:5px 12px;font-size:12.5px;cursor:pointer}
+.tab.on{color:var(--fg);border-color:var(--acc);background:#242014}
+#exname{width:110px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  color:var(--fg);font:13px/1 ui-monospace,Menlo,monospace;padding:5px 10px;outline:none}
+#exp{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  color:#cdd6e4;font:12.5px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  padding:12px;white-space:pre;overflow-x:auto;min-height:200px}
+.copybtn{margin-top:10px;background:var(--acc);color:#1a1408;border:none;border-radius:8px;
+  padding:9px 20px;font-size:14px;font-weight:700;cursor:pointer}
+.copybtn:active{transform:scale(.97)}
+
+footer{color:var(--mut);font-size:12px;margin-top:8px}
+footer b{color:var(--fg)}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(8px);
+  background:#262b36;border:1px solid var(--line);color:var(--fg);font-size:13px;
+  padding:8px 18px;border-radius:99px;opacity:0;pointer-events:none;transition:all .2s;z-index:9}
+#toast.show{opacity:1;transform:translateX(-50%)}
+@media (max-width:520px){
+  .step{padding:9px 10px;gap:8px}
+  .step .hex{font-size:12px}
+  .chip{padding:2px 6px}
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>🎨 RampSmith · 色阶锻炉</h1>
+  <p class="sub">粘一个品牌色，在 OKLCH 感知均匀空间锻出 50→950 整套色阶——非线性插值、色域安全、对比度自带。全程本地零上传。</p>
+</header>
+
+<section class="card">
+  <h2>① 丢进一颗品牌色</h2>
+  <div class="inrow">
+    <input id="cin" type="text" spellcheck="false" placeholder="#7C3AED · rgb() · hsl() · oklch() 都吃" value="#7C3AED">
+    <input id="pick" type="color" value="#7c3aed" aria-label="取色器">
+  </div>
+  <div id="err"></div>
+  <div class="presets" id="presets"><span class="lbl">试一炮：</span></div>
+  <div class="sliders">
+    <div class="slrow"><b>彩度</b><input id="viv" type="range" min="0" max="150" value="100"><output id="vivo">100%</output></div>
+    <div class="slrow"><b>明度偏移</b><input id="lsh" type="range" min="-12" max="12" value="0"><output id="lsho">0</output></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>② 锻出的 11 级色阶 <span style="text-transform:none;font-weight:400">（点任意一级复制）</span></h2>
+  <div id="ramp"></div>
+  <div class="legend">
+    <span><i style="color:var(--ok)">●</i>AA-W</span><span><i style="color:var(--ok)">●</i>AAA-W</span>
+    <span>对白底文字达标 · B 系列对黑底 · <span class="chip demo" style="color:var(--acc)">★ 品牌锚点</span>离你输入最近的档</span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>③ 用法预览</h2>
+  <div class="prev" id="prev"></div>
+</section>
+
+<section class="card">
+  <h2>④ 导出</h2>
+  <div class="tabs" id="tabs">
+    <button class="tab on" data-f="css">CSS 变量</button>
+    <button class="tab" data-f="tw">Tailwind v4</button>
+    <button class="tab" data-f="scss">SCSS</button>
+    <button class="tab" data-f="json">JSON</button>
+    <input id="exname" value="brand" spellcheck="false" aria-label="变量名">
+  </div>
+  <pre id="exp"></pre>
+  <button class="copybtn" id="excopy">📋 复制全部</button>
+</section>
+
+<footer>🔮 OKLab 数学（Björn Ottosson, CC0）+ 色域边界二分收缩，全部在浏览器本地计算，<b>任何数据不出本机</b>。</footer>
+</main>
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ---------- color math: sRGB <-> OKLCH (Ottosson OKLab, CC0) ---------- */
+const s2l=c=>{c/=255;return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4)};
+const l2s=c=>{const v=c<=0.0031308?12.92*c:1.055*Math.pow(c,1/2.4)-0.055;return Math.round(Math.min(1,Math.max(0,v))*255)};
+function hex2rgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');
+  if(h.length===8)h=h.slice(0,6);
+  return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]}
+function rgb2hex(r,g,b){return'#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('')}
+function rgb2oklab(R,G,B){const r=s2l(R),g=s2l(G),b=s2l(B);
+  const l=0.4122214708*r+0.5363325363*g+0.0514459929*b,
+        m=0.2119034982*r+0.6806995451*g+0.1073969566*b,
+        s=0.0883024619*r+0.2817188376*g+0.6299787005*b;
+  const l_=Math.cbrt(l),m_=Math.cbrt(m),s_=Math.cbrt(s);
+  return[0.2104542553*l_+0.7936177850*m_-0.0040720468*s_,
+         1.9779984951*l_-2.4285922050*m_+0.4505937099*s_,
+         0.0259040371*l_+0.7827717662*m_-0.8086757660*s_]}
+function oklab2rgb(L,a,b){
+  const l_=L+0.3963377774*a+0.2158037573*b,
+        m_=L-0.1055613458*a-0.0638541728*b,
+        s_=L-0.0894841775*a-1.2914855480*b;
+  const l=l_**3,m=m_**3,s=s_**3;
+  /* Ottosson canonical lms -> linear sRGB (skip XYZ; white-point sum verified) */
+  const r= 4.0767416621*l-3.3077115913*m+0.2309699292*s,
+        g=-1.2684380046*l+2.6097574011*m-0.3413193965*s,
+        bb=-0.0041960863*l-0.7034186147*m+1.7076147010*s;
+  return[l2s(r),l2s(g),l2s(bb)]}
+function oklch2rgb(L,C,H){const h=H*Math.PI/180;return oklab2rgb(L,Math.cos(h)*C,Math.sin(h)*C)}
+function inGamut(L,C,H){const r=oklch2rgb(L,C,H);return r.every(v=>v>=0&&v<=255)}
+function maxChroma(L,H){let lo=0,hi=0.45; /* binary search gamut edge */
+  if(!inGamut(L,0.0001,H))return 0;
+  for(let i=0;i<22;i++){const mid=(lo+hi)/2;inGamut(L,mid,H)?lo=mid:hi=mid}
+  return lo*0.998}
+function contrast(rgb1,rgb2){
+  const lum=c=>{const[r,g,b]=c.map(s2l);return 0.2126*r+0.7152*g+0.0722*b};
+  const a=lum(rgb1),b=lum(rgb2),hi=Math.max(a,b),lo=Math.min(a,b);
+  return(hi+0.05)/(lo+0.05)}
+
+/* ---------- input parsing ---------- */
+function parseColor(str){
+  str=(str||'').trim().toLowerCase();
+  if(!str)return null;
+  if(/^[0-9a-f]{3}$|^[0-9a-f]{6}$|^[0-9a-f]{8}$/.test(str))str='#'+str;
+  let m;
+  if(m=str.match(/^#([0-9a-f]{3,8})$/)){
+    let h=m[1];if(h.length===3)h=h.split('').map(c=>c+c).join('');
+    if(h.length!==6&&h.length!==8)return null;
+    return hex2rgb(h)}
+  if(m=str.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.%]+))?\s*\)$/))
+    return[+m[1],+m[2],+m[3]].map(v=>Math.min(255,v));
+  if(m=str.match(/^hsla?\(\s*([\d.]+)(?:deg)?[\s,]+([\d.]+)%?[\s,]+([\d.]+)%?/)){
+    return hsl2rgb(+m[1],Math.min(100,+m[2]),Math.min(100,+m[3]))}
+  if(m=str.match(/^oklch\(\s*([\d.]+)%?\s+([\d.]+)\s+([\d.]+)(?:deg)?/)){
+    const L=+m[1]>1?+m[1]/100:+m[1];
+    return oklch2rgb(L,+m[2],+m[3])}
+  return null}
+function hsl2rgb(h,s,l){s/=100;l/=100;
+  const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l),
+        f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));
+  return[Math.round(f(0)*255),Math.round(f(8)*255),Math.round(f(4)*255)]}
+
+/* ---------- ramp forging ---------- */
+const LEVELS=[50,100,200,300,400,500,600,700,800,900,950];
+/* Tailwind v4-like OKLCH lightness curve — 手工感的来源 */
+const LT={50:.971,100:.936,200:.881,300:.808,400:.717,500:.637,600:.577,700:.505,800:.446,900:.393,950:.286};
+/* chroma profile: 中间最艳、两端收敛（相对锚点彩度的倍率） */
+const CT={50:.18,100:.35,200:.62,300:.88,400:1.0,500:1.0,600:.97,700:.85,800:.70,900:.56,950:.40};
+function forge(lch,viv,lshift){
+  const{L,C,H}=lch;
+  const hue=H;
+  return LEVELS.map(lv=>{
+    const lTarget=Math.min(0.985,Math.max(0.02,LT[lv]+lshift/100));
+    let c=Math.min(C*CT[lv]*viv/100,maxChroma(lTarget,hue));
+    if(c<0.0001)c=0;
+    const rgb=oklch2rgb(lTarget,c,hue);
+    return{lv,hex:rgb2hex(...rgb),rgb,L:lTarget,C:c,H:hue}})}
+
+/* ---------- state & DOM ---------- */
+const $=id=>document.getElementById(id);
+const state={lch:null,viv:100,lshift:0,fmt:'css'};
+const PRESETS=['#7C3AED','#0EA5E9','#10B981','#F59E0B','#EF4444','#EC4899','#64748B','#14B8A6'];
+
+function initPresets(){const box=$('presets');
+  PRESETS.forEach(hex=>{const b=document.createElement('button');
+    b.className='sw';b.style.background=hex;b.title=hex;b.setAttribute('aria-label','预设 '+hex);
+    b.onclick=()=>{$('cin').value=hex;run()};box.appendChild(b)})}
+
+let anchorIdx=-1;
+function run(){
+  const raw=$('cin').value;
+  const rgb=parseColor(raw);
+  if(!rgb){$('err').textContent='⚠️ 看不懂这个颜色——试试 #7C3AED、rgb(124 58 237) 或 oklch(0.54 0.21 292)';return}
+  $('err').textContent='';
+  const[L,a,b]=rgb2oklab(...rgb);
+  const C=Math.sqrt(a*a+b*b);let H=Math.atan2(b,a)*180/Math.PI;if(H<0)H+=360;
+  state.lch={L,C,H};
+  try{$('pick').value=rgb2hex(...rgb)}catch(e){}
+  const steps=forge(state.lch,state.viv,state.lshift);
+  /* anchor: 最近输入明度的档 */
+  anchorIdx=0;let best=9;
+  steps.forEach((s,i)=>{const d=Math.abs(s.L-L);if(d<best){best=d;anchorIdx=i}});
+  renderRamp(steps);
+  renderPreview(steps);
+  renderExport(steps)}
+
+function renderRamp(steps){
+  const box=$('ramp');box.innerHTML='';
+  steps.forEach((s,i)=>{
+    const cw=contrast(s.rgb,[255,255,255]),cb=contrast(s.rgb,[0,0,0]);
+    const el=document.createElement('div');
+    el.className='step';el.style.background=s.hex;
+    const dark=cb>=cw; /* 背景越亮字越黑 */
+    el.style.color=dark?'#10121a':'#f4f6fb';
+    const chips=[];
+    if(cw>=4.5)chips.push(`<span class="chip" style="color:${dark?'#166534':'#86efac'}">AA-W ${cw.toFixed(1)}</span>`);
+    if(cw>=7)chips.push(`<span class="chip" style="color:${dark?'#14532d':'#4ade80'}">AAA-W</span>`);
+    if(cb>=4.5)chips.push(`<span class="chip" style="color:${dark?'#86efac':'#166534'}">AA-B ${cb.toFixed(1)}</span>`);
+    if(cb>=7)chips.push(`<span class="chip" style="color:${dark?'#4ade80':'#14532d'}">AAA-B</span>`);
+    if(i===anchorIdx)chips.push('<span class="chip anchor" style="color:inherit">★ 锚点</span>');
+    el.innerHTML=`<span class="lv">${s.lv}</span><span class="hex">${s.hex.toUpperCase()}</span>
+      <span class="tags">${chips.join('')}</span><span class="copyhint">已复制 ${s.hex.toUpperCase()}</span>`;
+    el.onclick=()=>{copy(s.hex.toUpperCase());el.classList.add('copied');
+      setTimeout(()=>el.classList.remove('copied'),900)};
+    box.appendChild(el)})}
+
+function renderPreview(steps){
+  const byLk=Object.fromEntries(steps.map(s=>[s.lv,s]));
+  const p=$('prev');
+  const prim=byLk[600],light=byLk[50],mid=byLk[100];
+  const primText=contrast(prim.rgb,[255,255,255])>=4.5?'#fff':'#10121a';
+  const alertText=contrast(light.rgb,[0,0,0])>=4.5?'#10121a':'#fff';
+  p.innerHTML=`
+    <button class="btn" style="background:${prim.hex};color:${primText}">主按钮 ${prim.lv}</button>
+    <span class="badge" style="background:${mid.hex};color:${alertText}">徽章 ${mid.lv}</span>
+    <div class="alert" style="background:${light.hex};color:${alertText}">浅色提示条 ${light.lv} —— 导出直接可用，不用再肉眼猜。</div>`}
+
+function renderExport(steps){
+  const name=($('exname').value||'brand').trim().replace(/[^a-zA-Z0-9_-]/g,'')||'brand';
+  let out='';
+  if(state.fmt==='css'){
+    out=`:root {\n`+steps.map(s=>`  --${name}-${s.lv}: ${s.hex};`).join('\n')+`\n}`}
+  else if(state.fmt==='tw'){
+    out=`@theme {\n`+steps.map(s=>`  --color-${name}-${s.lv}: ${s.hex};`).join('\n')+`\n}`}
+  else if(state.fmt==='scss'){
+    out=steps.map(s=>`$${name}-${s.lv}: ${s.hex};`).join('\n')}
+  else{
+    out=JSON.stringify(Object.fromEntries(steps.map(s=>[String(s.lv),s.hex.toUpperCase()])),null,2)}
+  $('exp').textContent=out}
+
+/* clipboard with fallback */
+function copy(text){
+  const done=()=>toast('已复制 '+text);
+  if(navigator.clipboard&&navigator.clipboard.writeText)
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallback());
+  else fallback();
+  function fallback(){const ta=document.createElement('textarea');ta.value=text;
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');done()}catch(e){toast('复制失败，请手动选择')}
+    ta.remove()}}
+let toastTimer;
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),1400)}
+
+/* events */
+$('cin').addEventListener('input',run);
+$('cin').addEventListener('change',run);
+$('pick').addEventListener('input',e=>{$('cin').value=e.target.value;run()});
+$('viv').addEventListener('input',e=>{state.viv=+e.target.value;$('vivo').textContent=state.viv+'%';run()});
+$('lsh').addEventListener('input',e=>{state.lshift=+e.target.value;$('lsho').textContent=state.lshift;run()});
+$('exname').addEventListener('input',()=>renderExport(lastSteps()));
+$('tabs').addEventListener('click',e=>{
+  const b=e.target.closest('.tab');if(!b)return;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  b.classList.add('on');state.fmt=b.dataset.f;renderExport(lastSteps())});
+$('excopy').onclick=()=>{copy($('exp').textContent);toast('已复制全部 '+state.fmt.toUpperCase())};
+
+let cachedSteps=[];
+const lastSteps=()=>cachedSteps;
+const _rr=renderRamp,_re=renderExport;
+renderRamp=function(steps){cachedSteps=steps;_rr(steps)};
+renderExport=function(steps){if(steps)cachedSteps=steps;_re(cachedSteps)};
+
+initPresets();
+run();
+</script>
+</body>
+</html>
