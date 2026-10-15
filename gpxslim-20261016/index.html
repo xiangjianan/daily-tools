@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>GPX 轨迹瘦身台 · gpxslim</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e1116'/%3E%3Cpath d='M4 22 L11 13 L15 17 L21 8 L28 12' fill='none' stroke='%234fd1c5' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='4' cy='22' r='2.4' fill='%2363e6a6'/%3E%3Ccircle cx='28' cy='12' r='2.4' fill='%23ff6b6b'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0e1116; --panel:#151b23; --panel2:#1a222c; --line:#232d3a;
+  --text:#dbe4ee; --dim:#8b98a8; --faint:#5b6774;
+  --accent:#4fd1c5; --accent2:#63e6a6; --warn:#ffb454; --bad:#ff6b6b;
+  --radius:12px;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html,body{background:var(--bg); color:var(--text);
+  font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Noto Sans CJK SC",sans-serif;}
+body{padding:18px 16px calc(24px + env(safe-area-inset-bottom)); max-width:980px; margin:0 auto;}
+header{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px;}
+header h1{font-size:21px; font-weight:700; letter-spacing:.2px;}
+header h1 em{font-style:normal; color:var(--accent);}
+header .tag{color:var(--dim); font-size:13px;}
+.priv{margin-left:auto; font-size:12px; color:var(--accent2); border:1px solid #234435;
+  background:#12241c; border-radius:99px; padding:3px 10px; white-space:nowrap;}
+#drop{border:1.5px dashed var(--line); border-radius:var(--radius); background:var(--panel);
+  padding:26px 18px; text-align:center; color:var(--dim); cursor:pointer; transition:border-color .15s, background .15s;}
+#drop.over{border-color:var(--accent); background:#12201f; color:var(--text);}
+#drop b{color:var(--text);}
+#drop .acts{margin-top:10px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;}
+button{font:inherit; cursor:pointer; border:1px solid var(--line); background:var(--panel2);
+  color:var(--text); border-radius:9px; padding:7px 14px; transition:border-color .15s, background .15s;}
+button:hover{border-color:var(--accent);}
+button:active{transform:translateY(1px);}
+button.primary{background:var(--accent); border-color:var(--accent); color:#06211f; font-weight:600;}
+button:disabled{opacity:.4; cursor:not-allowed; transform:none;}
+#status{margin-top:10px; font-size:13px; min-height:1.4em; color:var(--dim); word-break:break-all;}
+#status.err{color:var(--bad);}
+#work{display:none; margin-top:14px;}
+#work.on{display:block;}
+.statgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(128px,1fr)); gap:8px; margin-bottom:12px;}
+.stat{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:10px 12px;}
+.stat .k{font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.6px;}
+.stat .v{font-size:19px; font-weight:650; margin-top:2px; font-variant-numeric:tabular-nums;}
+.stat .v small{font-size:12px; color:var(--dim); font-weight:400;}
+.mapwrap{position:relative; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden;}
+canvas{display:block; width:100%;}
+#cursor{position:absolute; pointer-events:none; display:none; transform:translate(-50%,-50%);}
+#cursor .dot{width:14px; height:14px; border-radius:50%; border:3px solid #fff;
+  box-shadow:0 0 0 2px var(--accent), 0 2px 8px rgba(0,0,0,.6);}
+#cursor .tip{position:absolute; left:12px; top:-6px; white-space:nowrap; font-size:12px;
+  background:#000c; color:#fff; padding:2px 8px; border-radius:6px;}
+.card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); margin-top:12px; padding:14px;}
+.card h2{font-size:14px; font-weight:600; color:var(--dim); margin-bottom:10px; letter-spacing:.3px;}
+.slimrow{display:flex; gap:14px; align-items:center; flex-wrap:wrap;}
+.slimrow input[type=range]{flex:1 1 220px; min-width:180px; accent-color:var(--accent);}
+#slimout{font-variant-numeric:tabular-nums; font-size:14px; color:var(--text); white-space:nowrap;}
+#slimout b{color:var(--accent);}
+.muted{color:var(--faint); font-size:12px;}
+.exportrow{display:flex; align-items:center; gap:12px; margin-top:12px; flex-wrap:wrap;}
+footer{margin-top:18px; color:var(--faint); font-size:12px; line-height:1.7;}
+footer a{color:var(--dim);}
+@media (max-width:560px){
+  body{padding:14px 10px calc(20px + env(safe-area-inset-bottom));}
+  header h1{font-size:18px;}
+  .stat .v{font-size:16px;}
+  #cursor .tip{display:none;}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>GPX <em>轨迹瘦身台</em></h1>
+  <span class="tag">拖进轨迹 · 看懂它 · 把它变轻</span>
+  <span class="priv">🔒 全程本地处理，文件不出浏览器</span>
+</header>
+
+<div id="drop" role="button" tabindex="0" aria-label="选择或拖入 GPX 文件">
+  <div>把 <b>.gpx</b> 轨迹文件拖到这里，或点击选择文件</div>
+  <div class="acts">
+    <button class="primary" id="pick">选择文件</button>
+    <button id="sample">载入示例轨迹</button>
+  </div>
+</div>
+<input type="file" id="file" accept=".gpx,application/gpx+xml,text/xml" hidden>
+<div id="status" aria-live="polite"></div>
+
+<section id="work">
+  <div class="statgrid" id="stats"></div>
+
+  <div class="mapwrap">
+    <canvas id="map" height="380"></canvas>
+    <div id="cursor"><div class="dot"></div><div class="tip"></div></div>
+  </div>
+
+  <div class="card">
+    <h2>高程剖面（拖动查看位置）</h2>
+    <canvas id="prof" height="150"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>轨迹瘦身 · Douglas–Peucker 精简</h2>
+    <div class="slimrow">
+      <span class="muted">保真</span>
+      <input type="range" id="eps" min="0" max="100" value="0" aria-label="精简强度">
+      <span class="muted">精简</span>
+      <span id="slimout"></span>
+    </div>
+    <div class="exportrow">
+      <button class="primary" id="export">⬇ 导出瘦身 GPX</button>
+      <span class="muted" id="exnote"></span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  gpxslim · 每日创意小工具 #34 · 数据 100% 在本页内解析，不上传任何字节 ·
+  <a href="../" >← 返回目录</a>
+</footer>
+
+<script>
+"use strict";
+var $ = function(id){ return document.getElementById(id); };
+var state = { pts:[], name:'', srcSize:0, fileName:'', eps:0, simplified:null };
+
+/* ---------- geo helpers ---------- */
+function havM(a, b){
+  var R = 6371000, rad = Math.PI/180;
+  var dLat = (b.lat-a.lat)*rad, dLon = (b.lon-a.lon)*rad;
+  var s = Math.sin(dLat/2)*Math.sin(dLat/2) +
+        Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return 2*R*Math.asin(Math.min(1, Math.sqrt(s)));
+}
+function fmtDist(m){
+  if (m < 1000) return m.toFixed(0)+' <small>m</small>';
+  return (m/1000).toFixed(m<10000?2:1)+' <small>km</small>';
+}
+function fmtDur(ms){
+  if (ms == null) return '—';
+  var s = Math.round(ms/1000), h = Math.floor(s/3600), m = Math.floor(s%3600/60);
+  return h>0 ? h+'<small>h</small> '+m+'<small>min</small>' : m+'<small>min</small>';
+}
+function fmtSpeed(mps){
+  if (mps == null || !isFinite(mps) || mps <= 0.05) return '—';
+  return (mps*3.6).toFixed(1)+' <small>km/h</small>';
+}
+
+/* ---------- GPX parsing ---------- */
+function parseGPX(text, srcSize, fileName){
+  var doc = new DOMParser().parseFromString(text, 'text/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('不是有效的 XML 文件');
+  var nodes = doc.getElementsByTagName('trkpt');
+  if (!nodes.length) throw new Error('没找到 <trkpt> 轨迹点——这是 GPX 轨迹文件吗？');
+  var pts = [];
+  for (var i=0; i<nodes.length && pts.length<80000; i++){
+    var n = nodes[i], la = parseFloat(n.getAttribute('lat')), lo = parseFloat(n.getAttribute('lon'));
+    if (!isFinite(la) || !isFinite(lo) || la<-90 || la>90 || lo<-180 || lo>180) continue;
+    var p = { lat:la, lon:lo, ele:null, t:null };
+    var kids = n.children || [];
+    for (var k=0; k<kids.length; k++){
+      var tag = kids[k].tagName.toLowerCase();
+      if (tag === 'ele'){ var e = parseFloat(kids[k].textContent); if (isFinite(e)) p.ele = e; }
+      else if (tag === 'time'){ var d = new Date(kids[k].textContent.trim()); if (!isNaN(d)) p.t = d; }
+    }
+    pts.push(p);
+  }
+  if (pts.length < 2) throw new Error('有效轨迹点不足 2 个，无法成线');
+  var nameEl = doc.getElementsByTagName('name')[0];
+  var wpts = doc.getElementsByTagName('wpt'), wps = [];
+  for (var w=0; w<wpts.length && wps.length<500; w++){
+    var wla = parseFloat(wpts[w].getAttribute('lat')), wlo = parseFloat(wpts[w].getAttribute('lon'));
+    if (isFinite(wla) && isFinite(wlo)) wps.push({lat:wla, lon:wlo});
+  }
+  return { pts:pts, name:(nameEl && nameEl.textContent.trim()) || fileName.replace(/\.gpx$/i,''), wps:wps };
+}
+
+/* ---------- stats ---------- */
+function computeStats(pts){
+  var dist=0, gain=0, loss=0, t0=null, t1=null, hasEle=false;
+  for (var i=0; i<pts.length; i++){
+    var p = pts[i];
+    if (i>0){
+      dist += havM(pts[i-1], p);
+      if (p.ele != null && pts[i-1].ele != null){
+        hasEle = true;
+        var d = p.ele - pts[i-1].ele;
+        if (d > 0) gain += d; else loss -= d;
+      }
+    }
+    if (p.t){ if (!t0) t0 = p.t; t1 = p.t; }
+  }
+  return { dist:dist, gain:gain, loss:loss, hasEle:hasEle, dur:(t0&&t1? t1-t0 : null), n:pts.length };
+}
+
+/* ---------- projection ---------- */
+function project(pts, w, h, pad){
+  var minLat=90, maxLat=-90, minLon=180, maxLon=-180;
+  pts.forEach(function(p){
+    if (p.lat<minLat)minLat=p.lat; if (p.lat>maxLat)maxLat=p.lat;
+    if (p.lon<minLon)minLon=p.lon; if (p.lon>maxLon)maxLon=p.lon;
+  });
+  var lat0 = (minLat+maxLat)/2, kx = Math.cos(lat0*Math.PI/180);
+  var x0 = minLon*kx, x1 = maxLon*kx, y0 = -maxLat, y1 = -minLat;
+  var sx = (x1-x0) || 1e-9, sy = (y1-y0) || 1e-9;
+  var s = Math.min((w-2*pad)/sx, (h-2*pad)/sy);
+  var ox = (w - sx*s)/2, oy = (h - sy*s)/2;
+  return function(p){
+    return { x: ox + (p.lon*kx - x0)*s, y: oy + (-p.lat - y0)*s };
+  };
+}
+
+/* ---------- canvas setup ---------- */
+function fitCanvas(cv){
+  var dpr = window.devicePixelRatio || 1;
+  var w = cv.clientWidth || cv.parentNode.clientWidth || 600;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(parseInt(cv.getAttribute('height'),10)*dpr);
+  cv.style.height = cv.getAttribute('height')+'px';
+  var ctx = cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { ctx:ctx, w:w, h:parseInt(cv.getAttribute('height'),10) };
+}
+
+/* ---------- map render ---------- */
+function drawMap(){
+  var cv = $('map'), fit = fitCanvas(cv), ctx = fit.ctx, pts = state.simplified || state.pts;
+  ctx.clearRect(0,0,fit.w,fit.h);
+  ctx.fillStyle = '#12161d'; ctx.fillRect(0,0,fit.w,fit.h);
+  var pr = project(pts, fit.w, fit.h, 26);
+  state.proj = pr;
+  /* grid */
+  ctx.strokeStyle = '#1b2430'; ctx.lineWidth = 1;
+  for (var gx=0.5; gx<fit.w; gx+=44){ ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,fit.h); ctx.stroke(); }
+  for (var gy=0.5; gy<fit.h; gy+=44){ ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(fit.w,gy); ctx.stroke(); }
+  /* waypoints */
+  ctx.strokeStyle = '#5b6774';
+  state.wps.forEach(function(w){
+    var q = pr(w);
+    ctx.beginPath(); ctx.arc(q.x,q.y,4,0,Math.PI*2); ctx.stroke();
+  });
+  /* track */
+  ctx.beginPath();
+  for (var i=0; i<pts.length; i++){
+    var q = pr(pts[i]);
+    if (i===0) ctx.moveTo(q.x,q.y); else ctx.lineTo(q.x,q.y);
+  }
+  ctx.strokeStyle = '#4fd1c5'; ctx.lineWidth = 2.2; ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+  ctx.strokeStyle = 'rgba(79,209,197,.25)'; ctx.lineWidth = 6; ctx.stroke();
+  var a = pr(pts[0]), b = pr(pts[pts.length-1]);
+  ctx.fillStyle = '#63e6a6'; ctx.beginPath(); ctx.arc(a.x,a.y,5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#ff6b6b'; ctx.beginPath(); ctx.arc(b.x,b.y,5,0,Math.PI*2); ctx.fill();
+}
+
+/* ---------- elevation profile ---------- */
+function drawProf(scrubIdx){
+  var cv = $('prof'), fit = fitCanvas(cv), ctx = fit.ctx, pts = state.simplified || state.pts;
+  ctx.clearRect(0,0,fit.w,fit.h);
+  if (!state.stats.hasEle){
+    ctx.fillStyle = '#5b6774'; ctx.font = '13px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('此轨迹不含高程数据（<ele>），剖面不可用', fit.w/2, fit.h/2);
+    return;
+  }
+  var min=Infinity, max=-Infinity;
+  pts.forEach(function(p){ if (p.ele!=null){ if(p.ele<min)min=p.ele; if(p.ele>max)max=p.ele; }});
+  if (max-min < 1){ max = min+1; }
+  var padT=14, padB=16, ph = fit.h-padT-padB;
+  var xy = function(i){
+    var x = pts.length>1 ? i/(pts.length-1)*(fit.w-1) : 0;
+    var y = padT + (1-(pts[i].ele-min)/(max-min))*ph;
+    return {x:x, y:y};
+  };
+  ctx.beginPath(); ctx.moveTo(0, fit.h);
+  for (var i=0; i<pts.length; i++){ var q = xy(i); ctx.lineTo(q.x, q.y); }
+  ctx.lineTo(fit.w, fit.h); ctx.closePath();
+  var g = ctx.createLinearGradient(0,padT,0,fit.h);
+  g.addColorStop(0,'rgba(79,209,197,.35)'); g.addColorStop(1,'rgba(79,209,197,.03)');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.beginPath();
+  for (var j=0; j<pts.length; j++){ var r = xy(j); if (j===0) ctx.moveTo(r.x,r.y); else ctx.lineTo(r.x,r.y); }
+  ctx.strokeStyle = '#4fd1c5'; ctx.lineWidth = 1.6; ctx.stroke();
+  /* labels */
+  ctx.fillStyle = '#5b6774'; ctx.font = '11px sans-serif';
+  ctx.textAlign='left';  ctx.fillText(Math.round(max)+' m', 4, 11);
+  ctx.textAlign='right'; ctx.fillText(Math.round(min)+' m', fit.w-4, fit.h-4);
+  /* scrub crosshair */
+  if (scrubIdx != null){
+    var c = xy(scrubIdx);
+    ctx.strokeStyle = '#ffb454'; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(c.x, padT-6); ctx.lineTo(c.x, fit.h-2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ffb454'; ctx.beginPath(); ctx.arc(c.x, c.y, 4, 0, Math.PI*2); ctx.fill();
+  }
+  state.profXY = xy;
+}
+
+/* ---------- Douglas-Peucker (iterative, on projected plane) ---------- */
+function perpDist(p, a, b){
+  var dx = b.x-a.x, dy = b.y-a.y;
+  var L2 = dx*dx+dy*dy;
+  if (L2 === 0) return Math.hypot(p.x-a.x, p.y-a.y);
+  var t = Math.max(0, Math.min(1, ((p.x-a.x)*dx + (p.y-a.y)*dy)/L2));
+  return Math.hypot(p.x-(a.x+t*dx), p.y-(a.y+t*dy));
+}
+function simplify(pts, eps){
+  if (eps <= 0 || pts.length < 3) return pts.slice();
+  var keep = new Array(pts.length); keep[0]=keep[pts.length-1]=true;
+  var stack = [[0, pts.length-1]];
+  var scale = state.planeScale || 1;
+  while (stack.length){
+    var seg = stack.pop(), lo = seg[0], hi = seg[1];
+    var maxD = -1, idx = -1;
+    for (var i=lo+1; i<hi; i++){
+      var d = perpDist(state.plane[i], state.plane[lo], state.plane[hi]);
+      if (d > maxD){ maxD = d; idx = i; }
+    }
+    if (maxD > eps*scale){ keep[idx] = true; stack.push([lo,idx],[idx,hi]); }
+  }
+  var out = [];
+  for (var k=0; k<pts.length; k++) if (keep[k]) out.push(pts[k]);
+  return out;
+}
+function buildPlane(){
+  var cv = $('map'), w = 1000, h = 620, pad = 20;
+  var pr = project(state.pts, w, h, pad);
+  state.plane = state.pts.map(function(p){ return pr(p); });
+  var maxD = 0;
+  for (var i=1; i<state.plane.length-1; i++){
+    var d = perpDist(state.plane[i], state.plane[0], state.plane[state.plane.length-1]);
+    if (d > maxD) maxD = d;
+  }
+  state.planeScale = Math.max(maxD*1.15, 0.5);
+}
+
+/* ---------- slim UI ---------- */
+function applySlim(epsPct){
+  state.eps = epsPct;
+  var eps = epsPct/100;
+  var out = simplify(state.pts, eps);
+  state.simplified = out;
+  var before = state.pts.length, after = out.length;
+  var saved = before>0 ? Math.round((1-after/before)*100) : 0;
+  $('slimout').innerHTML = before.toLocaleString() + ' → <b>' + after.toLocaleString() + '</b> 点（−' + saved + '%）';
+  var est = state.srcSize * (after/Math.max(1,before));
+  $('exnote').textContent = '原文件 ' + (state.srcSize/1024).toFixed(1) + ' KB → 预计 ' + (est/1024).toFixed(1) + ' KB';
+  if (epsPct === 0) $('exnote').textContent = '原样导出（未精简），' + (state.srcSize/1024).toFixed(1) + ' KB';
+  $('eps').disabled = before < 3;
+  $('export').disabled = false;
+}
+
+/* ---------- render all ---------- */
+function renderAll(){
+  state.stats = computeStats(state.pts);
+  var s = state.stats;
+  var cells = [
+    ['轨迹点', s.n.toLocaleString()+' <small>pts</small>'],
+    ['总距离', fmtDist(s.dist)],
+    ['累计爬升', s.hasEle ? Math.round(s.gain)+' <small>m</small>' : '—'],
+    ['累计下降', s.hasEle ? Math.round(s.loss)+' <small>m</small>' : '—'],
+    ['时长', fmtDur(s.dur)],
+    ['均速', fmtSpeed(s.dur ? s.dist/(s.dur/1000) : null)]
+  ];
+  $('stats').innerHTML = cells.map(function(c){
+    return '<div class="stat"><div class="k">'+c[0]+'</div><div class="v">'+c[1]+'</div></div>';
+  }).join('');
+  buildPlane();
+  applySlim(0);
+  $('eps').value = 0;
+  drawMap(); drawProf(null);
+  hideCursor();
+  $('work').classList.add('on');
+}
+
+/* ---------- scrub interaction ---------- */
+var cursorEl = $('cursor'), cursorTip = cursorEl.querySelector('.tip');
+function hideCursor(){ cursorEl.style.display = 'none'; drawProf(state.scrubIdx = null); }
+function scrubFromEvent(e){
+  var cv = $('prof'), rect = cv.getBoundingClientRect();
+  var x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  var pts = state.simplified || state.pts;
+  if (!state.stats.hasEle || pts.length < 2) return;
+  var frac = Math.max(0, Math.min(1, x/rect.width));
+  var idx = Math.round(frac*(pts.length-1));
+  state.scrubIdx = idx;
+  drawProf(idx);
+  var p = pts[idx];
+  /* cumulative distance up to idx */
+  var d = 0;
+  for (var i=1; i<=idx; i++) d += havM(pts[i-1], pts[i]);
+  var ele = p.ele != null ? Math.round(p.ele)+' m · ' : '';
+  cursorTip.textContent = ele + fmtDist(d).replace(/<[^>]+>/g,'');
+  var q = state.proj(p);
+  cursorEl.style.display = 'block';
+  cursorEl.style.left = q.x+'px'; cursorEl.style.top = q.y+'px';
+  /* map is DPR-scaled CSS-wise: proj coords are CSS px already */
+}
+$('prof').addEventListener('pointermove', scrubFromEvent);
+$('prof').addEventListener('pointerdown', scrubFromEvent);
+$('prof').addEventListener('pointerleave', function(){ hideCursor(); });
+
+/* ---------- file loading ---------- */
+function setStatus(msg, isErr){
+  var el = $('status');
+  el.textContent = msg || '';
+  el.className = isErr ? 'err' : '';
+}
+function loadText(text, size, name){
+  try {
+    var r = parseGPX(text, size, name);
+    state.pts = r.pts; state.wps = r.wps; state.name = r.name;
+    state.srcSize = size; state.fileName = name;
+    setStatus('已载入「'+r.name+'」· '+r.pts.length.toLocaleString()+' 点 · '+(size/1024).toFixed(1)+' KB');
+    renderAll();
+  } catch(err){
+    setStatus('载入失败：'+err.message, true);
+    $('work').classList.remove('on');
+  }
+}
+function loadFile(f){
+  if (!f) return;
+  if (f.size > 30*1024*1024){ setStatus('文件超过 30 MB，太大了', true); return; }
+  var rd = new FileReader();
+  rd.onload = function(){ loadText(String(rd.result), f.size, f.name); };
+  rd.onerror = function(){ setStatus('文件读取失败', true); };
+  rd.readAsText(f);
+}
+$('drop').addEventListener('click', function(ev){ if (ev.target.tagName !== 'BUTTON') $('file').click(); });
+$('drop').addEventListener('keydown', function(ev){ if (ev.key==='Enter'||ev.key===' ') $('file').click(); });
+$('pick').addEventListener('click', function(ev){ ev.stopPropagation(); $('file').click(); });
+$('file').addEventListener('change', function(){ loadFile(this.files[0]); this.value=''; });
+['dragover','dragenter'].forEach(function(t){
+  $('drop').addEventListener(t, function(e){ e.preventDefault(); $('drop').classList.add('over'); });
+});
+['dragleave','drop'].forEach(function(t){
+  $('drop').addEventListener(t, function(e){ e.preventDefault(); $('drop').classList.remove('over'); });
+});
+$('drop').addEventListener('drop', function(e){
+  var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+
+/* ---------- sample track: synthetic mountain loop ---------- */
+function loadSample(){
+  var pts = [], t0 = new Date('2026-10-16T08:00:00Z');
+  var cx = 30.2500, cy = 119.7200;   /* 浙西山地 */
+  for (var i=0; i<1400; i++){
+    var a = i/1400*Math.PI*2;
+    var lat = cx + 0.035*Math.sin(a*1.0+0.6) + 0.012*Math.sin(a*3.0) + (Math.random()-0.5)*0.0002;
+    var lon = cy + 0.045*Math.cos(a*1.0) + 0.014*Math.cos(a*2.0+1.1) + (Math.random()-0.5)*0.0002;
+    var ele = 420 + 380*(0.5+0.5*Math.sin(a+0.8)) + 90*Math.sin(a*4.0+2) + (Math.random()-0.5)*3;
+    pts.push({ lat:lat, lon:lon, ele:Math.round(ele*10)/10, t:new Date(t0.getTime()+i*12000) });
+  }
+  var xml = ['<?xml version="1.0" encoding="UTF-8"?>',
+    '<gpx version="1.1" creator="gpxslim-sample" xmlns="http://www.topografix.com/GPX/1/1">',
+    '<trk><name>示例 · 昱岭关环线</name><trkseg>'];
+  pts.forEach(function(p){
+    xml.push('<trkpt lat="'+p.lat.toFixed(6)+'" lon="'+p.lon.toFixed(6)+'"><ele>'+p.ele+'</ele><time>'+p.t.toISOString()+'</time></trkpt>');
+  });
+  xml.push('</trkseg></trk></gpx>');
+  var s = xml.join('');
+  loadText(s, s.length, 'sample-hike.gpx');
+}
+$('sample').addEventListener('click', function(ev){ ev.stopPropagation(); loadSample(); });
+
+/* ---------- slim slider + export ---------- */
+$('eps').addEventListener('input', function(){
+  applySlim(parseInt(this.value,10));
+  drawMap(); drawProf(state.scrubIdx);
+});
+$('export').addEventListener('click', function(){
+  var pts = state.simplified || state.pts;
+  var out = ['<?xml version="1.0" encoding="UTF-8"?>',
+    '<gpx version="1.1" creator="gpxslim" xmlns="http://www.topografix.com/GPX/1/1">',
+    '<trk><name>'+state.name.replace(/[<>&]/g,'')+' (slim)</name><trkseg>'];
+  pts.forEach(function(p){
+    var s = '<trkpt lat="'+p.lat.toFixed(6)+'" lon="'+p.lon.toFixed(6)+'">';
+    if (p.ele != null) s += '<ele>'+p.ele+'</ele>';
+    if (p.t) s += '<time>'+p.t.toISOString()+'</time>';
+    out.push(s+'</trkpt>');
+  });
+  out.push('</trkseg></trk></gpx>');
+  var blob = new Blob([out.join('')], {type:'application/gpx+xml'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = state.fileName.replace(/\.gpx$/i,'') + '-slim.gpx';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 3000);
+});
+
+/* ---------- resize ---------- */
+var rsT;
+window.addEventListener('resize', function(){
+  if (!state.pts.length) return;
+  clearTimeout(rsT);
+  rsT = setTimeout(function(){
+    buildPlane(); applySlim(state.eps); drawMap(); drawProf(state.scrubIdx);
+  }, 150);
+});
+</script>
+</body>
+</html>

@@ -8,6 +8,7 @@ English switch: [English](README.md)
 
 | # | Date | 在线试玩 | Idea | 源码 |
 | --- | --- | --- | --- | --- |
+| #34 | 2026-10-16 | [GPXSLIM（轨迹瘦身台）](gpxslim-20261016/) | 拖入 GPX 轨迹即出地图描线 + 高程剖面 + 距离爬升时长体征，剖面滑动地图游标联动，一根滑杆 Douglas–Peucker 瘦身九成点数一键导出，全程本地零上传 | [source](gpxslim-20261016) |
 | #33 | 2026-10-15 | [RAMPSMITH（色阶锻炉）](rampsmith-20261015/) | 粘一个品牌色，OKLCH 空间锻出 50→950 十一级色阶：手工感明度曲线、中间最艳两端收敛、色域二分收缩，对比度徽章自带 + ★品牌锚点，一键导出 CSS/Tailwind/SCSS/JSON，全程本地零上传 | [source](rampsmith-20261015) |
 | #32 | 2026-10-14 | [CHECKLAB（校验位实验室）](checklab-20261014/) | 粘一串号码自动识别类型（银行卡/IMEI/EAN/ISBN/身份证/IBAN），逐位画出校验位加权和算式红绿判定，还能一键造合法测试号，全程本地零上传 | [source](checklab-20261014) |
 | #31 | 2026-10-13 | [ICONKIT（图标全家桶熔炉）](iconkit-20261013/) | 拖一张图或打两个字选个底色，熔出 favicon.ico + 9 尺寸 PNG + ZIP + HTML 引用码，实时预览浏览器标签/书签/手机主屏效果，全程本地零上传 | [source](iconkit-20261013) |

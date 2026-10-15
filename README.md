@@ -8,6 +8,7 @@ One original single-file creative micro-tool per day — local-first, zero-depen
 
 | # | Date | Demo | Idea | Source |
 | --- | --- | --- | --- | --- |
+| #34 | 2026-10-16 | [GPXSLIM](gpxslim-20261016/) | GPXSLIM: drop a GPX track — instant dark-canvas map, elevation profile with a scrub that rides a synced cursor along the route, vitals (haversine distance / gain / duration), then one slider of iterative Douglas–Peucker slimming (live 1,400 → 214 pts, −85%) and a clean GPX export, fully local | [source](gpxslim-20261016) |
 | #33 | 2026-10-15 | [RAMPSMITH](rampsmith-20261015/) | RAMPSMITH: paste one brand color, forge an 11-step OKLCH ramp (50→950) — hand-tuned lightness curve, mid-ramp chroma peak, binary-searched gamut safety, WCAG contrast chips and a ★ brand-anchor badge, one-click CSS/Tailwind/SCSS/JSON export, fully local | [source](rampsmith-20261015) |
 | #32 | 2026-10-14 | [CHECKLAB](checklab-20261014/) | CHECKLAB: paste a number — it detects the type (bank card / IMEI / EAN / ISBN / ID / IBAN), draws the per-digit weighted-sum arithmetic behind the check digit with a green-red verdict, and mints valid test numbers, fully local | [source](checklab-20261014) |
 | #31 | 2026-10-13 | [ICONKIT](iconkit-20261013/) | ICONKIT: drop an image or type two characters — forge favicon.ico + nine PNG sizes + ZIP + a paste-ready link snippet, with live previews in a browser tab, bookmarks bar and phone home screen, fully local | [source](iconkit-20261013) |
