@@ -8,6 +8,7 @@ One original single-file creative micro-tool per day — local-first, zero-depen
 
 | # | Date | Demo | Idea | Source |
 | --- | --- | --- | --- | --- |
+| #35 | 2026-10-17 | [SEMRULER](semruler-20261017/) | SEMRULER: paste an npm semver range and it becomes a ruler — green bands for matched regions, the same-tuple prerelease gate drawn as a hatched sliver, drop versions on it for pass/fail with plain-language reasons, copy a Markdown verdict report, fully local | [source](semruler-20261017) |
 | #34 | 2026-10-16 | [GPXSLIM](gpxslim-20261016/) | GPXSLIM: drop a GPX track — instant dark-canvas map, elevation profile with a scrub that rides a synced cursor along the route, vitals (haversine distance / gain / duration), then one slider of iterative Douglas–Peucker slimming (live 1,400 → 214 pts, −85%) and a clean GPX export, fully local | [source](gpxslim-20261016) |
 | #33 | 2026-10-15 | [RAMPSMITH](rampsmith-20261015/) | RAMPSMITH: paste one brand color, forge an 11-step OKLCH ramp (50→950) — hand-tuned lightness curve, mid-ramp chroma peak, binary-searched gamut safety, WCAG contrast chips and a ★ brand-anchor badge, one-click CSS/Tailwind/SCSS/JSON export, fully local | [source](rampsmith-20261015) |
 | #32 | 2026-10-14 | [CHECKLAB](checklab-20261014/) | CHECKLAB: paste a number — it detects the type (bank card / IMEI / EAN / ISBN / ID / IBAN), draws the per-digit weighted-sum arithmetic behind the check digit with a green-red verdict, and mints valid test numbers, fully local | [source](checklab-20261014) |

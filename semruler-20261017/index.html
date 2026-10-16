@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SEMRULER · 版本尺</title>
+<meta name="description" content="把 npm 语义化版本区间画成一把尺：色带看匹配区、版本落尺红绿判定、预发布规则看得见。全程本地。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='6' y='40' width='88' height='20' rx='6' fill='%23ffb454'/><rect x='10' y='44' width='40' height='12' rx='3' fill='%232dd4a7'/><circle cx='72' cy='50' r='7' fill='%23ff5d73'/></svg>">
+<style>
+:root{
+  --bg:#0e1116;--panel:#151a22;--panel2:#1b2230;--line:#232b3a;--fg:#e8edf4;--mut:#8a95a8;
+  --ok:#2dd4a7;--bad:#ff5d73;--acc:#ffb454;--acc2:#6fb3ff;--band:#2dd4a7;--band2:rgba(45,212,167,.16);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom))}
+main{max-width:760px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.4px}
+h1 b{color:var(--acc)}
+.sub{color:var(--mut);font-size:13px;margin:4px 0 22px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+.card h2{font-size:13px;color:var(--mut);font-weight:600;letter-spacing:.8px;margin-bottom:10px;text-transform:uppercase}
+input[type=text],textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  color:var(--fg);font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:10px 12px;outline:none}
+input[type=text]:focus,textarea:focus{border-color:var(--acc)}
+textarea{resize:vertical;min-height:86px}
+.rowline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+  padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+button:hover{border-color:var(--acc);color:var(--acc)}
+button.pri{background:var(--acc);border-color:var(--acc);color:#1a1206;font-weight:600}
+button.pri:hover{color:#1a1206;filter:brightness(1.08)}
+.chip{font:12.5px ui-monospace,Menlo,Consolas,monospace;padding:5px 10px}
+.hint{color:var(--mut);font-size:12.5px;margin-top:8px}
+.hint.err{color:var(--bad)}
+.toggle{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none;font-size:13px;color:var(--mut)}
+.toggle input{accent-color:var(--acc);width:15px;height:15px}
+/* ruler */
+.rulerbox{position:relative}
+svg{display:block;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12.5px;color:var(--mut)}
+.legend i{display:inline-block;width:18px;height:9px;border-radius:3px;margin-right:5px;vertical-align:middle}
+/* verdicts */
+.vlist{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+.vrow{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:8px;padding:8px 12px;font-size:13.5px}
+.vrow .ver{font:14px ui-monospace,Menlo,Consolas,monospace;font-weight:600;min-width:110px;overflow-wrap:anywhere}
+.vrow .why{color:var(--mut);flex:1;min-width:0;overflow-wrap:anywhere}
+.badge{font-size:12px;font-weight:700;border-radius:6px;padding:2px 8px;flex-shrink:0}
+.badge.ok{background:rgba(45,212,167,.15);color:var(--ok)}
+.badge.bad{background:rgba(255,93,115,.14);color:var(--bad)}
+.vrow.hit{border-color:rgba(45,212,167,.45)}
+.vrow.miss{border-color:rgba(255,93,115,.4)}
+/* mini compare */
+.minis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.mini{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px}
+.mini h3{font:13px ui-monospace,Menlo,Consolas,monospace;color:var(--acc);margin-bottom:6px;text-align:center}
+.mini p{font-size:12px;color:var(--mut);margin-top:6px;text-align:center}
+.copyline{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+footer{color:var(--mut);font-size:12.5px;text-align:center;margin-top:8px}
+@media (max-width:560px){
+  .minis{grid-template-columns:1fr}
+  .vrow .ver{min-width:90px}
+}
+</style>
+</head>
+<body>
+<main>
+  <h1><b>SEMRULER</b> 版本尺</h1>
+  <p class="sub">把 npm 语义化版本区间画成一把尺：色带是匹配区，版本号落尺红绿立判，预发布规则看得见。纯前端，数据不出页面。</p>
+
+  <div class="card">
+    <h2>① 版本区间 Range</h2>
+    <input type="text" id="range" placeholder="例如 ^1.2.0 || >=3.0.0 <3.2.0" spellcheck="false" autocomplete="off">
+    <div class="rowline">
+      <button class="chip" data-range="^1.2.0">^1.2.0</button>
+      <button class="chip" data-range="~1.2.3">~1.2.3</button>
+      <button class="chip" data-range=">=2.0.0 &lt;4.0.0">&ge;2.0.0 &lt;4.0.0</button>
+      <button class="chip" data-range="1.2.x">1.2.x</button>
+      <button class="chip" data-range="1.x || &gt;=3">1.x || &gt;=3</button>
+      <button class="chip" data-range="2.1.0 - 2.4.0">2.1.0 - 2.4.0</button>
+      <button class="chip" data-range="*">*</button>
+      <label class="toggle"><input type="checkbox" id="incpre"> 含预发布（includePrerelease）</label>
+    </div>
+    <p class="hint" id="rangeMsg"></p>
+  </div>
+
+  <div class="card">
+    <h2>② 尺子</h2>
+    <div class="rulerbox"><svg id="ruler" viewBox="0 0 720 150" role="img" aria-label="版本区间尺"></svg></div>
+    <div class="legend">
+      <span><i style="background:var(--band)"></i>匹配区间</span>
+      <span><i style="background:repeating-linear-gradient(45deg,rgba(255,180,84,.5) 0 4px,transparent 4px 8px)"></i>仅预发布可进（同元组规则）</span>
+      <span><i style="background:var(--acc2);width:9px;height:9px;border-radius:50%"></i>落尺版本 <span style="color:var(--ok)">✓命中</span> / <span style="color:var(--bad)">✗出局</span></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>③ 落尺验证 · 每行一个版本</h2>
+    <textarea id="versions" spellcheck="false" placeholder="1.2.9&#10;2.5.0&#10;3.1.4&#10;3.2.0&#10;1.3.0-beta.1"></textarea>
+    <div class="vlist" id="vlist"></div>
+    <div class="copyline" style="margin-top:12px">
+      <button id="copyBtn" class="pri">复制判定报告 Markdown</button>
+      <button id="sampleBtn">载入示例</button>
+      <span class="hint" id="copyMsg"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>④ 顺手记住 · 三兄弟的区别</h2>
+    <div class="minis">
+      <div class="mini"><h3>1.2.3</h3><svg data-mini="exact" viewBox="0 0 200 44"></svg><p>焊死，一个补丁都不进</p></div>
+      <div class="mini"><h3>~1.2.3</h3><svg data-mini="tilde" viewBox="0 0 200 44"></svg><p>只收补丁：≥1.2.3 且 &lt;1.3.0</p></div>
+      <div class="mini"><h3>^1.2.3</h3><svg data-mini="caret" viewBox="0 0 200 44"></svg><p>收次版本：≥1.2.3 且 &lt;2.0.0</p></div>
+    </div>
+  </div>
+
+  <footer>SEMRULER · 每日创意小工具 #35 · 解析/判定全部在浏览器本地完成，零上传</footer>
+</main>
+
+<script>
+"use strict";
+/* ========== 纯函数区：解析 / 比较 / 判定（node 可独立仿真） ========== */
+var EMPTY_TUPLE = [0, 0, 0];
+
+function parseVersion(s) {
+  if (typeof s !== "string") return null;
+  var str = s.trim().replace(/^v/i, "").replace(/\s+/g, "");
+  if (!str) return null;
+  var m = str.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  if (!m) return null;
+  var M = +m[1], mi = +m[2], p = +m[3];
+  if (M > 99999 || mi > 999 || p > 999) return null;
+  var pre = m[4] ? m[4].split(".").map(function (x) { return /^\d+$/.test(x) ? +x : x; }) : null;
+  return { tuple: [M, mi, p], pre: pre, raw: str };
+}
+
+function cmpPre(a, b) { // a,b: pre 数组或 null(null=正式版，最大)
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  var n = Math.max(a.length, b.length), i, x, y;
+  for (i = 0; i < n; i++) {
+    x = a[i]; y = b[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    if (typeof x === "number" && typeof y === "number") { if (x !== y) return x < y ? -1 : 1; }
+    else if (typeof x === "number") return -1;
+    else if (typeof y === "number") return 1;
+    else if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+function cmpV(a, b) {
+  var i;
+  for (i = 0; i < 3; i++) { if (a.tuple[i] !== b.tuple[i]) return a.tuple[i] < b.tuple[i] ? -1 : 1; }
+  return cmpPre(a.pre, b.pre);
+}
+
+function vNum(t) { return t[0] * 1e6 + t[1] * 1e3 + t[2]; } // 尺子坐标
+
+/* comparator: {op:'='|'>'|'>='|'<'|'<='|'', tuple:[M,m,p], pre:null|[...], text:'原始片段'} */
+function parseRange(s) {
+  if (typeof s !== "string") return null;
+  var src = s.trim();
+  if (!src) src = "*";
+  var parts = src.split("||").map(function (p) { return p.trim(); });
+  var sets = [], i;
+  for (i = 0; i < parts.length; i++) {
+    var set = parseSet(parts[i]);
+    if (set === null) return null;
+    sets.push(set);
+  }
+  return { sets: sets, src: src };
+}
+
+function parseSet(str) { // 一组 AND comparators；空 = *
+  if (!str || !str.trim()) return [starC()];
+  var toks = str.trim().split(/\s+/), cs = [], i;
+  // 连字符区间 a - b
+  if (toks.length === 3 && toks[1] === "-") {
+    var lo = xr(toks[0], "ge"), hi = xr(toks[2], "le"); // 连字符上端是闭区间（npm 语义）
+    if (!lo || !hi) return null;
+    return [lo, hi];
+  }
+  for (i = 0; i < toks.length; i++) {
+    var c = parseCmp(toks[i]);
+    if (c === null) return null;
+    if (c !== "star") cs.push(c);
+  }
+  return cs.length ? cs : [starC()];
+}
+function starC() { return { op: "ge", tuple: [0, 0, 0], pre: null, text: "*", star: true }; }
+
+function parseCmp(tok) {
+  if (tok === "*" || tok === "x" || tok === "X") return "star";
+  var m = tok.match(/^(>=|<=|>|<|=|\^|~)?(.+)$/);
+  if (!m) return null;
+  var op = m[1] || "=", rest = m[2];
+  var OPN = { ">=": "ge", ">": "gt", "<": "lt", "<=": "le", "=": "=" };
+  op = OPN[op] || op;
+  if (op === "^") return caretC(rest);
+  if (op === "~") return tildeC(rest);
+  return xr(rest, op);
+}
+
+function splitX(rest) { // 1.2 / 1.2.x / 1.x / 1.2.* → [M,m,p, 缺省级别]
+  var seg = rest.split("."), miss = 3, i, v = [0, 0, 0];
+  for (i = 0; i < seg.length && i < 3; i++) {
+    if (seg[i] === "x" || seg[i] === "X" || seg[i] === "*") { miss = i; break; }
+    if (!/^\d+$/.test(seg[i])) return null;
+    v[i] = +seg[i];
+  }
+  if (seg.length < 3 && miss === 3) miss = seg.length;
+  if (miss > 3 || seg.length > 3) return null;
+  return { t: v, miss: miss };
+}
+
+function splitPre(rest) { // 1.3.0-beta.1 → {ver:'1.3.0', pre:['beta',1]}
+  var m = rest.match(/^([0-9xX*]+(?:\.[0-9xX*]+)*)(?:-([0-9A-Za-z.-]+))?$/);
+  if (!m) return null;
+  var pre = null;
+  if (m[2]) pre = m[2].split(".").map(function (x) { return /^\d+$/.test(x) ? +x : x; });
+  return { ver: m[1], pre: pre };
+}
+
+function xr(rest, op) { // 普通比较符/x-range → comparator(s)，复用数组表达
+  var sp = splitPre(rest);
+  if (!sp) return null;
+  var sx = splitX(sp.ver);
+  if (!sx) return null;
+  var t = sx.t, miss = sx.miss, pre = sp.pre;
+  if (pre && miss !== 3) return null; // 1.2.x-beta 非法
+  if (miss === 0) return "star"; // 1.x 之类在 miss=1；miss=0 只有 "*"
+  if (op === "=") {
+    if (miss === 3) return { op: "=", tuple: t, pre: pre, text: tokText(rest) };
+    if (miss === 1) return { pack: [{ op: "ge", tuple: t, pre: null, text: rest }, { op: "lt", tuple: [t[0] + 1, 0, 0], pre: null, text: rest }] };
+    // miss===2: 1.2.x / 1.2 → >=1.2.0 <1.3.0（x 只吃补丁位）
+    return { pack: [{ op: "ge", tuple: t, pre: null, text: rest }, { op: "lt", tuple: [t[0], t[1] + 1, 0], pre: null, text: rest }] };
+  }
+  if (op === "ge") return { op: "ge", tuple: t, pre: pre, text: tokText(rest) };
+  if (op === "gt") return { op: "gt", tuple: t, pre: pre, text: tokText(rest) };
+  if (op === "lt") {
+    return { op: "lt", tuple: t, pre: pre, text: tokText(rest) };
+  }
+  if (op === "le") {
+    if (miss === 3) return { op: "le", tuple: t, pre: pre, text: tokText(rest) };
+    return { op: "lt", tuple: [t[0], t[1] + 1, 0], pre: null, text: tokText(rest) }; // <=1.2 → <1.3.0
+  }
+  return null;
+}
+function tokText(rest) { return rest; }
+
+function caretC(rest) { // ^1.2.3 → >=1.2.3 <2.0.0；^0.2.3 → <0.3.0；^0.0.3 → <0.0.4
+  var sp = splitPre(rest);
+  if (!sp) return null;
+  var sx = splitX(sp.ver);
+  if (!sx || sx.miss === 0) return null;
+  var t = sx.t, hi, pre = sp.pre;
+  if (pre && sx.miss !== 3) return null;
+  if (sx.miss === 1) hi = [t[0] + 1, 0, 0];
+  else if (t[0] !== 0) hi = [t[0] + 1, 0, 0];
+  else if (t[1] !== 0) hi = [0, t[1] + 1, 0];
+  else hi = [0, 0, t[2] + 1];
+  if (sx.miss === 2) { // ^1.2 → >=1.2.0 <2.0.0；^0.2 → <0.3.0
+    hi = t[0] !== 0 ? [t[0] + 1, 0, 0] : [0, t[1] + 1, 0];
+  }
+  return { pack: [
+    { op: "ge", tuple: t.slice(), pre: pre, text: "^" + rest },
+    { op: "lt", tuple: hi, pre: null, text: "^" + rest }
+  ] };
+}
+
+function tildeC(rest) { // ~1.2.3 → >=1.2.3 <1.3.0；~1.2 → >=1.2.0 <1.3.0；~1 → >=1.0.0 <2.0.0
+  var sp = splitPre(rest);
+  if (!sp) return null;
+  var sx = splitX(sp.ver);
+  if (!sx || sx.miss === 0) return null;
+  var t = sx.t, hi, pre = sp.pre;
+  if (pre && sx.miss !== 3) return null;
+  if (sx.miss === 1) hi = [t[0] + 1, 0, 0];
+  else hi = [t[0], t[1] + 1, 0];
+  return { pack: [
+    { op: "ge", tuple: t.slice(), pre: pre, text: "~" + rest },
+    { op: "lt", tuple: hi, pre: null, text: "~" + rest }
+  ] };
+}
+
+/* 把 comparator 归一为 flat 数组 */
+function flatC(c) {
+  if (c === "star") return [starC()];
+  if (c.pack) return c.pack;
+  return [c];
+}
+
+/* 单条 comparator 判定（忽略预发布门） */
+function checkC(v, c) {
+  var cv = cmpV(v, { tuple: c.tuple, pre: c.pre });
+  switch (c.op) {
+    case "=": return cv === 0;
+    case "gt": return cv > 0;
+    case "ge": return cv >= 0;
+    case "lt": return cv < 0;
+    case "le": return cv <= 0;
+  }
+  return false;
+}
+
+/* npm 预发布门：带 pre 的版本只有当该组里存在「同 [M,m,p] 元组且带 pre 的 comparator」才可能入选 */
+function preGate(v, set) {
+  if (!v.pre) return true;
+  for (var i = 0; i < set.length; i++) {
+    var c = set[i];
+    if (c.pre && c.tuple[0] === v.tuple[0] && c.tuple[1] === v.tuple[1] && c.tuple[2] === v.tuple[2]) return true;
+  }
+  return false;
+}
+
+/* 判定主入口：返回 {ok, setIdx, checks:[{c, pass}]|null} */
+function satisfies(v, range, incPre) {
+  var si, ci;
+  for (si = 0; si < range.sets.length; si++) {
+    var raw = range.sets[si], set = [], k;
+    for (k = 0; k < raw.length; k++) set = set.concat(flatC(raw[k]));
+    var all = true, checks = [];
+    var gate = incPre ? true : preGate(v, set);
+    if (!gate) { all = false; checks = null; }
+    else {
+      for (ci = 0; ci < set.length; ci++) {
+        var pass = checkC(v, set[ci]);
+        checks.push({ c: set[ci], pass: pass });
+        if (!pass) all = false;
+      }
+    }
+    if (all) return { ok: true, setIdx: si, checks: checks };
+  }
+  return { ok: false, setIdx: -1, checks: null };
+}
+
+/* 区间 → 画图用线段列表：[{lo,hi,preOnly}] 数值区间（tuple 语义，含端点修正） */
+function intervalOf(set, srcText) {
+  var lo = { tuple: [0, 0, 0], kind: "inc" }, hi = null, i, c, flat = [];
+  for (i = 0; i < set.length; i++) flat = flat.concat(flatC(set[i]));
+  for (i = 0; i < flat.length; i++) {
+    c = flat[i];
+    var n = c.tuple;
+    if (c.op === "ge" && (c.star || (n[0] === 0 && !c.pre && srcText === "*"))) { /* * 不动 */ }
+    if (c.op === "ge") { if (cmpT(n, lo.tuple) > 0 || lo.kind === "none") lo = { tuple: n.slice(), kind: "inc" }; }
+    else if (c.op === "gt") { var up = bumpMin(n); if (lo.kind === "none" || cmpT(up, lo.tuple) > 0) lo = { tuple: up, kind: "inc" }; }
+    else if (c.op === "=") {
+      lo = { tuple: n.slice(), kind: "inc" }; hi = { tuple: n.slice(), kind: "inc" };
+    }
+    if (c.op === "lt") { if (hi === null || cmpT(n, hi.tuple) < 0 || (cmpT(n, hi.tuple) === 0 && hi.kind === "inc")) hi = { tuple: n.slice(), kind: "exc" }; }
+    else if (c.op === "<=") { if (hi === null || cmpT(n, hi.tuple) < 0) hi = { tuple: n.slice(), kind: "inc" }; }
+  }
+  if (hi === null) hi = { tuple: null, kind: "inf" };
+  return { lo: lo, hi: hi };
+  function cmpT(a, b) { return a[0] !== b[0] ? a[0] - b[0] : a[1] !== b[1] ? a[1] - b[1] : a[2] - b[2]; }
+  function bumpMin(t) { return [t[0], t[1], t[2] + 1]; } // >x.y.z 的最小正式版 = z+1（工具口径，见 README）
+}
+
+function fmtT(t) { return t ? t.join(".") : "∞"; }
+
+function explainSet(set) {
+  var flat = [], i;
+  for (i = 0; i < set.length; i++) flat = flat.concat(flatC(set[i]));
+  return flat.map(function (c) {
+    var sym = { "=": "=", ">": ">", ">=": "≥", "<": "<", "<=": "≤" }[c.op] || "?";
+    return sym + fmtT(c.tuple) + (c.pre ? "-" + c.pre.join(".") : "");
+  }).join(" 且 ");
+}
+
+/* ========== DOM 区 ========== */
+function $(id) { return document.getElementById(id); }
+var state = { range: null, versions: [] };
+
+function renderRuler() {
+  var svg = $("ruler"), msg = $("rangeMsg");
+  var W = 720, H = 150, padL = 14, padR = 14, y = 56, rh = 22;
+  var out = [];
+  var range = state.range;
+  if (!range) {
+    msg.textContent = "⚠ " + state.rangeErr;
+    msg.className = "hint err";
+    out.push('<text x="' + (W / 2) + '" y="80" fill="#8a95a8" font-size="14" text-anchor="middle">区间无法解析，改一改上面的输入</text>');
+    svg.setAttribute("viewBox", "0 0 720 150");
+    svg.innerHTML = out.join("");
+    return;
+  }
+  msg.className = "hint";
+  var ivs = range.sets.map(intervalOf);
+  var vers = state.versions.filter(function (v) { return v.pv; });
+  var loN = 0;
+  var hiN = 3 * 1e6; // 默认 3.0.0
+  ivs.forEach(function (iv) {
+    if (iv.lo.tuple) hiN = Math.max(hiN, vNum(iv.lo.tuple));
+    if (iv.hi.tuple) { hiN = Math.max(hiN, vNum(iv.hi.tuple)); }
+  });
+  vers.forEach(function (v) { hiN = Math.max(hiN, vNum(v.pv.tuple)); });
+  // 上界留 8% 空隙；上界至少比下界高 1 个 patch 空间
+  var span = Math.max(hiN - loN, 2000);
+  hiN = loN + span * 1.08;
+  function X(n) { return padL + (n - loN) / (hiN - loN) * (W - padL - padR); }
+  function tx(t) { return X(vNum(t)); }
+
+  // 底轨
+  out.push('<rect x="' + padL + '" y="' + y + '" width="' + (W - padL - padR) + '" height="' + rh + '" rx="7" fill="#1b2230" stroke="#232b3a"/>');
+  // 色带
+  var bands = [];
+  ivs.forEach(function (iv, idx) {
+    var x1 = tx(iv.lo.tuple), x2 = iv.hi.kind === "inf" ? W - padR : tx(iv.hi.tuple);
+    if (iv.hi.kind === "exc") x2 -= 1.5;
+    if (x2 > x1) bands.push({ x1: x1, x2: x2, iv: iv, idx: idx });
+    // 预发布-only 域（lo 端前的同元组预发布小格）：在 lo 元组左侧画 6px 斜纹
+    if (iv.lo.tuple && !isZeroTuple(iv.lo.tuple)) {
+      var px1 = Math.max(x1 - 14, padL);
+      if (px1 < x1) bands.push({ x1: px1, x2: x1 - 1, pre: true, idx: idx, iv: iv });
+    }
+  });
+  bands.forEach(function (b) {
+    if (b.pre) {
+      out.push('<rect x="' + b.x1.toFixed(1) + '" y="' + y + '" width="' + (b.x2 - b.x1).toFixed(1) + '" height="' + rh + '" rx="3" fill="none" stroke="rgba(255,180,84,.55)" stroke-dasharray="3 3"/>');
+    } else {
+      out.push('<rect x="' + b.x1.toFixed(1) + '" y="' + y + '" width="' + (b.x2 - b.x1).toFixed(1) + '" height="' + rh + '" rx="4" fill="rgba(45,212,167,.16)"/>');
+      out.push('<rect x="' + b.x1.toFixed(1) + '" y="' + (y + rh - 4) + '" width="' + (b.x2 - b.x1).toFixed(1) + '" height="4" rx="2" fill="#2dd4a7"/>');
+    }
+  });
+  // 刻度：优先主版本，跨度小时用次版本
+  var ticks = tickList(loN, hiN);
+  ticks.forEach(function (t) {
+    var x = X(t.n);
+    var major = t.kind === "major";
+    out.push('<line x1="' + x.toFixed(1) + '" y1="' + (y + rh) + '" x2="' + x.toFixed(1) + '" y2="' + (y + rh + (major ? 7 : 4)) + '" stroke="#3a4356" stroke-width="1"/>');
+    out.push('<text x="' + x.toFixed(1) + '" y="' + (y + rh + 20) + '" fill="#8a95a8" font-size="' + (major ? 11 : 10) + '" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">' + t.label + '</text>');
+  });
+  // 区间端点标注
+  ivs.forEach(function (iv, idx) {
+    var ltxt = (iv.lo.kind === "none" ? "" : (iv.hi !== null && iv.hi.kind !== "inf" && cmpT4(iv.lo.tuple, iv.hi.tuple) === 0 ? "[" : (iv.lo.kind === "inc" ? "≥ " : "> ")) + fmtT(iv.lo.tuple));
+    if (ltxt) out.push('<text x="' + tx(iv.lo.tuple).toFixed(1) + '" y="' + (y - 8) + '" fill="#2dd4a7" font-size="11" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">' + esc(ltxt) + '</text>');
+    if (iv.hi.tuple) {
+      var htxt = (iv.hi.kind === "inc" ? "≤ " : "< ") + fmtT(iv.hi.tuple);
+      out.push('<text x="' + tx(iv.hi.tuple).toFixed(1) + '" y="' + (y - 8) + '" fill="#ffb454" font-size="11" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">' + esc(htxt) + '</text>');
+    } else {
+      out.push('<text x="' + (W - padR) + '" y="' + (y - 8) + '" fill="#ffb454" font-size="11" text-anchor="end" font-family="ui-monospace,Menlo,monospace">∞</text>');
+    }
+  });
+  // 落尺版本标记
+  vers.forEach(function (v) {
+    var x = X(vNum(v.pv.tuple));
+    var col = v.res.ok ? "#2dd4a7" : "#ff5d73";
+    out.push('<line x1="' + x.toFixed(1) + '" y1="' + (y - 26) + '" x2="' + x.toFixed(1) + '" y2="' + (y + rh) + '" stroke="' + col + '" stroke-width="1" stroke-dasharray="2 3" opacity=".7"/>');
+    out.push('<circle cx="' + x.toFixed(1) + '" cy="' + (y + rh / 2) + '" r="4.5" fill="' + col + '" stroke="#0e1116" stroke-width="1.5"/>');
+  });
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  svg.innerHTML = out.join("");
+
+  function cmpT4(a, b) { return a[0] !== b[0] ? a[0] - b[0] : a[1] !== b[1] ? a[1] - b[1] : a[2] - b[2]; }
+  function isZeroTuple(t) { return t[0] === 0 && t[1] === 0 && t[2] === 0; }
+}
+
+function tickList(loN, hiN) {
+  var ticks = [], M, m;
+  var loM = Math.max(0, Math.floor(loN / 1e6)), hiM = Math.ceil(hiN / 1e6);
+  if (hiM - loM >= 2) {
+    for (M = loM; M <= hiM; M++) ticks.push({ n: M * 1e6, label: String(M), kind: "major" });
+  } else {
+    var loMi = Math.max(0, Math.floor((loN % 1e6) / 1e3)), hiMi = Math.min(999, Math.ceil((hiN % 1e6) / 1e3) + 1);
+    var base = Math.floor(loN / 1e6) * 1e6;
+    for (m = 0; m <= 999; m += Math.max(1, Math.round((hiMi - loMi) / 10) * 1) ) {
+      var n = base + m * 1e3;
+      if (n >= loN && n <= hiN && m % 1 === 0) ticks.push({ n: n, label: base / 1e6 + "." + m, kind: "minor" });
+      if (m > 999) break;
+    }
+    // 保证至少有几个刻度
+    if (ticks.length < 2) {
+      ticks = [];
+      for (m = 0; m <= 999; m += 100) {
+        var n2 = base + m * 1e3;
+        if (n2 >= loN && n2 <= hiN) ticks.push({ n: n2, label: (base / 1e6) + "." + m, kind: "minor" });
+      }
+    }
+  }
+  return ticks;
+}
+
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+function renderVerdicts() {
+  var box = $("vlist"), html = [];
+  state.versions.forEach(function (v) {
+    if (!v.pv) {
+      html.push('<div class="vrow miss"><span class="ver">' + esc(v.raw) + '</span><span class="badge bad">看不懂</span><span class="why">不是合法的语义化版本（形如 1.2.3，可带 -beta.1）</span></div>');
+      return;
+    }
+    var res = v.res;
+    if (res.ok) {
+      var why = "命中第 " + (res.setIdx + 1) + " 组：" + esc(explainSet(state.range.sets[res.setIdx]));
+      html.push('<div class="vrow hit"><span class="ver">' + esc(v.raw) + '</span><span class="badge ok">✓ 命中</span><span class="why">' + why + '</span></div>');
+    } else {
+      var near = nearestWhy(v.pv, state.range);
+      html.push('<div class="vrow miss"><span class="ver">' + esc(v.raw) + '</span><span class="badge bad">✗ 出局</span><span class="why">' + near + '</span></div>');
+    }
+  });
+  box.innerHTML = html.join("");
+}
+
+function nearestWhy(v, range) {
+  var si, parts = [];
+  if (!range) return esc("区间还没解析好，先修好上面的输入");
+  for (si = 0; si < range.sets.length; si++) {
+    var set = range.sets[si], iv = intervalOf(set), txt;
+    var inLo = cmpV(v, { tuple: iv.lo.tuple, pre: null }) >= 0;
+    var hiCmp = iv.hi.kind === "inf" ? -1 : cmpV(v, { tuple: iv.hi.tuple, pre: null });
+    if (!v.pre && !preGate(v, set)) txt = "预发布门没过";
+    else if (hiCmp === 0 && iv.hi.kind === "exc") txt = "恰好卡在排他上界 <" + fmtT(iv.hi.tuple);
+    else if (!inLo) txt = "低于下界 ≥" + fmtT(iv.lo.tuple);
+    else if (iv.hi.kind !== "inf" && hiCmp > 0) txt = "超出上界 <" + (iv.hi.kind === "exc" ? "" : "≤") + fmtT(iv.hi.tuple);
+    else txt = "预发布需要同版本元组的 comparator（" + fmtT(v.tuple) + "-x）";
+    parts.push("组" + (si + 1) + " " + txt);
+  }
+  return esc(parts.join("；"));
+}
+
+function recompute() {
+  var rtxt = $("range").value;
+  state.rangeErr = null;
+  var r = null;
+  try { r = parseRange(rtxt); } catch (e) { r = null; }
+  var valid = r && r.sets.every(function (s) { return s && s.length > 0; }) &&
+    r.sets.every(function (s) { return flatC(s[0]).every || true; });
+  // 深一层校验：把 set 里 pack 结构抽平检查
+  if (r) {
+    r.sets = r.sets.map(function (set) {
+      var flat = [];
+      set.forEach(function (c) { flat = flat.concat(flatC(c)); });
+      return flat;
+    });
+  }
+  if (!rtxt.trim()) { state.range = null; state.rangeErr = "输入不能为空，试试点一个快捷芯片"; }
+  else if (!r || !r.sets.length) { state.range = null; state.rangeErr = "解析失败：" + rtxt; }
+  else state.range = r;
+  // 版本
+  var incPre = $("incpre").checked;
+  var lines = $("versions").value.split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
+  state.versions = lines.map(function (line) {
+    var pv = parseVersion(line);
+    var res = pv && state.range ? satisfies(pv, state.range, incPre) : { ok: false, setIdx: -1, checks: null };
+    return { raw: line, pv: pv, res: res };
+  });
+  renderRuler();
+  renderVerdicts();
+  renderMinis();
+}
+
+/* 三兄弟 mini 尺 */
+function renderMinis() {
+  document.querySelectorAll("svg[data-mini]").forEach(function (svg) {
+    var kind = svg.getAttribute("data-mini");
+    var base = [1, 2, 3];
+    var hi = kind === "exact" ? [1, 2, 3] : kind === "tilde" ? [1, 3, 0] : [2, 0, 0];
+    var W = 200, y = 16, rh = 12, pad = 10;
+    function X(t) { var n = t[0] * 1e6 + t[1] * 1e3 + t[2]; return pad + n / (2.2e6) * (W - 2 * pad); }
+    var s = '<rect x="' + pad + '" y="' + y + '" width="' + (W - 2 * pad) + '" height="' + rh + '" rx="4" fill="#10141b" stroke="#232b3a"/>';
+    var x1 = X(base), x2 = X(hi) - (kind === "exact" ? 0 : 1);
+    if (x2 <= x1) x2 = x1 + 3;
+    s += '<rect x="' + x1.toFixed(1) + '" y="' + y + '" width="' + (x2 - x1).toFixed(1) + '" height="' + rh + '" rx="3" fill="rgba(45,212,167,.25)"/>';
+    s += '<rect x="' + x1.toFixed(1) + '" y="' + (y + rh - 3) + '" width="' + (x2 - x1).toFixed(1) + '" height="3" fill="#2dd4a7"/>';
+    s += '<text x="' + x1.toFixed(1) + '" y="' + (y + rh + 13) + '" fill="#2dd4a7" font-size="9.5" text-anchor="middle" font-family="monospace">1.2.3</text>';
+    s += '<text x="' + x2.toFixed(1) + '" y="' + (y + rh + 13) + '" fill="#ffb454" font-size="9.5" text-anchor="middle" font-family="monospace">' + (kind === "exact" ? "1.2.3" : hi.join(".")) + '</text>';
+    svg.innerHTML = s;
+  });
+}
+
+/* 导出 markdown 报告 */
+function reportMd() {
+  var incPre = $("incpre").checked;
+  var L = ["# SEMRULER 判定报告", "", "- 区间：`" + $("range").value.trim() + "`" + (incPre ? "（含预发布）" : ""), ""];
+  if (state.range) {
+    state.range.sets.forEach(function (s, i) { L.push("- 第 " + (i + 1) + " 组：" + explainSet(s)); });
+    L.push("");
+  }
+  L.push("| 版本 | 判定 | 说明 |", "| --- | --- | --- |");
+  state.versions.forEach(function (v) {
+    if (!v.pv) { L.push("| " + v.raw + " | ✗ | 非法版本号 |"); return; }
+    if (v.res.ok) L.push("| " + v.raw + " | ✓ | 命中第 " + (v.res.setIdx + 1) + " 组 |");
+    else L.push("| " + v.raw + " | ✗ | " + nearestWhy(v.pv, state.range).replace(/&[^;]+;/g, "") + " |");
+  });
+  return L.join("\n");
+}
+
+function bind() {
+  $("range").addEventListener("input", recompute);
+  $("versions").addEventListener("input", recompute);
+  $("incpre").addEventListener("change", recompute);
+  document.querySelectorAll("button.chip").forEach(function (b) {
+    b.addEventListener("click", function () { $("range").value = b.getAttribute("data-range"); recompute(); });
+  });
+  $("sampleBtn").addEventListener("click", function () {
+    $("range").value = "^1.2.0 || >=3.0.0 <3.2.0";
+    $("versions").value = "1.2.9\n1.3.0\n2.5.0\n3.1.4\n3.2.0\n1.3.0-beta.1\n3.1.0-rc.2";
+    recompute();
+  });
+  $("copyBtn").addEventListener("click", function () {
+    var txt = reportMd(), msg = $("copyMsg");
+    function done() { msg.textContent = "已复制 ✓"; setTimeout(function () { msg.textContent = ""; }, 1800); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done, function () { fallbackCopy(txt); done(); });
+    } else { fallbackCopy(txt); done(); }
+  });
+}
+function fallbackCopy(txt) {
+  var ta = document.createElement("textarea");
+  ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+/* 自动加载示例，让首屏就有内容 */
+bind();
+$("sampleBtn").click();
+</script>
+</body>
+</html>
