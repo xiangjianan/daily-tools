@@ -8,6 +8,7 @@ One original single-file creative micro-tool per day — local-first, zero-depen
 
 | # | Date | Demo | Idea | Source |
 | --- | --- | --- | --- | --- |
+| #36 | 2026-10-18 | [SCALELENS](scalelens-20261018/) | SCALELENS: pick a root and the keyboard instantly lights up as any of 12 scales/modes or 8 chords — whole/half-step formula and note members printed right on the keys, tap to audition, one button to hear the whole set, Web Audio synthesis, fully local | [source](scalelens-20261018) |
 | #35 | 2026-10-17 | [SEMRULER](semruler-20261017/) | SEMRULER: paste an npm semver range and it becomes a ruler — green bands for matched regions, the same-tuple prerelease gate drawn as a hatched sliver, drop versions on it for pass/fail with plain-language reasons, copy a Markdown verdict report, fully local | [source](semruler-20261017) |
 | #34 | 2026-10-16 | [GPXSLIM](gpxslim-20261016/) | GPXSLIM: drop a GPX track — instant dark-canvas map, elevation profile with a scrub that rides a synced cursor along the route, vitals (haversine distance / gain / duration), then one slider of iterative Douglas–Peucker slimming (live 1,400 → 214 pts, −85%) and a clean GPX export, fully local | [source](gpxslim-20261016) |
 | #33 | 2026-10-15 | [RAMPSMITH](rampsmith-20261015/) | RAMPSMITH: paste one brand color, forge an 11-step OKLCH ramp (50→950) — hand-tuned lightness curve, mid-ramp chroma peak, binary-searched gamut safety, WCAG contrast chips and a ★ brand-anchor badge, one-click CSS/Tailwind/SCSS/JSON export, fully local | [source](rampsmith-20261015) |
