@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>路径解剖台 · SVG Path Visualizer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M6 24 C10 8 20 26 26 8' stroke='%234cc9f0' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='6' cy='24' r='3' fill='%23ffd166'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2a3140;
+  --fg:#e6edf3; --dim:#8b949e; --accent:#4cc9f0; --accent2:#ffd166;
+  --ok:#3fb950; --err:#f85149; --violet:#bc8cff;
+  --radius:12px; font-size:15px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+  min-height:100vh; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:1.35rem;letter-spacing:.5px}
+h1 .glyph{color:var(--accent)}
+.sub{color:var(--dim);font-size:.85rem}
+.badge-priv{font-size:.7rem;color:var(--ok);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.inputcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:14px}
+.inputcard label{display:block;font-size:.8rem;color:var(--dim);margin-bottom:8px;letter-spacing:.3px}
+#dinput{
+  width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;
+  color:var(--fg);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:.88rem;padding:10px 12px;min-height:74px;resize:vertical;line-height:1.5;
+}
+#dinput:focus{outline:none;border-color:var(--accent)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+button{
+  background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+  padding:7px 14px;font-size:.82rem;cursor:pointer;transition:border-color .15s,background .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:#04141c;border-color:var(--accent);font-weight:600}
+.chip{
+  font-size:.75rem;padding:5px 11px;border-radius:99px;background:var(--panel2);
+  border:1px solid var(--line);color:var(--dim);cursor:pointer;
+}
+.chip:hover{color:var(--fg);border-color:var(--accent)}
+.msg{display:none;border-radius:8px;padding:9px 12px;font-size:.83rem;margin-top:10px;line-height:1.5}
+.msg.show{display:block}
+.msg.err{background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.4);color:#ffb3ad}
+.msg.ok{background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.35);color:#7ee2a8}
+.grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px;align-items:start}
+@media(max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.canvascard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
+#cwrap{position:relative;border-radius:8px;overflow:hidden;background:#0a0e14}
+canvas{display:block;width:100%;height:auto;touch-action:pan-y}
+.listcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
+.cardhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.cardhead h2{font-size:.9rem;font-weight:600;letter-spacing:.4px}
+.count{font-size:.72rem;color:var(--dim)}
+#cmdlist{max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:2px}
+.cmd{
+  display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;
+  background:var(--panel2);border:1px solid transparent;cursor:pointer;font-size:.8rem;
+}
+.cmd:hover{border-color:var(--line)}
+.cmd.active{border-color:var(--accent);background:rgba(76,201,240,.08)}
+.cmd.dim{opacity:.45}
+.cmd .idx{color:var(--dim);font-size:.68rem;min-width:26px}
+.cmd .letter{
+  font-family:ui-monospace,monospace;font-weight:700;min-width:24px;height:24px;
+  display:flex;align-items:center;justify-content:center;border-radius:6px;
+  background:rgba(76,201,240,.15);color:var(--accent);font-size:.82rem;
+}
+.cmd.rel .letter{background:rgba(188,140,255,.15);color:var(--violet)}
+.cmd .coord{font-family:ui-monospace,monospace;color:var(--dim);font-size:.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+#detail{margin-top:10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:.8rem;line-height:1.65;min-height:64px;color:var(--dim)}
+#detail b{color:var(--fg)}
+#detail .mono{font-family:ui-monospace,monospace;color:var(--accent2)}
+.replay{display:flex;align-items:center;gap:10px;margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;flex-wrap:wrap}
+#playbtn{min-width:76px}
+#seek{flex:1;min-width:140px;accent-color:var(--accent);height:24px}
+#stage{font-family:ui-monospace,monospace;font-size:.75rem;color:var(--accent2);min-width:96px;text-align:right}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:.7rem;color:var(--dim)}
+.legend span{display:flex;align-items:center;gap:5px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.sq{width:8px;height:8px;display:inline-block}
+footer{margin-top:22px;text-align:center;color:var(--dim);font-size:.72rem;line-height:1.8}
+footer a{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="glyph">⌘</span> 路径解剖台</h1>
+    <span class="sub">把 SVG path 的 <code>d</code> 串逐命令拆开、画出来、放给你看</span>
+    <span class="badge-priv">纯本地 · 不上传</span>
+  </header>
+
+  <div class="inputcard">
+    <label for="dinput">粘贴 SVG path 的 d 属性（支持 M L H V C S Q T A Z 及小写相对命令）</label>
+    <textarea id="dinput" spellcheck="false" placeholder="例如：M10 80 C 40 10, 65 10, 95 80 S 150 150, 180 80"></textarea>
+    <div class="row">
+      <span style="font-size:.75rem;color:var(--dim)">示例：</span>
+      <button class="chip" data-s="0">心跳线</button>
+      <button class="chip" data-s="1">圆弧花瓣</button>
+      <button class="chip" data-s="2">平滑波浪</button>
+      <button class="chip" data-s="3">相对折线</button>
+      <button class="chip" data-s="4">闪电</button>
+    </div>
+    <div id="errmsg" class="msg err"></div>
+    <div id="okmsg" class="msg ok"></div>
+  </div>
+
+  <div class="grid">
+    <div class="canvascard">
+      <div id="cwrap"><canvas id="cv" width="640" height="480"></canvas></div>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--accent2)"></i>起点</span>
+        <span><i class="dot" style="background:var(--ok)"></i>终点</span>
+        <span><i class="sq" style="background:var(--violet)"></i>控制点</span>
+        <span><i class="dot" style="background:var(--accent)"></i>锚点</span>
+      </div>
+    </div>
+    <div class="listcard">
+      <div class="cardhead">
+        <h2>命令清单</h2>
+        <span class="count" id="cmdcount">0 条</span>
+      </div>
+      <div id="cmdlist"></div>
+      <div id="detail">点击左侧清单中的命令，查看这条线在做什么。</div>
+    </div>
+  </div>
+
+  <div class="replay">
+    <button id="playbtn" class="primary">▶ 回放</button>
+    <input type="range" id="seek" min="0" max="1000" value="1000" aria-label="回放进度">
+    <span id="stage">完整路径</span>
+  </div>
+
+  <footer>
+    数据 100% 在浏览器本地解析，无任何网络请求。<br>
+    <a href="../">← daily-tools 其他期</a>
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* ---------- 数据键/命令中文说明 ---------- */
+var CMDINFO = {
+  M:'移动 MoveTo：把画笔抬到该点，不画线。每个路径以 M 开头。',
+  L:'直线 LineTo：从当前点画一条直线到目标点。',
+  H:'水平线 Horizontal：只给 x，y 保持不变的水平直线。',
+  V:'垂直线 Vertical：只给 y，x 保持不变的垂直直线。',
+  C:'三次贝塞尔 Cubic：两个控制点塑造曲线形状，像被两根橡皮筋拉住的线。',
+  S:'平滑三次 Smooth：C 的简写，第一个控制点自动反射上一条 C/S 的控制点，接缝更顺滑。',
+  Q:'二次贝塞尔 Quadratic：只有一个控制点，曲线被它拉向但不会碰到它。',
+  T:'平滑二次 Smooth：Q 的简写，控制点自动反射，适合连续平缓弯折。',
+  A:'椭圆弧 Arc：从当前点沿椭圆转到终点，rx/ry 是半径，large-arc 与 sweep 决定走大圈还是小圈、顺时针还是逆时针。',
+  Z:'闭合 ClosePath：画一条直线回到本段路径的起点，并封口。'
+};
+var CMDARGS = {M:2,L:2,H:1,V:1,C:6,S:4,Q:4,T:2,A:7,Z:0};
+
+/* ---------- 数字 tokenizer ---------- */
+function tokenize(s){
+  var re=/([MmLlHhVvCcSsQqTtAaZz])|([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)|([\s,]+)|(.)/g, m, out=[];
+  while((m=re.exec(s))){
+    if(m[1]) out.push({t:'c',v:m[1]});
+    else if(m[2]) out.push({t:'n',v:parseFloat(m[2])});
+    else if(m[3]) continue;
+    else return {err:'无法识别的字符「'+m[4]+'」（位置 '+m.index+'）'};
+  }
+  return {toks:out};
+}
+
+/* ---------- 解析器：相对→绝对、S/T 反射、A 参数化 ---------- */
+function parsePath(src){
+  var r = tokenize(src.trim());
+  if(r.err) return {err:r.err};
+  var toks=r.toks;
+  if(!toks.length) return {err:'输入为空：请粘贴一段 path d 字符串，或点上方示例。'};
+  if(toks[0].t!=='c' || 'Mm'.indexOf(toks[0].v)<0)
+    return {err:'路径必须以 M 或 m 开头（当前以「'+(toks[0].t==='c'?toks[0].v:toks[0].v)+'」开头）。'};
+  var segs=[], cx=0, cy=0, sx=0, sy=0, prevCtrl=null, prevType='', i=0, cmdIdx=0;
+  function need(cmd,n){
+    var vals=[];
+    for(var k=0;k<n;k++){
+      if(i>=toks.length||toks[i].t!=='n'){ return null; }
+      vals.push(toks[i].v); i++;
+    }
+    return vals;
+  }
+  while(i<toks.length){
+    if(toks[i].t!=='c') return {err:'命令参数数量不对：第 '+(cmdIdx+1)+' 条命令附近有多余的数字。'};
+    var raw=toks[i].v, up=raw.toUpperCase(), rel=(raw!==up), n=CMDARGS[up];
+    if(n===undefined) return {err:'不支持的命令「'+raw+'」'};
+    i++;
+    var first=true, guard=0;
+    while(guard<4096){
+      guard++;
+      var p = need(up,n);
+      if(p===null){ if(first) return {err:'命令 '+raw+' 缺少参数（需要 '+n+' 个数字）。'}; break; }
+      var seg={rawCmd:raw, cmd:up, rel:rel, idx:cmdIdx};
+      var px=cx, py=cy;
+      if(rel && up!=='A'){ for(var q=0;q<p.length;q+=2){p[q]+=px; if(q+1<p.length)p[q+1]+=py;} }
+      if(rel && up==='A'){ p[5]+=px; p[6]+=py; }
+      if(up==='M'){ cx=p[0]; cy=p[1]; sx=cx; sy=cy; seg.s=[cx,cy]; seg.e=[cx,cy]; seg.pts=[[cx,cy]]; seg.txt='抬笔到 ('+r0(p[0])+', '+r0(p[1])+')'; prevCtrl=null; }
+      else if(up==='L'){ seg.s=[px,py]; seg.e=[p[0],p[1]]; seg.pts=[[px,py],[p[0],p[1]]]; seg.txt='直线 → ('+r0(p[0])+', '+r0(p[1])+')'; prevCtrl=null; }
+      else if(up==='H'){ seg.s=[px,py]; seg.e=[p[0],py]; seg.pts=[[px,py],[p[0],py]]; seg.txt='水平线 → x='+r0(p[0]); prevCtrl=null; }
+      else if(up==='V'){ seg.s=[px,py]; seg.e=[px,p[0]]; seg.pts=[[px,py],[px,p[0]]]; seg.txt='垂直线 → y='+r0(p[0]); prevCtrl=null; }
+      else if(up==='C'){ seg.s=[px,py]; seg.e=[p[4],p[5]]; seg.c1=[p[0],p[1]]; seg.c2=[p[2],p[3]]; seg.txt='三次贝塞尔 → ('+r0(p[4])+', '+r0(p[5])+')，控制点 ('+r0(p[0])+', '+r0(p[1])+') ('+r0(p[2])+', '+r0(p[3])+')'; prevCtrl=[p[2],p[3]]; }
+      else if(up==='S'){ var rc = (prevType==='C'||prevType==='S') ? [2*px-prevCtrl[0], 2*py-prevCtrl[1]] : [px,py]; seg.s=[px,py]; seg.e=[p[2],p[3]]; seg.c1=rc; seg.c2=[p[0],p[1]]; seg.txt='平滑三次 → ('+r0(p[2])+', '+r0(p[3])+')，反射控制点 ('+r0(rc[0])+', '+r0(rc[1])+')'; prevCtrl=[p[0],p[1]]; }
+      else if(up==='Q'){ seg.s=[px,py]; seg.e=[p[2],p[3]]; seg.q=[p[0],p[1]]; seg.txt='二次贝塞尔 → ('+r0(p[2])+', '+r0(p[3])+')，控制点 ('+r0(p[0])+', '+r0(p[1])+')'; prevCtrl=[p[0],p[1]]; }
+      else if(up==='T'){ var rq = (prevType==='Q'||prevType==='T') ? [2*px-prevCtrl[0], 2*py-prevCtrl[1]] : [px,py]; seg.s=[px,py]; seg.e=[p[0],p[1]]; seg.q=rq; seg.txt='平滑二次 → ('+r0(p[0])+', '+r0(p[1])+')，反射控制点 ('+r0(rq[0])+', '+r0(rq[1])+')'; prevCtrl=rq; }
+      else if(up==='A'){ seg.s=[px,py]; seg.e=[p[5],p[6]]; seg.arc={rx:p[0],ry:p[1],rot:p[2],la:p[3],sf:p[4]}; seg.txt='椭圆弧 → ('+r0(p[5])+', '+r0(p[6])+')，半径 '+r0(p[0])+'×'+r0(p[1])+(p[3]?' 大弧':' 小弧')+(p[4]?' 顺时针':' 逆时针'); prevCtrl=null;
+        if(p[0]<=0||p[1]<=0) return {err:'椭圆弧的半径必须是正数（第 '+(cmdIdx+1)+' 条命令）。'}; }
+      else if(up==='Z'){ seg.s=[px,py]; seg.e=[sx,sy]; seg.pts=[[px,py],[sx,sy]]; seg.txt='闭合：直线回到起点 ('+r0(sx)+', '+r0(sy)+')'; cx=sx; cy=sy; cmdIdx++; segs.push(seg); prevCtrl=null; prevType=up; break; }
+      if(up!=='Z'){ cx=seg.e[0]; cy=seg.e[1]; cmdIdx++; segs.push(seg); prevType=up; }
+      first=false;
+      /* M/m 后续隐式变 L/l */
+      if(up==='M'){ up='L'; n=2; }
+    }
+  }
+  if(!segs.length) return {err:'没有解析到任何命令。'};
+  return {segs:segs};
+}
+function r0(v){ return Math.round(v*100)/100; }
+
+/* ---------- 贝塞尔/弧采样 ---------- */
+function cubicAt(s,c1,c2,e,t){var u=1-t;return [
+  u*u*u*s[0]+3*u*u*t*c1[0]+3*u*t*t*c2[0]+t*t*t*e[0],
+  u*u*u*s[1]+3*u*u*t*c1[1]+3*u*t*t*c2[1]+t*t*t*e[1]];}
+function quadAt(s,q,e,t){var u=1-t;return [
+  u*u*s[0]+2*u*t*q[0]+t*t*e[0], u*u*s[1]+2*u*t*q[1]+t*t*e[1]];}
+/* SVG arc endpoint→center（按规范公式），返回采样点串 */
+function arcSamples(seg,N){
+  N=N||32;
+  var x1=seg.s[0],y1=seg.s[1],x2=seg.e[0],y2=seg.e[1];
+  var rx=seg.arc.rx, ry=seg.arc.ry, phi=seg.arc.rot*Math.PI/180, la=seg.arc.la, sf=seg.arc.sf;
+  var dx2=(x1-x2)/2, dy2=(y1-y2)/2;
+  var xp= dx2*Math.cos(phi)+dy2*Math.sin(phi);
+  var yp=-dx2*Math.sin(phi)+dy2*Math.cos(phi);
+  var lam=xp*xp/(rx*rx)+yp*yp/(ry*ry);
+  if(lam>1){ var sq=Math.sqrt(lam); rx*=sq; ry*=sq; }
+  var num=rx*rx*ry*ry-rx*rx*yp*yp-ry*ry*xp*xp;
+  var den=rx*rx*yp*yp+ry*ry*xp*xp;
+  if(den===0) return [seg.s,seg.e];
+  var co=Math.sqrt(Math.max(0,num/den));
+  if(la===sf) co=-co;
+  var cxp=co*rx*yp/ry, cyp=-co*ry*xp/rx;
+  var cx=cxp*Math.cos(phi)-cyp*Math.sin(phi)+(x1+x2)/2;
+  var cy=cxp*Math.sin(phi)+cyp*Math.cos(phi)+(y1+y2)/2;
+  function ang(ux,uy,vx,vy){
+    var d=Math.sqrt(ux*ux+uy*uy)*Math.sqrt(vx*vx+vy*vy);
+    if(d===0) return 0;
+    var c=Math.min(1,Math.max(-1,(ux*vx+uy*vy)/d));
+    var a=Math.acos(c);
+    if(ux*vy-uy*vx<0) a=-a;
+    return a;
+  }
+  var th1=ang(1,0,(xp-cxp)/rx,(yp-cyp)/ry);
+  var dth=ang((xp-cxp)/rx,(yp-cyp)/ry,(-xp-cxp)/rx,(-yp-cyp)/ry);
+  if(!sf&&dth>0) dth-=2*Math.PI;
+  if(sf&&dth<0) dth+=2*Math.PI;
+  var pts=[];
+  for(var k=0;k<=N;k++){
+    var t=th1+dth*k/N;
+    pts.push([cx+rx*Math.cos(t)*Math.cos(phi)-ry*Math.sin(t)*Math.sin(phi),
+              cy+rx*Math.cos(t)*Math.sin(phi)+ry*Math.sin(t)*Math.cos(phi)]);
+  }
+  return pts;
+}
+function segSamples(seg,N){
+  N=N||24; var pts=[seg.s];
+  if(seg.cmd==='L'||seg.cmd==='M'||seg.cmd==='Z'){ if(seg.cmd!=='M') pts.push(seg.e); }
+  else if(seg.cmd==='H'){ pts.push(seg.e); }
+  else if(seg.cmd==='V'){ pts.push(seg.e); }
+  else if(seg.cmd==='C'){ for(var k=1;k<=N;k++) pts.push(cubicAt(seg.s,seg.c1,seg.c2,seg.e,k/N)); }
+  else if(seg.cmd==='S'){ for(var k2=1;k2<=N;k2++) pts.push(cubicAt(seg.s,seg.c1,seg.c2,seg.e,k2/N)); }
+  else if(seg.cmd==='Q'||seg.cmd==='T'){ for(var k3=1;k3<=N;k3++) pts.push(quadAt(seg.s,seg.q,seg.e,k3/N)); }
+  else if(seg.cmd==='A'){ pts=arcSamples(seg,N); }
+  return pts;
+}
+
+/* ---------- 导出：绝对坐标串 ---------- */
+function absoluteD(segs){
+  return segs.map(function(s){
+    switch(s.cmd){
+      case 'M': return 'M'+s.e[0]+' '+s.e[1];
+      case 'L': return 'L'+s.e[0]+' '+s.e[1];
+      case 'H': return 'H'+s.e[0];
+      case 'V': return 'V'+s.e[1];
+      case 'C': return 'C'+s.c1[0]+' '+s.c1[1]+' '+s.c2[0]+' '+s.c2[1]+' '+s.e[0]+' '+s.e[1];
+      case 'S': return 'S'+s.c2[0]+' '+s.c2[1]+' '+s.e[0]+' '+s.e[1];
+      case 'Q': return 'Q'+s.q[0]+' '+s.q[1]+' '+s.e[0]+' '+s.e[1];
+      case 'T': return 'T'+s.e[0]+' '+s.e[1];
+      case 'A': return 'A'+s.arc.rx+' '+s.arc.ry+' '+s.arc.rot+' '+s.arc.la+' '+s.arc.sf+' '+s.e[0]+' '+s.e[1];
+      case 'Z': return 'Z';
+    }
+  }).join(' ');
+}
+
+/* ---------- 渲染 ---------- */
+var state={segs:[],active:-1,reveal:1,playing:false,raf:0};
+var $=function(id){return document.getElementById(id);};
+var cv=$('cv'), ctx=cv.getContext('2d');
+var SAMPLES=[
+  'M10 90 C 30 20, 50 20, 60 90 S 90 160, 110 90 C 130 20, 150 20, 170 90 Z',
+  'M60 20 A 40 40 0 1 1 59.9 20 M60 20 A 20 20 0 1 0 59.9 20',
+  'M10 60 Q 35 10, 60 60 T 110 60 T 160 60 T 210 60',
+  'm10 10 l 40 0 l 0 40 l -20 -15 l -20 15 Z',
+  'M20 10 L 45 42 L 33 42 L 48 78 L 16 40 L 30 40 Z'
+];
+function bbox(segs){
+  var xs=[],ys=[];
+  segs.forEach(function(s){
+    segSamples(s,16).forEach(function(p){xs.push(p[0]);ys.push(p[1]);});
+    if(s.c1){xs.push(s.c1[0]);ys.push(s.c1[1]);}
+    if(s.c2){xs.push(s.c2[0]);ys.push(s.c2[1]);}
+    if(s.q){xs.push(s.q[0]);ys.push(s.q[1]);}
+  });
+  return {x0:Math.min.apply(0,xs),y0:Math.min.apply(0,ys),x1:Math.max.apply(0,xs),y1:Math.max.apply(0,ys)};
+}
+function resizeCanvas(){
+  var w=cwrap.clientWidth||600, h=Math.round(Math.min(460,Math.max(300,w*0.72)));
+  var dpr=window.devicePixelRatio||1;
+  cv.width=w*dpr; cv.height=h*dpr; cv.style.height=h+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  draw();
+}
+function draw(){
+  var segs=state.segs; if(!segs.length) return;
+  var W=cv.clientWidth, H=cv.clientHeight;
+  ctx.clearRect(0,0,W,H);
+  /* 网格 */
+  ctx.strokeStyle='rgba(42,49,64,.55)'; ctx.lineWidth=1;
+  for(var gx=0;gx<W;gx+=32){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke();}
+  for(var gy=0;gy<H;gy+=32){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();}
+  var b=bbox(segs), pad=46;
+  var bw=Math.max(1,b.x1-b.x0), bh=Math.max(1,b.y1-b.y0);
+  var sc=Math.min((W-pad*2)/bw,(H-pad*2)/bh);
+  var ox=(W-bw*sc)/2-b.x0*sc, oy=(H-bh*sc)/2-b.y0*sc;
+  function T(p){return [p[0]*sc+ox, p[1]*sc+oy];}
+  /* 逐段绘制 + 回放裁剪 */
+  var total=segs.length;
+  var upto=Math.min(total, Math.max(1, Math.ceil(state.reveal*total)));
+  var partial=(state.reveal*total)-(upto-1); /* 0..1 当前段绘制比例 */
+  if(state.reveal>=1){upto=total;partial=1;}
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  for(var k=0;k<total;k++){
+    if(k>=upto) break;
+    var s=segs[k];
+    var isActive=(state.active>=0 && k===state.active);
+    var dimmed=(state.active>=0 && k!==state.active);
+    var samples=segSamples(s,40);
+    var drawN=samples.length;
+    if(k===upto-1 && partial<1 && state.reveal<1){
+      drawN=Math.min(samples.length, Math.max(2,Math.round(samples.length*partial)));
+    }
+    ctx.beginPath();
+    var p0=T(samples[0]); ctx.moveTo(p0[0],p0[1]);
+    for(var j=1;j<drawN;j++){var pj=T(samples[j]);ctx.lineTo(pj[0],pj[1]);}
+    ctx.strokeStyle = isActive ? '#4cc9f0' : (dimmed ? 'rgba(230,237,243,.16)' : '#e6edf3');
+    ctx.lineWidth = isActive ? 3.4 : 2.2;
+    ctx.stroke();
+    /* 控制点 */
+    if(!dimmed || isActive){
+      var ctrls=[];
+      if(s.c1) ctrls=[s.c1,s.c2]; else if(s.q) ctrls=[s.q];
+      if(ctrls.length && (isActive||state.active<0)){
+        ctrls.forEach(function(c){
+          var t=T(c);
+          ctx.strokeStyle='rgba(188,140,255,.5)';ctx.lineWidth=1;
+          ctx.beginPath();ctx.moveTo(T(s.s)[0],T(s.s)[1]);ctx.lineTo(t[0],t[1]);ctx.stroke();
+          ctx.fillStyle='#bc8cff';ctx.fillRect(t[0]-3.5,t[1]-3.5,7,7);
+        });
+      }
+    }
+  }
+  /* 起点/终点标记 */
+  var st=T(state.segs[0].s), en=T(state.segs[Math.min(upto,total)-1].e);
+  ctx.fillStyle='#ffd166';ctx.beginPath();ctx.arc(st[0],st[1],5,0,7);ctx.fill();
+  ctx.strokeStyle='#0d1117';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle='#3fb950';ctx.beginPath();ctx.arc(en[0],en[1],5,0,7);ctx.fill();ctx.stroke();
+  /* 锚点 */
+  if(state.active>=0){
+    var sa=state.segs[state.active];
+    var a=T(sa.s);
+    ctx.fillStyle='#4cc9f0';ctx.beginPath();ctx.arc(a[0],a[1],4.5,0,7);ctx.fill();
+  }
+}
+window.addEventListener('resize',resizeCanvas);
+
+/* ---------- 清单/详情 ---------- */
+function renderList(){
+  var list=$('cmdlist'); list.innerHTML='';
+  var segs=state.segs;
+  $('cmdcount').textContent=segs.length+' 条';
+  segs.forEach(function(s){
+    var d=document.createElement('div');
+    d.className='cmd'+(s.rel?' rel':'')+(state.active===s.idx?' active':(state.active>=0?' dim':''));
+    var co = s.cmd==='Z' ? '' : ('('+r0(s.e[0])+', '+r0(s.e[1])+')');
+    d.innerHTML='<span class="idx">#'+(s.idx+1)+'</span><span class="letter">'+s.cmd+'</span><span class="coord">'+co+'</span>';
+    d.addEventListener('click',function(){
+      state.active=(state.active===s.idx)?-1:s.idx;
+      renderList(); renderDetail(); draw();
+    });
+    list.appendChild(d);
+  });
+}
+function renderDetail(){
+  var el=$('detail');
+  if(state.active<0){ el.innerHTML='点击清单中的命令，查看这条线在做什么。'; return; }
+  var s=state.segs[state.active];
+  el.innerHTML='<b>#'+(s.idx+1)+' '+s.cmd+(s.rel?'（相对）':'（绝对）')+'</b> — '+s.txt+'<br><span style="font-size:.74rem">'+CMDINFO[s.cmd]+'</span>';
+}
+
+/* ---------- 回放 ---------- */
+var seekEl=$('seek');
+function setReveal(v,fromSeek){
+  state.reveal=v;
+  if(!fromSeek) seekEl.value=Math.round(v*1000);
+  var segs=state.segs,total=segs.length;
+  var k=Math.min(total-1,Math.floor(v*total));
+  if(v>=1){ $('stage').textContent='完整路径'; }
+  else $('stage').textContent='#'+(k+1)+' '+segs[k].cmd+' · '+Math.round(v*100)+'%';
+  draw();
+}
+seekEl.addEventListener('input',function(){
+  stopPlay();
+  setReveal(seekEl.value/1000,true);
+});
+function stopPlay(){ state.playing=false; cancelAnimationFrame(state.raf); $('playbtn').textContent='▶ 回放'; $('playbtn').classList.add('primary'); }
+function tick(ts){
+  if(!state.playing) return;
+  if(!tick.t0) tick.t0=ts;
+  var dur=2600, f=Math.min(1,(ts-tick.t0)/dur);
+  setReveal(f,false);
+  if(f>=1){ stopPlay(); tick.t0=0; return; }
+  state.raf=requestAnimationFrame(tick);
+}
+$('playbtn').addEventListener('click',function(){
+  if(state.playing){ stopPlay(); tick.t0=0; return; }
+  state.playing=true; tick.t0=0;
+  this.textContent='⏸ 暂停'; this.classList.remove('primary');
+  state.raf=requestAnimationFrame(tick);
+});
+
+/* ---------- 主流程 ---------- */
+function showErr(m){ var e=$('errmsg'); e.textContent='⚠ '+m; e.classList.add('show'); $('okmsg').classList.remove('show'); }
+function clearMsg(){ $('errmsg').classList.remove('show'); $('okmsg').classList.remove('show'); }
+function run(){
+  var src=$('dinput').value;
+  if(!src.trim()){ state.segs=[]; renderList(); $('detail').textContent='输入为空：粘贴 path d 串，或点上方示例。'; return; }
+  var r=parsePath(src);
+  if(r.err){ showErr(r.err); return; }
+  clearMsg();
+  state.segs=r.segs; state.active=-1;
+  renderList(); renderDetail();
+  var om=$('okmsg');
+  om.textContent='✓ 解析出 '+r.segs.length+' 条命令，已生成绝对坐标串，点「复制」可导出。';
+  om.classList.add('show');
+  setReveal(1,false);
+}
+$('dinput').addEventListener('input',function(){
+  clearTimeout(run.t); run.t=setTimeout(run,180);
+});
+document.querySelectorAll('.chip').forEach(function(ch){
+  ch.addEventListener('click',function(){
+    $('dinput').value=SAMPLES[+ch.dataset.s];
+    stopPlay(); run();
+  });
+});
+/* 复制导出 */
+(function(){
+  var row=document.createElement('div'); row.className='row';
+  var btn=document.createElement('button'); btn.textContent='复制绝对坐标 path';
+  btn.addEventListener('click',function(){
+    if(!state.segs.length){ showErr('还没有可复制的路径：先输入或点一个示例。'); return; }
+    var d=absoluteD(state.segs);
+    function done(){ var om=$('okmsg'); om.textContent='✓ 绝对坐标 path 已复制到剪贴板'; om.classList.add('show'); }
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(d).then(done,function(){fallback();}); }
+    else fallback();
+    function fallback(){
+      var ta=document.createElement('textarea'); ta.value=d; document.body.appendChild(ta);
+      ta.select(); try{document.execCommand('copy');done();}catch(e){} ta.remove();
+    }
+  });
+  $('okmsg').parentNode.insertBefore(row,$('okmsg'));
+  row.appendChild(btn);
+})();
+
+resizeCanvas();
+$('dinput').value=SAMPLES[0];
+run();
+</script>
+</body>
+</html>
