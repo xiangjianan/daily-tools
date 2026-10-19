@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>IGNOLENS · .gitignore 判定透镜</title>
+<meta name="description" content="粘贴 .gitignore 和文件路径，逐条判定会被忽略还是保留，展开规则链看清为什么——否定翻盘、父目录陷阱一目了然。全程本地零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+<style>
+:root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--line:#21262d;--acc:#58a6ff;--bad:#f85149;--ok:#3fb950;--warn:#d29922;--card:#161b22}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom))}
+main{max-width:960px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.5px}
+h1 i{font-style:normal;color:var(--mut);font-weight:400;font-size:15px;margin-left:8px}
+.sub{color:var(--mut);font-size:13.5px;margin:6px 0 18px}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+button{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+padding:7px 14px;font:inherit;font-size:13.5px;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button.pri{background:#1f3a5f;border-color:#2f5a8f}
+.note{color:var(--mut);font-size:12.5px}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.pane{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.pane h2{font-size:13px;color:var(--mut);font-weight:600;padding:8px 12px;border-bottom:1px solid var(--line);
+display:flex;justify-content:space-between;align-items:center}
+.pane h2 span{font-weight:400}
+textarea{width:100%;height:230px;background:transparent;color:var(--fg);border:0;resize:vertical;
+padding:10px 12px;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;outline:none}
+.stats{display:flex;gap:16px;flex-wrap:wrap;color:var(--mut);font-size:13px;margin-bottom:10px;align-items:baseline}
+.stats b{color:var(--fg);font-size:16px;font-variant-numeric:tabular-nums}
+.stats .ib{color:var(--bad)}.stats .kb{color:var(--ok)}
+.rlist{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:16px}
+.rrow{border-bottom:1px solid var(--line)}
+.rrow:last-child{border-bottom:0}
+.rhead{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer}
+.rhead:hover{background:#1a2029}
+.rrow.hl .rhead{background:#12233a}
+.badge{font-size:11px;font-weight:700;border-radius:99px;padding:2px 9px;white-space:nowrap;letter-spacing:.4px}
+.badge.ig{background:#3d1618;color:var(--bad);border:1px solid #6e2226}
+.badge.kept{background:#12261a;color:var(--ok);border:1px solid #1d4428}
+.ppath{flex:1;min-width:0;font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.why{color:var(--mut);font-size:12.5px;white-space:nowrap}
+.why code{color:var(--warn);font-family:ui-monospace,monospace;background:#241d10;padding:1px 5px;border-radius:5px;font-size:11.5px}
+.why code.neg{color:var(--ok);background:#12261a}
+.trace{display:none;padding:4px 12px 12px 14px;border-left:2px solid var(--line);margin:0 12px 10px 22px;font-size:12.5px}
+.rrow.open .trace{display:block}
+.tl{padding:3px 0;color:var(--mut)}
+.tl b{color:var(--fg);font-weight:500;font-family:ui-monospace,monospace;font-size:12px}
+.chip{display:inline-block;border-radius:6px;padding:1px 7px;margin:1px 3px;font-family:ui-monospace,monospace;font-size:11.5px;border:1px solid var(--line)}
+.chip.ig{color:var(--bad);border-color:#6e2226;background:#2a1214}
+.chip.neg{color:var(--ok);border-color:#1d4428;background:#10241a}
+.chip.stop{color:var(--warn);border-color:#5c4a12;background:#241d10}
+.tstop{color:var(--warn)}
+.rpanel{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:16px}
+.rpanel h2{font-size:13px;color:var(--mut);margin-bottom:8px}
+.rules{display:flex;flex-wrap:wrap;gap:6px}
+.rchip{font:12px/1.4 ui-monospace,monospace;border:1px solid var(--line);border-radius:7px;
+padding:4px 9px;cursor:pointer;color:var(--mut);background:var(--card)}
+.rchip b{color:var(--fg);font-weight:500}
+.rchip small{color:var(--acc);margin-left:5px}
+.rchip:hover{border-color:var(--acc)}
+.rchip.on{border-color:var(--acc);color:var(--fg);background:#12233a}
+.empty{padding:26px 12px;text-align:center;color:var(--mut);font-size:13.5px}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+background:#1f6feb;color:#fff;border-radius:8px;padding:8px 18px;font-size:13.5px;opacity:0;pointer-events:none;
+transition:.25s;z-index:9}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.leg{color:var(--mut);font-size:12px;margin:2px 0 14px}
+.leg .chip{margin:0 2px}
+footer{margin-top:8px;color:var(--mut);font-size:12.5px}
+@media(max-width:760px){.duo{grid-template-columns:minmax(0,1fr)}.why{display:none}.rhead{padding:9px 10px}}
+</style>
+</head>
+<body>
+<main>
+<h1>🔍 IGNOLENS<i>.gitignore 判定透镜</i></h1>
+<p class="sub">粘贴 .gitignore 规则和一串文件路径，逐条判定「会被忽略 / 会保留」，展开规则链看清每一次命中与翻盘。全程本地，零上传。</p>
+
+<div class="bar">
+  <button class="pri" id="btnSample">载入示例</button>
+  <button id="btnCopy">复制判定报告</button>
+  <span class="note">判定语义与 <code>git check-ignore</code> 一致 · 最后命中的规则说了算</span>
+</div>
+
+<div class="duo">
+  <div class="pane">
+    <h2>.gitignore 规则<span id="ruleCount"></span></h2>
+    <textarea id="gi" spellcheck="false" placeholder="# 每行一条规则，支持 * ? [] ! **，和真 .gitignore 一样"></textarea>
+  </div>
+  <div class="pane">
+    <h2>文件路径（每行一个）<span id="pathCount"></span></h2>
+    <textarea id="paths" spellcheck="false" placeholder="src/app.js&#10;dist/bundle.js&#10;logs/a.log"></textarea>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+<p class="leg">图例：<span class="chip ig">被忽略</span><span class="chip neg">否定规则（翻盘/挽留）</span><span class="chip stop">父目录已排除 · 不再向下</span>　点行展开规则链，点规则筛选受影响路径</p>
+
+<div class="rlist" id="rlist"></div>
+<div class="rpanel" id="rpanel" hidden>
+  <h2>规则命中统计（点击筛选）</h2>
+  <div class="rules" id="rules"></div>
+</div>
+
+<footer>IGNOLENS · daily-tools #38 · 纯前端本地判定，数据不出浏览器 · <a style="color:var(--acc)" href="../">← 返回目录</a></footer>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+/* ── 引擎：gitignore 规则 → 正则 ── */
+function escRe(s){return s.replace(/[.+^${}()|[\]\\]/g,"\\$&");}
+
+function translateBody(body){ // 把去掉 ! / 前后斜杠后的 pattern body 转成 regex 源
+  var out="",i=0;
+  while(i<body.length){
+    var c=body[i];
+    if(c==="\\"){ // 转义字符：原样保留下一个字面字符
+      if(i+1<body.length){out+=escRe(body[i+1]);i+=2;}else{i+=1;}
+      continue;
+    }
+    if(c==="*"&&body[i+1]==="*"){ // ** 跨段
+      out+="\u0000";i+=2;continue;
+    }
+    if(c==="*"){out+="[^/]*";i+=1;continue;}
+    if(c==="?"){out+="[^/]";i+=1;continue;}
+    if(c==="["){ // 字符类 [abc] [!a-z] [^a-z]
+      var j=i+1,cls="",neg=false;
+      if(body[j]==="!"||body[j]==="^"){neg=true;j+=1;}
+      while(j<body.length&&body[j]!=="]"){cls+=body[j];j+=1;}
+      if(j>=body.length){out+="\\[";i+=1;continue;} // 没闭合，当字面量
+      out+="["+(neg?"^":"")+cls.replace(/\\/g,"\\\\")+"]";
+      i=j+1;continue;
+    }
+    out+=escRe(c);i+=1;
+  }
+  // ** 的段级语义：首/中/尾三种位置
+  if(out.indexOf("\u0000")>=0){
+    out=out.replace(/\u0000\//g,"(?:.*/)?");   // **/foo 或 a/**/b 的前半
+    out=out.replace(/\/\u0000/g,"(?:/.*)?");   // foo/** 的后半
+    out=out.replace(/\u0000/g,".*");
+  }
+  return out;
+}
+
+function parseRules(text){
+  var lines=text.split(/\r?\n/),rules=[];
+  for(var i=0;i<lines.length;i++){
+    var raw=lines[i];
+    // 去掉行尾未转义的空白（git 语义）
+    var line=raw.replace(/(?<!\\)\s+$/,"");
+    if(line===""||line[0]==="#")continue;
+    var r={line:i+1,src:line,negated:false,dirOnly:false,anchored:false};
+    var body=line;
+    if(body[0]==="!"){r.negated=true;body=body.slice(1);}
+    if(body[0]==="\\"&&body[1]==="!"){body=body.slice(1);} // \! 开头的字面 !
+    if(body[0]==="\\"&&body[1]==="#"){body=body.slice(1);}
+    if(body.slice(-1)==="/"){r.dirOnly=true;body=body.slice(0,-1);}
+    if(body[0]==="/"){r.anchored=true;body=body.slice(1);}
+    else if(body.indexOf("/")>=0){r.anchored=true;}
+    r.body=body;
+    r.re=patternRe(r);
+    r.idx=rules.length;
+    rules.push(r);
+  }
+  return rules;
+}
+
+function patternRe(r){
+  var b=translateBody(r.body);
+  if(r.anchored){
+    if(r.dirOnly)return new RegExp("^"+b+"$");                 // /build/ → 目录 build（根）
+    return new RegExp("^"+b+"$");
+  }
+  // 无斜杠 → 任意层级
+  if(r.dirOnly)return new RegExp("(^|.*/)"+b+"$");             // build/ → 任意层目录
+  return new RegExp("(^|.*/)"+b+"$");
+}
+
+function matchRule(r,path,isDir){
+  if(r.dirOnly&&!isDir)return null; // 目录规则不吃文件
+  return r.re.test(path)?r:null;
+}
+
+/* ── 判定：逐级前缀走查（实现 git「父目录排除则不再向下」语义）── */
+function verdictPath(rules,path,isDir){
+  var norm=path.replace(/^\.?\//,"").replace(/\/+$/,"").replace(/\/\/+/g,"/");
+  if(norm==="")return null;
+  var segs=norm.split("/"),chain=[],dirExcl=null;
+  for(var i=1;i<segs.length;i++){
+    var pfx=segs.slice(0,i).join("/"),hits=[];
+    for(var k=0;k<rules.length;k++){var m=matchRule(rules[k],pfx,true);if(m)hits.push(m);}
+    var last=hits.length?hits[hits.length-1]:null;
+    chain.push({path:pfx,isDir:true,hits:hits,stop:!last||!last.negated?false:false});
+    if(last&&!last.negated){dirExcl={rule:last,at:pfx};chain[chain.length-1].stop=true;break;}
+  }
+  var full=segs.join("/"),fullHits=[],finalRule=null,ignored=false;
+  if(!dirExcl){
+    for(var k2=0;k2<rules.length;k2++){
+      var m2=matchRule(rules[k2],full,isDir);
+      if(m2){fullHits.push(m2);finalRule=m2;}
+    }
+    ignored=!!(finalRule&&!finalRule.negated);
+  }
+  if(dirExcl)ignored=true;
+  return {input:path,norm:norm,ignored:ignored,trap:!!dirExcl,winRule:dirExcl?dirExcl.rule:finalRule,chain:chain,fullHits:fullHits};
+}
+
+/* ── 示例数据 ── */
+var SAMPLE_GI=[
+"# ── 依赖与产物 ──",
+"node_modules/",
+"dist/",
+"build/",
+"!build/keep.txt",
+"*.log",
+"!important.log",
+"*.png",
+"!assets/logo.png",
+"",
+"# ── 锚定在仓库根 ──",
+"/secret.txt",
+".env",
+"",
+"# ── 深层模式 ──",
+"**/temp",
+"docs/**/*.tmp",
+""
+].join("\n");
+var SAMPLE_PATHS=[
+"node_modules/lodash/index.js",
+"dist/bundle.js",
+"dist/inner/app.js",
+"build/keep.txt",
+"build/important.log",
+"logs/app.log",
+"important.log",
+"assets/logo.png",
+"assets/banner.png",
+"secret.txt",
+"config/secret.txt",
+".env",
+"src/.env",
+"cache/temp",
+"cache/temp/x.bin",
+"src/temp/x.bin",
+"docs/a.tmp",
+"docs/deep/b.tmp",
+"README.md",
+""
+].join("\n");
+
+/* ── DOM ── */
+function $(id){return document.getElementById(id);}
+var filterRule=-1;
+
+function computeAll(){
+  var giText=$("gi").value,pathsText=$("paths").value;
+  var rules=parseRules(giText);
+  var paths=pathsText.split(/\r?\n/).map(function(s){return s.replace(/\s+$/,"");})
+    .filter(function(s,i,a){return s!==""||false;});
+  // 保留空行过滤：只留非空
+  var realPaths=paths.filter(function(s){return s!=="";});
+  $("ruleCount").textContent=rules.length?rules.length+" 条":"";
+  $("pathCount").textContent=realPaths.length?realPaths.length+" 条":"";
+  render(rules,realPaths);
+}
+
+function render(rules,paths){
+  var list=$("rlist"),html="";
+  var nIg=0,nKeep=0;
+  var hitsByRule={};
+  var results=[];
+  for(var i=0;i<paths.length;i++){
+    var v=verdictPath(rules,paths[i],false);
+    if(!v)continue;
+    results.push(v);
+    if(v.ignored){nIg++;if(v.winRule)hitsByRule[v.winRule.idx]=(hitsByRule[v.winRule.idx]||0)+1;}
+    else nKeep++;
+  }
+  for(var p=0;p<results.length;p++){
+    var v=results[p];
+    var badgeCls=v.ignored?"ig":"kept",badgeTxt=v.ignored?"忽略":"保留";
+    var why;
+    if(v.trap)why="<span class='tstop'>父目录 <b style='font-family:monospace'>"+escHtml(v.trapAt||(v.chain[v.chain.length-1].path))+"</b> 已被排除，无法用否定规则挽回</span>";
+    else if(v.winRule&&v.winRule.negated)why="否定规则 <code class='neg'>"+escHtml(v.winRule.src)+"</code> 挽留";
+    else if(v.winRule)why="命中 <code>"+escHtml(v.winRule.src)+"</code>";
+    else why="没有规则命中，会正常提交";
+    var hl=(filterRule>=0&&v.winRule&&v.winRule.idx===filterRule)?" hl":"";
+    html+="<div class='rrow"+hl+"' data-p='"+escAttr(v.norm)+"'><div class='rhead'>"
+      +"<span class='badge "+badgeCls+"'>"+badgeTxt+"</span>"
+      +"<span class='ppath'>"+escHtml(v.norm)+"</span>"
+      +"<span class='why'>"+why+"</span></div>"
+      +traceHtml(rules,v)
+      +"</div>";
+  }
+  list.innerHTML=html||"<div class='empty'>左右两边各写点东西，这里马上给你逐条判定。<br>不知道写什么？点上面的「载入示例」。</div>";
+  $("stats").innerHTML=paths.length
+    ?"<span><b>"+paths.length+"</b> 条路径</span><span class='ib'><b>"+nIg+"</b> 被忽略</span><span class='kb'><b>"+nKeep+"</b> 会保留</span>"
+      +(rules.length?"":"<span>⚠ 规则为空：当前没有任何 .gitignore 规则生效</span>")
+    :"<span>等待输入…</span>";
+  // 规则面板
+  var rp=$("rpanel"),rh=$("rules");
+  if(rules.length){
+    rp.hidden=false;
+    var rhtml="";
+    for(var j=0;j<rules.length;j++){
+      var r=rules[j],c=hitsByRule[r.idx]||0;
+      var srcShow=escHtml(r.src)+(r.dirOnly?" /":"");
+      rhtml+="<span class='rchip"+(filterRule===r.idx?" on":"")+"' data-idx='"+r.idx+"' title='第 "+r.line+" 行"
+        +(r.negated?" · 否定":"")+(r.dirOnly?" · 仅目录":"")+(r.anchored?" · 锚定根":" · 任意层级")
+        +"&#10;点击筛选受它影响的路径'>"
+        +"<b>"+srcShow+"</b><small>"+(c?c+" 命中":"0")+"</small></span>";
+    }
+    rh.innerHTML=rhtml;
+  }else rp.hidden=true;
+}
+
+function traceHtml(rules,v){
+  var s="<div class='trace'>";
+  if(v.trap){
+    for(var i=0;i<v.chain.length;i++){
+      var lv=v.chain[i];
+      s+="<div class='tl'>📂 <b>"+escHtml(lv.path)+"/</b>："+chipsOf(lv.hits);
+      if(lv.stop)s+=" <span class='chip stop'>父目录已排除 · 不再向下走，后面的规则（包括否定）都无缘了</span>";
+      s+="</div>";
+    }
+    return s+"</div>";
+  }
+  if(!v.fullHits.length)return "<div class='tl'>没有任何规则命中 <b>"+escHtml(v.norm)+"</b>，会正常进入版本库。</div></div>";
+  for(var j=0;j<v.fullHits.length;j++){
+    var r=v.fullHits[j];
+    var last=j===v.fullHits.length-1;
+    s+="<div class='tl'>"+(last?"⚖️ ":"&nbsp;&nbsp;&nbsp;")+"<b>"+escHtml(v.norm)+"</b> 命中 "+chipsOf([r])
+      +(last?" ← <b>最后命中，说了算</b>":"（被后面覆盖）")+"</div>";
+  }
+  return s+"</div>";
+}
+function chipsOf(hits){
+  if(!hits.length)return "<span style='color:var(--mut)'>无命中</span>";
+  var s="";
+  for(var i=0;i<hits.length;i++){
+    var r=hits[i];
+    s+="<span class='chip "+(r.negated?"neg":"ig")+"'>"+(r.negated?"! ":"")+escHtml(r.src)+"</span>";
+  }
+  return s;
+}
+function escHtml(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function escAttr(s){return escHtml(s).replace(/'/g,"&#39;");}
+
+/* ── 交互 ── */
+document.addEventListener("input",function(e){
+  if(e.target.id==="gi"||e.target.id==="paths")computeAll();
+});
+$("rlist").addEventListener("click",function(e){
+  var row=e.target.closest(".rrow");
+  if(row)row.classList.toggle("open");
+});
+$("rpanel").addEventListener("click",function(e){
+  var chip=e.target.closest(".rchip");
+  if(!chip)return;
+  var idx=parseInt(chip.getAttribute("data-idx"),10);
+  filterRule=(filterRule===idx)?-1:idx;
+  computeAll();
+});
+$("btnSample").addEventListener("click",function(){
+  $("gi").value=SAMPLE_GI;$("paths").value=SAMPLE_PATHS;filterRule=-1;computeAll();
+});
+function toast(msg){var t=$("toast");t.textContent=msg;t.classList.add("show");
+  setTimeout(function(){t.classList.remove("show");},1800);}
+$("btnCopy").addEventListener("click",function(){
+  var rules=parseRules($("gi").value);
+  var paths=$("paths").value.split(/\r?\n/).filter(function(s){return s.trim()!=="";});
+  if(!paths.length){toast("没有路径可导出，先粘几条路径");return;}
+  var md="# .gitignore 判定报告\n\n| 路径 | 判定 | 依据 |\n|---|---|---|\n";
+  for(var i=0;i<paths.length;i++){
+    var v=verdictPath(rules,paths[i],false);
+    if(!v)continue;
+    var base=v.ignored?"❌ 忽略":"✅ 保留";
+    var why=v.trap?("父目录 "+(v.chain[v.chain.length-1].path)+"/ 已排除")
+      :(v.winRule?("规则 `"+v.winRule.src+"`"+(v.winRule.negated?"（挽留）":"")):"无规则命中");
+    md+="| `"+v.norm+"` | "+base+" | "+why+" |\n";
+  }
+  md+="\n> 由 IGNOLENS 生成 · 判定语义对齐 git check-ignore\n";
+  var done=function(){toast("Markdown 报告已复制 ✓");};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(md).then(done,function(){fallbackCopy(md);done();});
+  }else{fallbackCopy(md);done();}
+});
+function fallbackCopy(text){
+  var ta=document.createElement("textarea");ta.value=text;
+  ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);
+  ta.select();try{document.execCommand("copy");}catch(e){}
+  document.body.removeChild(ta);
+}
+
+/* 初始即给一组示例，打开就有东西看 */
+$("gi").value=SAMPLE_GI;$("paths").value=SAMPLE_PATHS;
+computeAll();
+</script>
+</body>
+</html>
