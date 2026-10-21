@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SPECSCALE · CSS 选择器优先级天平</title>
+<meta name="description" content="粘贴 CSS 选择器，看清 (ID, 类, 类型) 三车道权重与逐片段解释，双选择器对决裁决，全程本地零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2129;--fg:#e6edf3;--mut:#8b949e;
+  --line:#21262d;--acc:#58a6ff;--id:#f778ba;--cls:#d29922;--typ:#3fb950;--err:#f85149;--ok:#3fb950;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom))}
+main{max-width:860px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.5px}
+h1 .zh{color:var(--mut);font-weight:400;font-size:15px;margin-left:8px}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.card h2{font-size:13px;color:var(--mut);font-weight:600;letter-spacing:.5px;margin-bottom:10px;text-transform:uppercase}
+textarea{width:100%;min-height:96px;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--fg);
+font:13px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:10px;resize:vertical}
+textarea:focus{outline:none;border-color:var(--acc)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+button{background:var(--panel2);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:hover{border-color:var(--acc);color:var(--acc)}
+button.acc{background:#1f3a5f;border-color:#2a5286}
+.hint{color:var(--mut);font-size:12px;margin-top:8px}
+.sel{margin-bottom:14px}
+.sel:last-child{margin-bottom:0}
+.sel-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.sel-text{font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--fg);word-break:break-all}
+.badge{font:600 12px ui-monospace,monospace;color:var(--bg);background:var(--acc);border-radius:6px;padding:1px 8px;white-space:nowrap}
+.badge.err{background:var(--err);color:#fff}
+.lanes{display:grid;grid-template-columns:70px 1fr 70px 1fr 70px 1fr;gap:4px 8px;align-items:center;margin-top:8px}
+.lane-name{font-size:11px;color:var(--mut);text-align:right}
+.lane-val{font:600 12px ui-monospace,monospace}
+.lane-track{height:10px;background:var(--bg);border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+.lane-fill{height:100%;width:0%;border-radius:5px;transition:width .35s ease}
+.toks{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;line-height:2}
+.tok{font:12px ui-monospace,monospace;border-radius:6px;padding:1px 8px;border:1px solid}
+.tok.id{color:var(--id);border-color:#5e2b44;background:#2a1622}
+.tok.cls{color:var(--cls);border-color:#5a4416;background:#272114}
+.tok.typ{color:var(--typ);border-color:#2b5237;background:#15271b}
+.tok.zero{color:var(--mut);border-color:var(--line);background:var(--panel2)}
+.tok.comb{color:var(--acc);border:none;background:none;padding:1px 2px}
+.tok-note{color:var(--mut);font-size:11.5px}
+.duel-grid{display:grid;grid-template-columns:1fr 46px 1fr;gap:8px;align-items:center}
+select{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:8px;font:12.5px ui-monospace,monospace}
+.duel-vs{color:var(--mut);font-weight:700;text-align:center}
+.verdict{margin-top:12px;border-radius:8px;padding:12px 14px;border:1px solid;display:none}
+.verdict.show{display:block}
+.verdict.win{border-color:#2b5237;background:#122117}
+.verdict.tie{border-color:#5a4416;background:#272114}
+.verdict .v-title{font-weight:700;font-size:14.5px}
+.verdict .v-why{color:var(--mut);font-size:13px;margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{color:var(--mut);font-weight:600;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);font-size:12px}
+td{padding:6px 8px;border-bottom:1px solid var(--line)}
+td.mono{font:12.5px ui-monospace,monospace;word-break:break-all}
+td.num{font:600 12.5px ui-monospace,monospace;white-space:nowrap}
+tr:hover td{background:#1a202a}
+.notes{font-size:12.5px;color:var(--mut)}
+.notes li{margin:4px 0 4px 18px}
+.notes code{font:12px ui-monospace,monospace;background:var(--panel2);border-radius:4px;padding:0 5px;color:var(--cls)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#1f6feb;color:#fff;
+border-radius:8px;padding:8px 18px;font-size:13px;opacity:0;pointer-events:none;transition:all .25s}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.empty{color:var(--mut);font-size:13px;padding:8px 2px}
+footer{margin-top:26px;color:var(--mut);font-size:12px}
+footer a{color:var(--acc);text-decoration:none}
+@media (max-width:640px){
+  .lanes{grid-template-columns:52px 1fr 52px 1fr 52px 1fr;gap:3px 6px}
+  .duel-grid{grid-template-columns:1fr;gap:6px}
+  .duel-vs{transform:rotate(0deg)}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>⚖️ SPECSCALE<span class="zh">CSS 选择器优先级天平</span></h1>
+<p class="sub">为什么你的样式不生效？把选择器放上秤：三车道权重看得见，谁压过谁当场裁决。全部解析在浏览器本地完成，零上传。</p>
+
+<div class="card">
+  <h2>① 输入选择器（每行一个，也支持直接粘一段 CSS）</h2>
+  <textarea id="in" spellcheck="false" placeholder="#nav .item:hover&#10;ul ol li.red&#10;div :is(.a, #b) p::first-line&#10;:where(#huge, .list) button"></textarea>
+  <div class="row">
+    <button class="acc" id="btnWeigh">上秤</button>
+    <button id="btnSample">加载示例</button>
+    <button id="btnCss">从这段 CSS 提取</button>
+    <button id="btnCopy">复制报告</button>
+    <span class="hint" id="stat"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>② 天平读数</h2>
+  <div id="results"><div class="empty">输入选择器后点「上秤」，或先加载示例。</div></div>
+</div>
+
+<div class="card">
+  <h2>③ 对决：两个选择器抢同一条规则，谁赢？</h2>
+  <div class="duel-grid">
+    <select id="duelA"><option value="">— 选择甲方 —</option></select>
+    <div class="duel-vs">VS</div>
+    <select id="duelB"><option value="">— 选择乙方 —</option></select>
+  </div>
+  <div class="verdict" id="verdict"></div>
+</div>
+
+<div class="card">
+  <h2>④ 优先级排行榜（同一张表里谁是狠角色）</h2>
+  <div id="rank"><div class="empty">上秤后自动排名。</div></div>
+</div>
+
+<div class="card">
+  <h2>⑤ 秤的刻度（规则出处：CSS Selectors Level 4）</h2>
+  <ul class="notes">
+    <li>三车道：<code>(A, B, C)</code> = ID 数、类/属性/伪类数、类型/伪元素数。字典序比较，A 压一切。</li>
+    <li><code>:where(...)</code> 一律记 0——括号里写 ID 也不加分，专为「让路」而生。</li>
+    <li><code>:is()</code> / <code>:not()</code> / <code>:has()</code> 取括号里<strong>最重</strong>那个参数的权重。</li>
+    <li>行内 <code>style=""</code> 相当于再多一档（1,0,0,0）；<code>!important</code> 更高一层；同权重看源码顺序，靠后者赢。</li>
+    <li>通用选择器 <code>*</code>、组合符 <code>&gt; + ~</code>、<code>:hover</code> 的父级不算数——它们零重量但改变结构。</li>
+  </ul>
+</div>
+
+<footer>SPECSCALE · 每日创意小工具 #40 · <a href="../">返回目录</a> · 纯前端本地解析，不联网</footer>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============ selector parser ============ */
+var ZERO_PSEUDO = {where:1};
+var MAX_PSEUDO  = {is:1, not:1, has:1, matches:1};
+
+function tokSpec(text){ // tokenizer for one compound selector -> {toks, rest}
+  var toks=[], i=0, n=text.length;
+  while(i<n){
+    var c=text[i];
+    if(/\s/.test(c)){ i++; continue; }
+    var m;
+    if(c==='#'){
+      m=/^#[\\]?[\w-]+/.exec(text.slice(i));
+      if(!m) return {err:'# 后面要有名字'};
+      toks.push({kind:'id', text:m[0], w:[1,0,0]}); i+=m[0].length; continue;
+    }
+    if(c==='.'){
+      m=/^\.[\\]?[\w-]+/.exec(text.slice(i));
+      if(!m) return {err:'. 后面要有类名'};
+      toks.push({kind:'cls', text:m[0], w:[0,1,0]}); i+=m[0].length; continue;
+    }
+    if(c==='['){
+      var depth=0, j=i;
+      for(;j<n;j++){ if(text[j]==='[')depth++; else if(text[j]===']'){depth--; if(!depth)break;} }
+      if(j>=n) return {err:'[ 属性选择器没闭合，缺 ]'};
+      toks.push({kind:'cls', text:text.slice(i,j+1), w:[0,1,0]}); i=j+1; continue;
+    }
+    if(c==='*'){ toks.push({kind:'zero', text:'*', w:[0,0,0], why:'通配符零重量'}); i++; continue; }
+    if(c===':'){
+      m=/^::([a-zA-Z][\w-]*)/.exec(text.slice(i));
+      if(m){ toks.push({kind:'typ', text:m[0], w:[0,0,1], why:'伪元素记 C'}); i+=m[0].length; continue; }
+      m=/^:([a-zA-Z][\w-]*)/.exec(text.slice(i));
+      if(!m) return {err:': 后面要有伪类名'};
+      var name=m[1].toLowerCase(), rest=text.slice(i+m[0].length);
+      if(rest[0]==='('){
+        var d=0, k=0, q=null;
+        for(k=0;k<rest.length;k++){
+          var ch=rest[k];
+          if(q){ if(ch===q) q=null; continue; }
+          if(ch==='"'||ch==="'"){ q=ch; continue; }
+          if(ch==='(')d++; else if(ch===')'){ d--; if(!d)break; }
+        }
+        if(k>=rest.length) return {err:name+'( 的括号没闭合，缺 )'};
+        var inner=rest.slice(1,k);
+        toks.push({kind:'psfunc', text:text.slice(i,i+m[0].length+1+ (k)), name:name, inner:inner});
+        i+=m[0].length+1+k; continue;
+      }
+      toks.push({kind:'cls', text:m[0], w:[0,1,0], why:'伪类记 B'}); i+=m[0].length; continue;
+    }
+    m=/^-?[a-zA-Z_][\w-]*$|^[\w-]+/.exec(text.slice(i));
+    if(m && /[a-zA-Z_\u0080-\uFFFF]/.test(m[0][0]) || (m && m[0].length && /[\w]/.test(m[0][0]) && m[0][0]!=='-' )){
+      // type selector: ident (loose but honest for common cases)
+      if(/^-?[a-zA-Z_][\w-]*|^\*{0}/.test(m[0])){
+        toks.push({kind:'typ', text:m[0], w:[0,0,1], why:'类型记 C'}); i+=m[0].length; continue;
+      }
+    }
+    return {err:'无法识别的片段「'+text.slice(i,i+6)+'…」'.slice(0,22)};
+  }
+  return {toks:toks};
+}
+
+function psFuncWeight(name, inner){ // returns {w:[a,b,c], why} or {err}
+  if(ZERO_PSEUDO[name]) return {w:[0,0,0], why:':'+name+'() 一律记 0'};
+  if(MAX_PSEUDO[name]){
+    var list=splitTop(inner, ',');
+    if(list.length===0) return {err:':'+name+'() 括号里是空的'};
+    var best=null;
+    for(var i=0;i<list.length;i++){
+      var arg=list[i].trim();
+      if(!arg) return {err:':'+name+'() 里有多余的逗号'};
+      // :has() 等允许相对选择器参数（如 "> img"），剥掉前导组合符
+      var mrel=/^[>+~]\s*/.exec(arg);
+      if(mrel) arg=arg.slice(mrel[0].length);
+      if(!arg) return {err:':'+name+'() 参数「'+list[i].trim()+'」组合符后面没有选择器'};
+      var r=parseSelector(arg);
+      if(r.err) return {err:':'+name+'() 参数「'+list[i].trim()+'」'+r.err};
+      if(!best || cmpSpec(r.w,best.w)>0) best=r;
+    }
+    return {w:best.w, why:':'+name+'() 取最重参数 ('+best.w.join(',')+')'};
+  }
+  return {w:[0,1,0], why:'带参伪类记 B'};
+}
+
+function cmpSpec(a,b){ return (a[0]-b[0])||(a[1]-b[1])||(a[2]-b[2]); }
+
+function splitTop(s, sep){ // split on sep char at depth 0 of () [] 
+  var out=[], d=0, cur='';
+  for(var i=0;i<s.length;i++){
+    var c=s[i];
+    if(c==='('||c==='[')d++;
+    else if(c===')'||c===']')d--;
+    if(c===sep && d===0){ out.push(cur); cur=''; continue; }
+    cur+=c;
+  }
+  out.push(cur);
+  return out;
+}
+
+function parseSelector(raw){
+  var s=raw.trim();
+  if(!s) return {err:'空选择器'};
+  // split into compounds by combinators at top level
+  var parts=[], buf='', combo=[], i=0, d=0;
+  for(i=0;i<s.length;i++){
+    var c=s[i];
+    if(c==='('||c==='[')d++;
+    else if(c===')'||c===']')d--;
+    if(d===0 && (c==='>'||c==='+'||c==='~')){
+      parts.push(buf); buf=''; combo.push(c);
+      // consume following whitespace
+      while(i+1<s.length && /\s/.test(s[i+1])) i++;
+      continue;
+    }
+    if(d===0 && /\s/.test(c)){
+      // possible descendant combinator; lookahead for >+~ after spaces
+      var j=i; while(j<s.length && /\s/.test(s[j])) j++;
+      if(j<s.length && (s[j]==='>'||s[j]==='+'||s[j]==='~')) continue; // handled next loop
+      if(buf.trim()){ parts.push(buf); buf=''; combo.push(' '); }
+      continue;
+    }
+    buf+=c;
+  }
+  if(!parts.length && buf.trim()) parts.push(buf);
+  else if(buf.trim()) parts.push(buf);
+  if(combo.length && !parts.length) return {err:'选择器开头悬着组合符'};
+  if(!parts.length) return {err:'没有可用片段'};
+  for(var q=0;q<parts.length;q++)
+    if(!parts[q].trim()) return {err:'组合符悬空或连续（开头/结尾/连续组合符后要有选择器）'};
+  if(combo.length > parts.length-1) return {err:'选择器结尾悬着组合符'};
+
+  var a=0,b=0,cc=0, toksAll=[], compoundRes=[];
+  for(var p=0;p<parts.length;p++){
+    var comp=parts[p].trim();
+    if(!comp) return {err:'连续组合符之间没有选择器'};
+    var t=tokSpec(comp);
+    if(t.err) return {err:'「'+comp+'」'+t.err};
+    var ca=0,cb=0,ct=0;
+    for(var k=0;k<t.toks.length;k++){
+      var tk=t.toks[k];
+      if(tk.kind==='psfunc'){
+        var pf=psFuncWeight(tk.name, tk.inner);
+        if(pf.err) return {err:tk.text+' → '+pf.err};
+        tk.w=pf.w; tk.why=pf.why;
+      }
+      ca+=tk.w[0]; cb+=tk.w[1]; ct+=tk.w[2];
+    }
+    a+=ca; b+=cb; cc+=ct;
+    toksAll.push({comp:comp, toks:t.toks});
+    compoundRes.push([ca,cb,ct]);
+  }
+  return {w:[a,b,cc], toksAll:toksAll, combos:combo};
+}
+
+/* ============ css sheet scan ============ */
+function extractSelectors(css){
+  var out=[], re=/(^|[{};])\s*([^{}@;]+?)\s*\{/g, m;
+  while((m=re.exec(css))){
+    var chunk=m[2];
+    if(!chunk) continue;
+    var list=splitTop(chunk, ',');
+    for(var i=0;i<list.length;i++){
+      var s=list[i].trim();
+      if(s && !out.includes(s)) out.push(s);
+    }
+  }
+  return out;
+}
+
+/* ============ state & dom ============ */
+var $=function(id){ return document.getElementById(id); };
+var parsed=[]; // [{raw, r}]
+var SAMPLE='#nav .item:hover\nul ol li.red\ndiv :is(.a, #b) p::first-line\n:where(#huge, .list) button\n.card > a[target=_blank]\n#sidenav li:nth-child(2n):not(.hidden)';
+
+function toast(msg){
+  var t=$('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toast._h); toast._h=setTimeout(function(){ t.classList.remove('show'); },1800);
+}
+
+var LANE_NAMES=['ID','类','型'];
+
+function lanePct(v,cap){ return Math.min(100, Math.round(v/cap*100)); }
+
+function render(){
+  var box=$('results');
+  box.innerHTML='';
+  var okCount=0, errCount=0;
+  if(!parsed.length){ box.innerHTML='<div class="empty">输入选择器后点「上秤」，或先加载示例。</div>'; }
+  for(var i=0;i<parsed.length;i++){
+    var item=parsed[i], r=item.r;
+    var wrap=document.createElement('div'); wrap.className='sel';
+    var head=document.createElement('div'); head.className='sel-head';
+    var st=document.createElement('span'); st.className='sel-text'; st.textContent=item.raw;
+    head.appendChild(st);
+    var bd=document.createElement('span'); bd.className='badge'+(r.err?' err':'');
+    bd.textContent=r.err ? '✗ 无效' : '('+r.w.join(', ')+')';
+    head.appendChild(bd);
+    wrap.appendChild(head);
+    if(r.err){
+      errCount++;
+      var en=document.createElement('div'); en.className='tok-note'; en.style.marginTop='4px';
+      en.textContent='原因：'+r.err;
+      wrap.appendChild(en);
+    } else {
+      okCount++;
+      var lanes=document.createElement('div'); lanes.className='lanes';
+      var caps=[4,8,8];
+      var cols=['var(--id)','var(--cls)','var(--typ)'];
+      for(var L=0;L<3;L++){
+        var nm=document.createElement('span'); nm.className='lane-name'; nm.textContent=LANE_NAMES[L];
+        var tr=document.createElement('div'); tr.className='lane-track';
+        var fl=document.createElement('div'); fl.className='lane-fill';
+        fl.style.background=cols[L];
+        fl.style.width=lanePct(r.w[L],caps[L])+'%';
+        tr.appendChild(fl);
+        var vl=document.createElement('span'); vl.className='lane-val'; vl.textContent=r.w[L];
+        vl.style.color=cols[L];
+        lanes.appendChild(nm); lanes.appendChild(tr); lanes.appendChild(vl);
+      }
+      wrap.appendChild(lanes);
+      var toks=document.createElement('div'); toks.className='toks';
+      for(var cI=0;cI<r.toksAll.length;cI++){
+        if(cI>0){
+          var cb=document.createElement('span'); cb.className='tok comb';
+          cb.textContent=(r.combos[cI-1]===' ')?'↳ 后代':' '+r.combos[cI-1]+' ';
+          toks.appendChild(cb);
+        }
+        var tks=r.toksAll[cI].toks;
+        for(var k2=0;k2<tks.length;k2++){
+          var tk=tks[k2];
+          var chip=document.createElement('span');
+          chip.className='tok '+tk.kind;
+          chip.textContent=tk.text;
+          var note=document.createElement('span');
+          if(tk.kind==='psfunc'){ chip.classList.add(tk.w[0]+tk.w[1]+tk.w[2]===0?'zero':(tk.w[0]>0?'id':'cls')); }
+          var why=tk.why||'';
+          if(why){ note.className='tok-note'; note.textContent=' '+why; }
+          toks.appendChild(chip);
+          if(why) toks.appendChild(note);
+        }
+      }
+      wrap.appendChild(toks);
+    }
+    box.appendChild(wrap);
+  }
+  $('stat').textContent=(okCount+errCount)?('有效 '+okCount+' · 无效 '+errCount):'';
+  renderDuel();
+  renderRank();
+}
+
+function renderDuel(){
+  var sa=$('duelA'), sb=$('duelB');
+  var va=sa.value, vb=sb.value;
+  sa.innerHTML='<option value="">— 选择甲方 —</option>';
+  sb.innerHTML='<option value="">— 选择乙方 —</option>';
+  for(var i=0;i<parsed.length;i++){
+    if(parsed[i].r.err) continue;
+    var o1=document.createElement('option'); o1.value=parsed[i].raw; o1.textContent=parsed[i].raw;
+    var o2=document.createElement('option'); o2.value=parsed[i].raw; o2.textContent=parsed[i].raw;
+    sa.appendChild(o1); sb.appendChild(o2);
+  }
+  if(va!=='') sa.value=va;
+  if(vb!=='') sb.value=vb;
+}
+
+function duelJudge(){
+  var tA=$('duelA').value, tB=$('duelB').value;
+  var v=$('verdict');
+  if(tA===''||tB===''){ v.className='verdict'; v.classList.remove('show'); return; }
+  var iA=-1, iB=-1;
+  for(var i=0;i<parsed.length;i++){
+    if(parsed[i].raw===tA) iA=i;
+    if(parsed[i].raw===tB) iB=i;
+  }
+  if(iA<0||iB<0||parsed[iA].r.err||parsed[iB].r.err){ v.classList.remove('show'); return; }
+  var ra=parsed[iA].r, rb=parsed[iB].r;
+  var nameA=parsed[iA].raw, nameB=parsed[iB].raw;
+  var c=cmpSpec(ra.w, rb.w);
+  v.classList.add('show');
+  if(c===0){
+    v.className='verdict tie show';
+    v.innerHTML='<div class="v-title">⚖️ 平局 ('+ra.w.join(', ')+') = ('+rb.w.join(', ')+')</div>'+
+      '<div class="v-why">权重完全相同 → 源码顺序说话：样式表里写得靠后的那个生效。</div>';
+  } else {
+    var w=c>0?{n:nameA,r:ra,s:'甲方'}:{n:nameB,r:rb,s:'乙方'};
+    var l=c>0?{n:nameB,r:rb,s:'乙方'}:{n:nameA,r:ra,s:'甲方'};
+    var diff=[];
+    for(var i=0;i<3;i++){
+      var d=ra.w[i]-rb.w[i];
+      if(d!==0) diff.push(LANE_NAMES[i]+'道 '+(d>0?'+':'')+d);
+    }
+    v.className='verdict win show';
+    v.innerHTML='<div class="v-title">🏆 '+w.s+'赢：'+escapeHtml(w.n)+'</div>'+
+      '<div class="v-why">('+w.r.w.join(', ')+') 压过 ('+l.r.w.join(', ')+') —— 赢在'+diff.join('、')+'。'+l.s+'的规则被覆盖，不生效。</div>';
+  }
+}
+
+function escapeHtml(s){ return s.replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+function renderRank(){
+  var box=$('rank'), rows=[];
+  for(var i=0;i<parsed.length;i++) if(!parsed[i].r.err) rows.push(parsed[i]);
+  rows.sort(function(x,y){ return cmpSpec(y.r.w,x.r.w); });
+  if(!rows.length){ box.innerHTML='<div class="empty">上秤后自动排名。</div>'; return; }
+  var t='<table><thead><tr><th>#</th><th>选择器</th><th>(A, B, C)</th></tr></thead><tbody>';
+  for(var j=0;j<rows.length;j++){
+    t+='<tr><td class="num">'+(j+1)+'</td><td class="mono">'+escapeHtml(rows[j].raw)+'</td><td class="num">('+rows[j].r.w.join(', ')+')</td></tr>';
+  }
+  t+='</tbody></table>';
+  box.innerHTML=t;
+}
+
+/* ============ actions ============ */
+function weigh(){
+  var lines=$('in').value.split('\n');
+  // if looks like a css sheet, auto-extract
+  var joined=lines.join('\n');
+  if(/\{[^}]*\}/.test(joined) && joined.indexOf('{')>=0){
+    lines=extractSelectors(joined);
+  } else {
+    // allow comma-separated lines too
+    var flat=[];
+    for(var i=0;i<lines.length;i++){
+      var sub=splitTop(lines[i], ',');
+      for(var j=0;j<sub.length;j++) if(sub[j].trim()) flat.push(sub[j].trim());
+    }
+    lines=flat;
+  }
+  parsed=[];
+  var seen={};
+  for(var i2=0;i2<lines.length;i2++){
+    var raw=lines[i2].trim();
+    if(!raw||seen[raw]) continue;
+    seen[raw]=1;
+    parsed.push({raw:raw, r:parseSelector(raw)});
+  }
+  render();
+}
+
+function copyReport(){
+  if(!parsed.length){ toast('先上秤再复制'); return; }
+  var out=['SPECSCALE 选择器优先级报告', '='.repeat(30)];
+  for(var i=0;i<parsed.length;i++){
+    var it=parsed[i];
+    out.push((it.r.err?'✗ ':'('+it.r.w.join(', ')+') ')+it.raw+(it.r.err?(' ← '+it.r.err):''));
+  }
+  var iA=$('duelA').value, iB=$('duelB').value;
+  var iA2=-1, iB2=-1;
+  for(var j2=0;j2<parsed.length;j2++){
+    if(parsed[j2].raw===iA) iA2=j2;
+    if(parsed[j2].raw===iB) iB2=j2;
+  }
+  if(iA2>=0&&iB2>=0&&!parsed[iA2].r.err&&!parsed[iB2].r.err){
+    var c=cmpSpec(parsed[iA2].r.w,parsed[iB2].r.w);
+    out.push('');
+    out.push('对决: '+parsed[iA2].raw+' VS '+parsed[iB2].raw+' → '+
+      (c===0?'平局，源码靠后者赢':(c>0?parsed[iA2].raw:parsed[iB2].raw)+' 胜'));
+  }
+  var text=out.join('\n');
+  function done(){ toast('报告已复制 ✓'); }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done,function(){ fallback(); });
+  } else fallback();
+  function fallback(){
+    var ta=document.createElement('textarea'); ta.value=text;
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){ toast('复制失败，请手动选择'); }
+    document.body.removeChild(ta);
+  }
+}
+
+/* ============ wire up ============ */
+$('btnWeigh').addEventListener('click', weigh);
+$('btnSample').addEventListener('click', function(){ $('in').value=SAMPLE; weigh(); });
+$('btnCss').addEventListener('click', function(){
+  var v=$('in').value;
+  if(!v.trim()){ toast('先粘一段 CSS，再点提取'); return; }
+  var sels=extractSelectors(v);
+  if(!sels.length){ toast('没扫到选择器，确认是 CSS 文本'); return; }
+  $('in').value=sels.join('\n');
+  weigh();
+});
+$('btnCopy').addEventListener('click', copyReport);
+$('duelA').addEventListener('change', duelJudge);
+$('duelB').addEventListener('change', duelJudge);
+var deb=null;
+$('in').addEventListener('input', function(){
+  clearTimeout(deb); deb=setTimeout(weigh, 250);
+});
+
+// initial: load sample so first paint has content
+$('in').value=SAMPLE;
+weigh();
+</script>
+</body>
+</html>
