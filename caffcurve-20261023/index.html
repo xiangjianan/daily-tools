@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CAFFCURVE · 咖啡因半衰期曲线</title>
+<meta name="description" content="点几杯今天的咖啡，立刻画出体内咖啡因衰减曲线：就寝还剩多少、今晚最后一杯 deadline 几点。全部本地计算，零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--line:#21262d;--fg:#e6edf3;--mut:#8b949e;
+  --acc:#58a6ff;--amber:#e3b341;--red:#f85149;--green:#3fb950;--violet:#bc8cff;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(18px,env(safe-area-inset-top)) 16px max(32px,env(safe-area-inset-bottom));
+  max-width:860px;margin:0 auto}
+h1{font-size:20px;letter-spacing:.3px}
+h1 .zh{color:var(--mut);font-weight:400;font-size:15px;margin-left:8px}
+.sub{color:var(--mut);font-size:13px;margin:4px 0 18px}
+section{margin-bottom:18px}
+
+/* ---- stat cards ---- */
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.stat .k{color:var(--mut);font-size:12px}
+.stat .v{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.3}
+.stat .v small{font-size:13px;color:var(--mut);font-weight:400}
+.stat .note{font-size:12px;color:var(--mut)}
+.verdict{border-radius:8px;padding:2px 8px;font-size:12px;display:inline-block;margin-top:4px}
+.v-red{background:rgba(248,81,73,.15);color:var(--red)}
+.v-amber{background:rgba(227,179,65,.15);color:var(--amber)}
+.v-green{background:rgba(63,185,80,.15);color:var(--green)}
+
+/* ---- chart ---- */
+.chartwrap{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px}
+canvas{display:block;width:100%;height:250px}
+.chart-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:var(--mut);font-size:14px;pointer-events:none;text-align:center;padding:0 20px}
+.chart-hint.hide{display:none}
+
+/* ---- controls ---- */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.rowline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lab{color:var(--mut);font-size:13px;min-width:86px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:#1c2129;color:var(--fg);border-radius:20px;
+  padding:6px 12px;font-size:13.5px;cursor:pointer;user-select:none;-webkit-user-select:none;
+  touch-action:manipulation}
+.chip:active{transform:scale(.96)}
+.chip:hover{border-color:var(--acc)}
+.chip b{color:var(--amber);font-weight:600}
+.chip.custom input{width:52px;background:#0d1117;border:1px solid var(--line);color:var(--fg);
+  border-radius:6px;padding:1px 4px;font-size:13px}
+.btn{border:1px solid var(--acc);background:transparent;color:var(--acc);border-radius:8px;
+  padding:7px 14px;font-size:13.5px;cursor:pointer;touch-action:manipulation}
+.btn:hover{background:rgba(88,166,255,.12)}
+.btn.ghost{border-color:var(--line);color:var(--mut)}
+.btn.ghost:hover{color:var(--fg);background:#1c2129}
+
+.cups{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.cup{display:flex;align-items:center;gap:8px;background:#1c2129;border:1px solid var(--line);
+  border-radius:8px;padding:6px 10px;font-size:13.5px}
+.cup input[type=time]{background:#0d1117;border:1px solid var(--line);color:var(--fg);
+  border-radius:6px;padding:2px 6px;font-size:13px;font-variant-numeric:tabular-nums}
+.cup .mg{color:var(--amber)}
+.cup .name{color:var(--mut)}
+.cup .del{margin-left:auto;border:none;background:none;color:var(--mut);font-size:16px;
+  cursor:pointer;padding:2px 8px}
+.cup .del:hover{color:var(--red)}
+.empty-cups{color:var(--mut);font-size:13px;padding:8px 2px}
+
+input[type=range]{flex:1;min-width:140px;accent-color:var(--acc)}
+input[type=time]{color-scheme:dark}
+.hl-val{color:var(--acc);font-variant-numeric:tabular-nums;min-width:64px;font-size:13.5px}
+.presets{display:flex;gap:6px}
+.pbtn{border:1px solid var(--line);background:#0d1117;color:var(--mut);border-radius:6px;
+  padding:3px 9px;font-size:12.5px;cursor:pointer;touch-action:manipulation}
+.pbtn.on{border-color:var(--acc);color:var(--acc)}
+
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:#1f6feb;color:#fff;border-radius:8px;padding:8px 18px;font-size:13.5px;
+  opacity:0;transition:opacity .25s;pointer-events:none;z-index:9}
+.toast.show{opacity:1}
+.foot{color:var(--mut);font-size:12px;margin-top:22px;line-height:1.7}
+.foot b{color:var(--fg);font-weight:600}
+
+@media (max-width:560px){
+  .stats{grid-template-columns:1fr 1fr}
+  .stat .v{font-size:21px}
+  canvas{height:220px}
+  .lab{min-width:auto}
+}
+</style>
+</head>
+<body>
+<h1>☕ CAFFCURVE<span class="zh">咖啡因半衰期曲线</span></h1>
+<p class="sub">点几杯今天喝下的咖啡因，立刻看到体内的实时余量、就寝时刻的残留、今晚最后一杯的 deadline——不是打卡记录，是「还能不能再来一杯」的决策器。全部本地计算，零上传。</p>
+
+<section class="stats">
+  <div class="stat"><div class="k">此刻体内</div><div class="v"><span id="nowMg">0</span><small> mg</small></div>
+    <div class="note" id="nowEq">≈ 0 杯意式浓缩</div></div>
+  <div class="stat"><div class="k" id="bedLabel">就寝时（23:00）将剩余</div><div class="v"><span id="bedMg">0</span><small> mg</small></div>
+    <div class="note">以体内 50mg 为「基本清零」线</div></div>
+  <div class="stat"><div class="k">今晚判定</div>
+    <div><span class="verdict v-green" id="verdict">✅ 完全清零</span></div>
+    <div class="note" id="verdictNote" style="margin-top:6px">加杯子后实时更新</div></div>
+</section>
+
+<section>
+  <div class="chartwrap">
+    <canvas id="cv"></canvas>
+    <div class="chart-hint" id="chartHint">↑ 点下面任意一杯饮品，曲线马上出现</div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="rowline">
+    <span class="lab">加一杯</span>
+    <div class="chips" id="chips"></div>
+  </div>
+  <div class="cups" id="cups"><div class="empty-cups">还没有记录——点上面的饮品按钮，或用「现在喝一杯」。</div></div>
+  <div class="rowline" style="margin-top:12px">
+    <button class="btn" id="drinkNow">⚡ 现在喝一杯（美式 95mg）</button>
+    <button class="btn ghost" id="clearAll">清空</button>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="rowline">
+    <span class="lab">代谢速度</span>
+    <div class="presets">
+      <button class="pbtn" data-hl="4">快 · 4h</button>
+      <button class="pbtn on" data-hl="5">标准 · 5h</button>
+      <button class="pbtn" data-hl="7">慢 · 7h</button>
+    </div>
+    <input type="range" id="hl" min="3" max="8" step="0.5" value="5" aria-label="半衰期小时数">
+    <span class="hl-val">半衰期 <b id="hlOut">5</b>h</span>
+  </div>
+  <div class="rowline" style="margin-top:10px">
+    <span class="lab">今晚就寝</span>
+    <input type="time" id="bedtime" value="23:00">
+    <span class="note" id="bedNote" style="color:var(--mut);font-size:12px"></span>
+  </div>
+</section>
+
+<section class="actions">
+  <button class="btn" id="copyReport">📋 复制报告</button>
+</section>
+
+<p class="foot"><b>它怎么算：</b>每杯饮品按 <b>余量 = 剂量 × 0.5^(经过小时 ÷ 半衰期)</b> 独立衰减后求和。半衰期因人而异（基因 CYP1A2、吸烟、药物都会影响），默认 5h 只是统计均值——想要更准，喝一杯实测：曲线会在你身上走出自己的形状。<br>本工具只做估算，不作健康建议；孕期内摄入上限请遵医嘱。数据全程留在你的浏览器里。</p>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ================= data ================= */
+var DRINKS = [
+  {e:"☕", name:"意式浓缩", mg:65},
+  {e:"🥛", name:"拿铁",    mg:75},
+  {e:"🍵", name:"美式/手冲", mg:95},
+  {e:"🧋", name:"奶茶",    mg:100},
+  {e:"🍃", name:"绿茶",    mg:45},
+  {e:"🥤", name:"可乐",    mg:35},
+  {e:"⚡", name:"能量饮",  mg:80}
+];
+var SOFT = 50, HARD = 100;           // mg thresholds: 基本清零 / 明显影响
+var state = { cups: [], hl: 5, bed: 23*60 };
+
+/* ================= helpers ================= */
+function $(id){ return document.getElementById(id); }
+function nowMin(){ var d = new Date(); return d.getHours()*60 + d.getMinutes(); }
+function pad2(n){ return (n<10?"0":"")+n; }
+function fmtMin(m){ m = ((m%1440)+1440)%1440; return pad2(Math.floor(m/60))+":"+pad2(Math.round(m%60)); }
+
+/* amount of caffeine in body at absolute minute t (today timeline; bed may exceed 1440) */
+function amountAt(t){
+  var sum = 0;
+  for (var i=0;i<state.cups.length;i++){
+    var c = state.cups[i];
+    if (t >= c.min){
+      var hrs = (t - c.min)/60;
+      sum += c.mg * Math.pow(0.5, hrs/state.hl);
+    }
+  }
+  return sum;
+}
+function verdictOf(mg){
+  if (mg > HARD) return {cls:"v-red",   txt:"🔴 明显影响睡眠", note:"就寝时体内还有 "+Math.round(mg)+"mg，相当于半杯多咖啡在血液里——入睡变慢、深睡变浅的风险高。"};
+  if (mg > SOFT) return {cls:"v-amber", txt:"🟠 可能拖慢入睡", note:"就寝时剩 "+Math.round(mg)+"mg，已过基本清零线（50mg）。敏感体质建议把最后一杯提前。"};
+  return               {cls:"v-green", txt:"🟢 基本清零",   note:"就寝时体内仅剩 "+Math.round(mg)+"mg，低于 50mg 基本清零线，可以安心睡。"};
+}
+/* 今晚最后一杯 deadline：此刻再喝一杯标准 100mg，就寝时须 ≤ SOFT */
+function lastCallMin(){
+  var bed = bedAbs();
+  var hrs = state.hl * Math.log2(100/SOFT);   // 100mg 衰减到 50mg 需要的半衰期数 = 1
+  return bed - hrs*60;
+}
+function bedAbs(){
+  var n = nowMin();
+  return state.bed > n ? state.bed : state.bed + 1440; // 就寝已过 → 按明晚算
+}
+
+/* ================= render ================= */
+var cv, ctx, dpr = 1;
+function setupCanvas(){
+  cv = $("cv"); ctx = cv.getContext("2d");
+  dpr = window.devicePixelRatio || 1;
+}
+function renderChart(){
+  if (!cv) setupCanvas();
+  var wrap = cv.parentElement;
+  var W = wrap.clientWidth - 16, H = 250;
+  if (window.innerWidth <= 560) H = 220;
+  cv.width = W*dpr; cv.height = H*dpr;
+  cv.style.height = H+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  var hint = $("chartHint");
+  if (state.cups.length === 0){ hint.classList.remove("hide"); return; }
+  hint.classList.add("hide");
+
+  var n = nowMin(), bed = bedAbs();
+  var x0 = n - 60, x1 = bed + 180;
+  for (var i=0;i<state.cups.length;i++){ x0 = Math.min(x0, state.cups[i].min-30); x1 = Math.max(x1, state.cups[i].min+120); }
+  x0 = Math.max(0, x0);
+  var pad = {l:34, r:10, t:12, b:20};
+  var pw = W-pad.l-pad.r, ph = H-pad.t-pad.b;
+  var peak = 10;
+  var steps = Math.max(2, Math.floor(pw/3));
+  for (var s=0;s<=steps;s++){
+    var t = x0 + (x1-x0)*s/steps;
+    peak = Math.max(peak, amountAt(t));
+  }
+  var yMax = Math.ceil(Math.max(peak, HARD+20)/50)*50;
+  function X(t){ return pad.l + (t-x0)/(x1-x0)*pw; }
+  function Y(mg){ return pad.t + ph - mg/yMax*ph; }
+
+  // hour gridlines + labels
+  ctx.font = "10px sans-serif"; ctx.textAlign = "center";
+  var h0 = Math.ceil(x0/60)*60;
+  for (var hh=h0; hh<=x1; hh+=60){
+    var gx = X(hh);
+    ctx.strokeStyle = "#21262d"; ctx.beginPath();
+    ctx.moveTo(gx, pad.t); ctx.lineTo(gx, pad.t+ph); ctx.stroke();
+    ctx.fillStyle = "#8b949e"; ctx.fillText(fmtMin(hh), gx, H-6);
+  }
+  // y gridlines
+  ctx.textAlign = "right";
+  for (var yy=0; yy<=yMax; yy+=50){
+    var gy = Y(yy);
+    ctx.strokeStyle = "#21262d"; ctx.beginPath();
+    ctx.moveTo(pad.l, gy); ctx.lineTo(pad.l+pw, gy); ctx.stroke();
+    ctx.fillStyle = "#8b949e"; ctx.fillText(yy, pad.l-4, gy+3);
+  }
+  // threshold dashed lines
+  ctx.setLineDash([4,4]);
+  ctx.strokeStyle = SOFT>=yMax ? "#21262d" : "#3fb950";
+  if (SOFT < yMax){ ctx.beginPath(); ctx.moveTo(pad.l, Y(SOFT)); ctx.lineTo(pad.l+pw, Y(SOFT)); ctx.stroke();
+    ctx.fillStyle = "#3fb950"; ctx.textAlign="left"; ctx.fillText("50 清零线", pad.l+4, Y(SOFT)-3); }
+  if (HARD < yMax){ ctx.strokeStyle = "#f85149"; ctx.beginPath(); ctx.moveTo(pad.l, Y(HARD)); ctx.lineTo(pad.l+pw, Y(HARD)); ctx.stroke();
+    ctx.fillStyle = "#f85149"; ctx.textAlign="left"; ctx.fillText("100 警戒线", pad.l+4, Y(HARD)-3); }
+  ctx.setLineDash([]);
+
+  // curve
+  ctx.beginPath();
+  var first = true;
+  for (var s2=0;s2<=steps;s2++){
+    var t2 = x0 + (x1-x0)*s2/steps;
+    var mx = X(t2), my = Y(Math.min(amountAt(t2), yMax));
+    if (first){ ctx.moveTo(mx,my); first=false; } else ctx.lineTo(mx,my);
+  }
+  ctx.strokeStyle = "#e3b341"; ctx.lineWidth = 2; ctx.stroke();
+  // fill under curve
+  ctx.lineTo(X(x1), Y(0)); ctx.lineTo(X(x0), Y(0)); ctx.closePath();
+  var grad = ctx.createLinearGradient(0,pad.t,0,pad.t+ph);
+  grad.addColorStop(0,"rgba(227,179,65,.28)"); grad.addColorStop(1,"rgba(227,179,65,.02)");
+  ctx.fillStyle = grad; ctx.fill(); ctx.lineWidth = 1;
+
+  // bedtime line
+  var bx = X(bed);
+  ctx.strokeStyle = "#bc8cff"; ctx.setLineDash([6,4]);
+  ctx.beginPath(); ctx.moveTo(bx, pad.t); ctx.lineTo(bx, pad.t+ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#bc8cff"; ctx.textAlign="center"; ctx.font="11px sans-serif";
+  ctx.fillText("就寝", bx, pad.t+10);
+  // bed amount dot
+  var bm = amountAt(bed);
+  ctx.beginPath(); ctx.arc(bx, Y(Math.min(bm,yMax)), 4, 0, Math.PI*2);
+  ctx.fillStyle = "#bc8cff"; ctx.fill();
+
+  // now line
+  var nx = X(n);
+  ctx.strokeStyle = "#58a6ff";
+  ctx.beginPath(); ctx.moveTo(nx, pad.t); ctx.lineTo(nx, pad.t+ph); ctx.stroke();
+  ctx.fillStyle = "#58a6ff"; ctx.fillText("现在", nx, pad.t+22);
+  var nm = amountAt(n);
+  ctx.beginPath(); ctx.arc(nx, Y(Math.min(nm,yMax)), 4, 0, Math.PI*2);
+  ctx.fillStyle = "#58a6ff"; ctx.fill();
+
+  // cup dots
+  for (var ci=0; ci<state.cups.length; ci++){
+    var c2 = state.cups[ci], cx2 = X(c2.min), cy2 = Y(Math.min(amountAt(c2.min), yMax));
+    ctx.beginPath(); ctx.arc(cx2, cy2, 5, 0, Math.PI*2);
+    ctx.fillStyle = "#e3b341"; ctx.fill();
+    ctx.strokeStyle = "#0d1117"; ctx.lineWidth = 2; ctx.stroke();
+    ctx.font = "12px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(DRINKS.filter(function(d){return d.name===c2.name;}).map(function(d){return d.e;})[0] || "☕", cx2, cy2-9);
+  }
+}
+
+function renderStats(){
+  var n = nowMin(), bed = bedAbs();
+  var nm = amountAt(n), bm = amountAt(bed);
+  $("nowMg").textContent = Math.round(nm);
+  $("nowEq").textContent = "≈ " + (nm/65).toFixed(1) + " 杯意式浓缩";
+  $("bedMg").textContent = Math.round(bm);
+  $("bedLabel").textContent = "就寝时（" + fmtMin(state.bed) + "）将剩余";
+  var v = verdictOf(bm);
+  var vd = $("verdict");
+  vd.textContent = v.txt;
+  vd.className = "verdict " + v.cls;
+  $("verdictNote").textContent = state.cups.length ? v.note : "加杯子后实时更新";
+
+  var lc = lastCallMin(), bn = $("bedNote");
+  var future = state.cups.filter(function(c){return c.min<=bed;}).length > 0 || nm > 0;
+  if (nm > SOFT){
+    var mins = state.hl*60*Math.log2(nm/SOFT);
+    bn.textContent = "此刻余量降到 50mg 以下还需约 " + (mins>=60 ? Math.round(mins/60)+" 小时" : Math.round(mins)+" 分钟");
+  } else if (lc > n && state.bed > n){
+    bn.textContent = "今晚最后一杯标准杯（100mg）deadline ≈ " + fmtMin(lc);
+  } else if (lc > n){
+    bn.textContent = "按明晚就寝算，最后一杯 deadline ≈ " + fmtMin(lc);
+  } else {
+    bn.textContent = "已过今晚 deadline——再喝就得做好就寝时仍有残留的准备了";
+  }
+}
+
+function renderCups(){
+  var box = $("cups");
+  box.innerHTML = "";
+  if (state.cups.length === 0){
+    box.innerHTML = '<div class="empty-cups">还没有记录——点上面的饮品按钮，或用「现在喝一杯」。</div>';
+    return;
+  }
+  var sorted = state.cups.map(function(c,i){return {c:c,i:i};})
+    .sort(function(a,b){return a.c.min-b.c.min;});
+  sorted.forEach(function(o){
+    var row = document.createElement("div"); row.className = "cup";
+    var t = document.createElement("input");
+    t.type = "time"; t.value = fmtMin(o.c.min);
+    t.addEventListener("change", function(){
+      var p = t.value.split(":");
+      if (p.length===2 && !isNaN(+p[0]) && !isNaN(+p[1])){
+        o.c.min = (+p[0])*60 + (+p[1]);
+        renderAll();
+      }
+    });
+    var nm = document.createElement("span"); nm.className="name"; nm.textContent = o.c.name;
+    var mg = document.createElement("span"); mg.className="mg"; mg.textContent = o.c.mg+"mg";
+    var del = document.createElement("button"); del.className="del"; del.textContent="×"; del.setAttribute("aria-label","删除这杯");
+    del.addEventListener("click", function(){ state.cups.splice(o.i,1); renderAll(); });
+    row.appendChild(t); row.appendChild(nm); row.appendChild(mg); row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+
+function renderAll(){ renderStats(); renderChart(); renderCups(); }
+
+/* ================= actions ================= */
+function addCup(min, name, mg){
+  state.cups.push({min:min, name:name, mg:mg});
+  renderAll();
+}
+function buildChips(){
+  var box = $("chips");
+  DRINKS.forEach(function(d){
+    var b = document.createElement("button");
+    b.className = "chip";
+    b.innerHTML = d.e + " " + d.name + " <b>" + d.mg + "</b>";
+    b.addEventListener("click", function(){ addCup(nowMin(), d.name, d.mg); });
+    box.appendChild(b);
+  });
+  var cs = document.createElement("div"); cs.className = "chip custom";
+  cs.innerHTML = '自定义 <input type="number" min="1" max="800" placeholder="mg" aria-label="自定义毫克数"> mg';
+  var inp = cs.querySelector("input");
+  function commit(){
+    var v = Math.round(+inp.value);
+    if (!v || v<=0){ toast("先填一个大于 0 的毫克数"); return; }
+    if (v>800){ v = 800; }
+    addCup(nowMin(), "自定义", v);
+    inp.value = "";
+  }
+  inp.addEventListener("change", commit);
+  box.appendChild(cs);
+}
+function toast(msg){
+  var t = $("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._tm);
+  t._tm = setTimeout(function(){ t.classList.remove("show"); }, 2200);
+}
+function reportText(){
+  var n = nowMin(), bed = bedAbs();
+  var nm = amountAt(n), bm = amountAt(bed);
+  var lines = [];
+  lines.push("☕ CAFFCURVE 咖啡因报告 · " + new Date().toLocaleString());
+  lines.push("代谢半衰期：" + state.hl + "h ｜ 就寝：" + fmtMin(state.bed));
+  if (state.cups.length){
+    lines.push("今日摄入：");
+    state.cups.slice().sort(function(a,b){return a.min-b.min;}).forEach(function(c){
+      lines.push("  · " + fmtMin(c.min) + " " + c.name + " " + c.mg + "mg");
+    });
+    var total = state.cups.reduce(function(s,c){return s+c.mg;},0);
+    lines.push("  合计 " + total + "mg");
+  } else {
+    lines.push("今日摄入：无记录");
+  }
+  lines.push("此刻体内 ≈ " + Math.round(nm) + "mg（" + (nm/65).toFixed(1) + " 杯意式浓缩）");
+  var v = verdictOf(bm);
+  lines.push("就寝时将剩余 ≈ " + Math.round(bm) + "mg → " + v.txt.replace(/^[^\s]+\s/,""));
+  if (nm > SOFT){
+    var mins = state.hl*60*Math.log2(nm/SOFT);
+    lines.push("降到 50mg 以下还需约 " + (mins>=60 ? Math.round(mins/60)+" 小时" : Math.round(mins)+" 分钟") + "。");
+  }
+  lines.push("——由 CAFFCURVE 本地生成：https://xiangjianan.github.io/daily-tools/caffcurve-20261023/");
+  return lines.join("\n");
+}
+
+/* ================= init ================= */
+buildChips();
+setupCanvas();
+renderAll();
+$("drinkNow").addEventListener("click", function(){ addCup(nowMin(), "美式/手冲", 95); });
+$("clearAll").addEventListener("click", function(){ state.cups = []; renderAll(); toast("已清空"); });
+$("hl").addEventListener("input", function(){
+  state.hl = +this.value;
+  $("hlOut").textContent = this.value;
+  document.querySelectorAll(".pbtn").forEach(function(b){
+    b.classList.toggle("on", +b.dataset.hl === state.hl);
+  });
+  renderStats(); renderChart();
+});
+document.querySelectorAll(".pbtn").forEach(function(b){
+  b.addEventListener("click", function(){
+    state.hl = +b.dataset.hl;
+    $("hl").value = state.hl;
+    $("hlOut").textContent = state.hl;
+    document.querySelectorAll(".pbtn").forEach(function(x){ x.classList.toggle("on", x===b); });
+    renderStats(); renderChart();
+  });
+});
+$("bedtime").addEventListener("change", function(){
+  var p = this.value.split(":");
+  if (p.length===2 && !isNaN(+p[0]) && !isNaN(+p[1])){
+    state.bed = (+p[0])*60 + (+p[1]);
+    renderAll();
+  }
+});
+$("copyReport").addEventListener("click", function(){
+  var txt = reportText();
+  function ok(){ toast("报告已复制 ✓"); }
+  function fail(){
+    var ta = document.createElement("textarea");
+    ta.value = txt; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); ok(); } catch(e){ toast("复制失败，请手动选择"); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(ok, fail);
+  } else fail();
+});
+window.addEventListener("resize", function(){ renderChart(); });
+/* 分钟级自刷新：曲线随时间推移缓慢前进 */
+setInterval(function(){ if (state.cups.length){ renderStats(); renderChart(); } }, 60000);
+</script>
+</body>
+</html>
