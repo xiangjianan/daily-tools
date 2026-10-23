@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FontPeek · 字体清点镜 — 你机器里的字体库，一眼清点</title>
+<meta name="description" content="本地清点电脑里已安装的全部字体：canvas 宽度探测、示例文字实时刷新、点选即组 font-family 栈，全程本地零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔤</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2129;--fg:#e6edf3;--mut:#8b949e;
+  --line:#21262d;--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--danger:#f85149;
+  --ring:rgba(88,166,255,.55);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg);color:var(--fg);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 16px 120px;
+}
+main{max-width:1080px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+h1 .en{color:var(--acc);font-weight:700}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 4px}
+.stat{display:inline-flex;align-items:center;gap:6px;margin:10px 0 0;font-size:12.5px;color:var(--mut);
+  background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+.stat b{color:var(--fg);font-variant-numeric:tabular-nums}
+.stat .dot{width:7px;height:7px;border-radius:50%;background:var(--warn);flex:none}
+.stat.done .dot{background:var(--ok)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:16px}
+.panel label{display:block;font-size:12px;color:var(--mut);margin-bottom:6px;letter-spacing:.5px}
+.sample-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#sample{
+  flex:1;min-width:220px;background:var(--bg);border:1px solid var(--line);border-radius:8px;
+  color:var(--fg);font-size:14px;padding:10px 12px;outline:none;
+}
+#sample:focus{border-color:var(--acc)}
+.size-wrap{display:flex;align-items:center;gap:8px;color:var(--mut);font-size:12.5px;white-space:nowrap}
+input[type=range]{accent-color:var(--acc);width:110px}
+.pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.pill{
+  border:1px solid var(--line);background:var(--bg);color:var(--mut);border-radius:999px;
+  padding:5px 13px;font-size:12.5px;cursor:pointer;user-select:none;transition:.15s;
+}
+.pill:hover{color:var(--fg);border-color:#30363d}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#0d1117;font-weight:600}
+#q{
+  background:var(--bg);border:1px solid var(--line);border-radius:999px;color:var(--fg);
+  font-size:12.5px;padding:5px 14px;outline:none;width:170px;
+}
+#q:focus{border-color:var(--acc)}
+.hint{font-size:12px;color:var(--mut);margin-top:10px}
+.hint kbd{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:11px}
+
+#grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));
+  gap:12px;margin-top:18px;
+}
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+  cursor:pointer;transition:.15s;position:relative;overflow:hidden;
+}
+.card:hover{border-color:#30363d;background:var(--panel2)}
+.card.sel{border-color:var(--acc);box-shadow:0 0 0 1px var(--ring)}
+.card .meta{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.card .fname{font-size:12.5px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .cat{
+  flex:none;font-size:10.5px;border-radius:4px;padding:1px 6px;letter-spacing:.3px;
+  background:var(--panel2);border:1px solid var(--line);color:var(--mut);
+}
+.cat.sans{color:#58a6ff}.cat.serif{color:#bc8cff}.cat.mono{color:#3fb950}
+.cat.cjk{color:#d29922}.cat.fun{color:#f778ba}
+.card .demo{
+  font-size:22px;line-height:1.35;word-break:break-all;color:var(--fg);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;min-height:60px;
+}
+.card .demo.dim{opacity:.35}
+.card .tick{
+  position:absolute;top:8px;right:8px;width:20px;height:20px;border-radius:50%;
+  background:var(--acc);color:#0d1117;font-size:13px;font-weight:700;
+  display:none;align-items:center;justify-content:center;
+}
+.card.sel .tick{display:flex}
+.skeleton{background:var(--panel);border:1px dashed var(--line);border-radius:10px;height:120px;
+  animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.45}50%{opacity:.9}}
+.empty{
+  grid-column:1/-1;text-align:center;color:var(--mut);padding:48px 12px;font-size:14px;
+}
+.empty button{margin-top:12px}
+
+.btn{
+  border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:8px;
+  padding:7px 14px;font-size:13px;cursor:pointer;transition:.15s;
+}
+.btn:hover{border-color:var(--acc);color:var(--acc)}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:#0d1117;font-weight:600}
+.btn.primary:hover{filter:brightness(1.1);color:#0d1117}
+
+#bar{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;
+  background:rgba(22,27,34,.92);backdrop-filter:blur(8px);
+  border-top:1px solid var(--line);
+  padding:10px 16px max(10px,env(safe-area-inset-bottom));
+  transform:translateY(110%);transition:transform .22s ease;
+}
+#bar.show{transform:none}
+.bar-in{max-width:1080px;margin:0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.stack-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:180px}
+.chip{
+  display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--fg);
+  background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:3px 6px 3px 10px;max-width:220px;
+}
+.chip span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip b{cursor:pointer;color:var(--mut);font-weight:400;padding:0 4px}
+.chip b:hover{color:var(--danger)}
+#stackPreview{
+  flex-basis:100%;font-size:12.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#stackPreview code{color:var(--fg)}
+
+#toast{
+  position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);
+  background:var(--ok);color:#04140a;font-weight:600;font-size:13px;
+  border-radius:8px;padding:8px 18px;opacity:0;pointer-events:none;transition:.25s;z-index:99;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+footer{margin-top:26px;color:var(--mut);font-size:12px;line-height:1.8}
+footer a{color:var(--acc);text-decoration:none}
+@media (max-width:560px){
+  body{padding-bottom:150px}
+  #grid{grid-template-columns:1fr 1fr;gap:8px}
+  .card{padding:10px}
+  .card .demo{font-size:17px;min-height:48px}
+  h1{font-size:18px}
+}
+@media (max-width:380px){#grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="en">FONTPEEK</span> 字体清点镜</h1>
+  <p class="sub">每台电脑都悄悄装着上百款字体，却没人知道它们是谁——打开这页，一眼清点，全程本地。</p>
+  <span class="stat" id="stat"><span class="dot"></span><span id="statText">正在探测本机字体…</span></span>
+
+  <div class="panel">
+    <label for="sample">示例文字（所有卡片实时刷新）</label>
+    <div class="sample-row">
+      <input id="sample" type="text" spellcheck="false"
+        value="Sphinx of black quartz, judge my vow 0123 永东国爱风骨">
+      <span class="size-wrap">字号 <input type="range" id="size" min="15" max="46" value="22">
+        <b id="sizeVal" style="color:var(--fg)">22</b>px</span>
+    </div>
+    <div class="pills" id="cats">
+      <button class="pill on" data-cat="all">全部</button>
+      <button class="pill" data-cat="sans">无衬线</button>
+      <button class="pill" data-cat="serif">衬线</button>
+      <button class="pill" data-cat="mono">等宽</button>
+      <button class="pill" data-cat="cjk">中文</button>
+      <button class="pill" data-cat="fun">手写·展示</button>
+      <input id="q" type="search" placeholder="搜索字体名…" autocomplete="off">
+      <button class="pill" id="reset">↺ 恢复默认示例</button>
+    </div>
+    <p class="hint">点卡片<b>加入/移出选区</b>，选中后底部组 <kbd>font-family</kbd> 栈，一键复制 CSS；探测原理是 canvas 宽度对比，同名变体可能合并。</p>
+  </div>
+
+  <div id="grid"></div>
+
+  <footer>
+    FontPeek · 每日创意小工具 #42 · 字体清点在你的浏览器本地完成，不采集、不上传任何信息。<br>
+    由 <a href="https://xiangjianan.github.io/daily-tools/">daily-tools</a> 系列出品 · 第 42 期 · 2026-10-24
+  </footer>
+</main>
+
+<div id="bar">
+  <div class="bar-in">
+    <div class="stack-chips" id="chips"></div>
+    <button class="btn" id="clearSel">清空</button>
+    <button class="btn primary" id="copyCss">复制 font-family CSS</button>
+    <button class="btn" id="copyList">复制名称列表</button>
+    <div id="stackPreview"></div>
+  </div>
+</div>
+<div id="toast">已复制</div>
+
+<script>
+'use strict';
+/* ---------------- 候选字体清单（分类: sans/serif/mono/cjk/fun） ---------------- */
+const CANDIDATES = [
+  // —— 经典 web-safe / 跨平台 ——
+  ['Arial','sans'],['Helvetica','sans'],['Helvetica Neue','sans'],['Verdana','sans'],
+  ['Tahoma','sans'],['Trebuchet MS','sans'],['Segoe UI','sans'],['Calibri','sans'],
+  ['Candara','sans'],['Corbel','sans'],['Franklin Gothic Medium','sans'],['Century Gothic','sans'],
+  ['Times New Roman','serif'],['Georgia','serif'],['Garamond','serif'],['Cambria','serif'],
+  ['Palatino','serif'],['Palatino Linotype','serif'],['Book Antiqua','serif'],['Baskerville','serif'],
+  ['Didot','serif'],['Bodoni MT','serif'],['Hoefler Text','serif'],['Charter','serif'],
+  ['Courier New','mono'],['Consolas','mono'],['Menlo','mono'],['Monaco','mono'],
+  ['Andale Mono','mono'],['Lucida Console','mono'],['Lucida Sans Typewriter','mono'],
+  // —— macOS 常见 ——
+  ['Avenir','sans'],['Avenir Next','sans'],['Futura','sans'],['Gill Sans','sans'],
+  ['Optima','sans'],['Geneva','sans'],['Skia','fun'],['American Typewriter','fun'],
+  ['Marker Felt','fun'],['Bradley Hand','fun'],['Chalkboard SE','fun'],['Chalkduster','fun'],
+  ['Noteworthy','fun'],['Snell Roundhand','fun'],['Savoye LET','fun'],['Papyrus','fun'],
+  ['Trattatello','fun'],['Zapfino','fun'],
+  // —— Windows 常见 ——
+  ['Impact','fun'],['Comic Sans MS','fun'],['Segoe Script','fun'],['Segoe Print','fun'],
+  ['Ink Free','fun'],['Bahnschrift','sans'],['Sitka','serif'],['Constantia','serif'],
+  ['Georgia Pro','serif'],['Rockwell','serif'],['Copperplate','fun'],
+  // —— Linux 常见 ——
+  ['Ubuntu','sans'],['Cantarell','sans'],['DejaVu Sans','sans'],['DejaVu Serif','serif'],
+  ['DejaVu Sans Mono','mono'],['Liberation Sans','sans'],['Liberation Serif','serif'],
+  ['Liberation Mono','mono'],['FreeSans','sans'],['FreeSerif','serif'],['FreeMono','mono'],
+  ['Fira Sans','sans'],['Noto Sans','sans'],['Noto Serif','serif'],['Noto Mono','mono'],
+  ['Carlito','sans'],['Caladea','serif'],
+  // —— 开发者/设计圈流行（装了才有）——
+  ['Inter','sans'],['Roboto','sans'],['Roboto Mono','mono'],['Roboto Slab','serif'],
+  ['Open Sans','sans'],['Lato','sans'],['Montserrat','sans'],['Oswald','sans'],
+  ['Merriweather','serif'],['Playfair Display','serif'],['Raleway','sans'],['Nunito','sans'],
+  ['Poppins','sans'],['Rubik','sans'],['Work Sans','sans'],['PT Sans','sans'],['PT Serif','serif'],
+  ['JetBrains Mono','mono'],['Fira Code','mono'],['Source Code Pro','mono'],['IBM Plex Sans','sans'],
+  ['IBM Plex Mono','mono'],['IBM Plex Serif','serif'],['Inconsolata','mono'],['Space Mono','mono'],
+  ['Cascadia Code','mono'],['SF Mono','mono'],['Ghostty','mono'],['Iosevka','mono'],
+  // —— 中文字体 ——
+  ['PingFang SC','cjk'],['Hiragino Sans GB','cjk'],['Hiragino Mincho ProN','cjk'],
+  ['Microsoft YaHei','cjk'],['微软雅黑','cjk'],['SimHei','cjk'],['黑体','cjk'],
+  ['SimSun','cjk'],['宋体','cjk'],['NSimSun','cjk'],['新宋体','cjk'],
+  ['KaiTi','cjk'],['楷体','cjk'],['STKaiti','cjk'],['华文楷体','cjk'],
+  ['FangSong','cjk'],['仿宋','cjk'],['STFangsong','cjk'],['华文仿宋','cjk'],
+  ['STHeiti','cjk'],['华文黑体','cjk'],['STSong','cjk'],['华文宋体','cjk'],
+  ['STXihei','cjk'],['华文细黑','cjk'],['STZhongsong','cjk'],['华文中宋','cjk'],
+  ['LiSong Pro','cjk'],['LiHei Pro','cjk'],['怀源体','fun'],
+  ['Noto Sans CJK SC','cjk'],['Noto Serif CJK SC','cjk'],['Noto Sans SC','cjk'],['Noto Serif SC','cjk'],
+  ['Source Han Sans SC','cjk'],['思源黑体','cjk'],['Source Han Serif SC','cjk'],['思源宋体','cjk'],
+  ['WenQuanYi Micro Hei','cjk'],['文泉驿微米黑','cjk'],['WenQuanYi Zen Hei','cjk'],['文泉驿正黑','cjk'],
+  ['MiSans','cjk'],['HarmonyOS Sans SC','cjk'],['OPPO Sans','cjk'],['vivo Sans','cjk'],
+  ['Alibaba PuHuiTi','cjk'],['阿里巴巴普惠体','cjk'],['SMineUI','cjk'],['MiSans VF','cjk'],
+];
+
+const CAT_LABEL = {sans:'无衬线',serif:'衬线',mono:'等宽',cjk:'中文',fun:'手写·展示'};
+const CAT_ORDER = {sans:0,serif:1,mono:2,cjk:3,fun:4};
+const DEFAULT_SAMPLE = 'Sphinx of black quartz, judge my vow 0123 永东国爱风骨';
+
+/* ---------------- canvas 宽度探测 ---------------- */
+const cvs = document.createElement('canvas');
+const ctx = cvs.getContext('2d');
+const PROBE = 'mmmmmmmmmmlliWWWQ##001 永东国爱风骨';
+const BASES = ['monospace','serif','sans-serif'];
+const q = s => '"' + s.replace(/"/g,"'") + '"';
+function widthOf(font, base){
+  ctx.font = '72px ' + q(font) + ',' + base;
+  return ctx.measureText(PROBE).width;
+}
+function detectInstalled(){
+  const baseW = {};
+  BASES.forEach(b => {
+    ctx.font = '72px ' + b;
+    baseW[b] = ctx.measureText(PROBE).width;
+  });
+  const found = [];
+  CANDIDATES.forEach(([name, cat]) => {
+    let ok = false;
+    for (const b of BASES){
+      if (Math.abs(widthOf(name,b) - baseW[b]) > 1){ ok = true; break; }
+    }
+    if (ok) found.push({name, cat});
+  });
+  found.sort((a,b) =>
+    (CAT_ORDER[a.cat]-CAT_ORDER[b.cat]) || a.name.localeCompare(b.name,'zh-Hans-CN'));
+  return found;
+}
+
+/* ---------------- 状态 ---------------- */
+let installed = [];
+let sel = [];            // 选区（点击顺序）
+let curCat = 'all';
+let keyword = '';
+let sampleText = DEFAULT_SAMPLE;
+let fontSize = 22;
+
+const $ = id => document.getElementById(id);
+const grid = $('grid'), stat = $('stat'), statText = $('statText');
+
+/* ---------------- 渲染 ---------------- */
+function cardNode(f){
+  const d = document.createElement('div');
+  d.className = 'card';
+  d.dataset.name = f.name;
+  d.innerHTML =
+    '<div class="meta"><span class="fname" title=""></span>' +
+    '<span class="cat ' + f.cat + '">' + CAT_LABEL[f.cat] + '</span></div>' +
+    '<div class="demo"></div><span class="tick">✓</span>';
+  d.querySelector('.fname').textContent = f.name;
+  d.querySelector('.fname').title = f.name;
+  const demo = d.querySelector('.demo');
+  demo.style.fontFamily = q(f.name) + ',monospace';
+  demo.textContent = sampleText;
+  if (!sampleText.trim()) demo.classList.add('dim');
+  d.addEventListener('click', () => toggleSel(f.name));
+  return d;
+}
+function renderGrid(){
+  grid.innerHTML = '';
+  const kw = keyword.trim().toLowerCase();
+  const list = installed.filter(f =>
+    (curCat === 'all' || f.cat === curCat) &&
+    (!kw || f.name.toLowerCase().includes(kw)));
+  if (!list.length){
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.innerHTML = '没有匹配的字体——本机可能真没装，或换个关键词试试。<br>';
+    const b = document.createElement('button');
+    b.className = 'btn'; b.textContent = '清空筛选';
+    b.onclick = () => { $('q').value=''; keyword=''; curCat='all';
+      document.querySelectorAll('#cats .pill[data-cat]').forEach(p=>p.classList.toggle('on',p.dataset.cat==='all'));
+      renderGrid(); };
+    e.appendChild(b); grid.appendChild(e); return;
+  }
+  const frag = document.createDocumentFragment();
+  list.forEach(f => frag.appendChild(cardNode(f)));
+  grid.appendChild(frag);
+  refreshAllDemos();
+}
+function refreshAllDemos(){
+  const has = !!sampleText.trim();
+  grid.querySelectorAll('.card').forEach(c => {
+    const demo = c.querySelector('.demo');
+    demo.textContent = sampleText;
+    demo.style.fontSize = fontSize + 'px';
+    demo.classList.toggle('dim', !has);
+  });
+}
+function refreshSelectionUI(){
+  grid.querySelectorAll('.card').forEach(c =>
+    c.classList.toggle('sel', sel.includes(c.dataset.name)));
+  const bar = $('bar'), chips = $('chips');
+  if (!sel.length){ bar.classList.remove('show'); return; }
+  bar.classList.add('show');
+  chips.innerHTML = '';
+  sel.forEach(name => {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    const s = document.createElement('span'); s.textContent = name;
+    const x = document.createElement('b'); x.textContent = '✕'; x.title = '移出';
+    x.onclick = ev => { ev.stopPropagation(); toggleSel(name); };
+    chip.append(s, x); chips.appendChild(chip);
+  });
+  const stack = cssStack();
+  $('stackPreview').innerHTML =
+    '预览：<code style="font-family:' + stack.replace(/"/g,'&quot;') + '">永东国爱 Font 012</code>' +
+    '　<code>' + stack.replace(/</g,'&lt;') + '</code>';
+}
+function cssStack(){
+  const parts = sel.map(n => /[\s\u3000]/.test(n) ? q(n) : n);
+  parts.push(sel.some(f => /^[\u4e00-\u9fff]/.test(f)) ? 'sans-serif' : 'monospace');
+  return parts.join(', ');
+}
+
+/* ---------------- 交互 ---------------- */
+function toggleSel(name){
+  const i = sel.indexOf(name);
+  if (i >= 0) sel.splice(i,1); else sel.push(name);
+  refreshSelectionUI();
+}
+$('sample').addEventListener('input', e => {
+  sampleText = e.target.value;
+  refreshAllDemos();
+});
+$('size').addEventListener('input', e => {
+  fontSize = +e.target.value;
+  $('sizeVal').textContent = fontSize;
+  refreshAllDemos();
+});
+$('cats').addEventListener('click', e => {
+  const p = e.target.closest('.pill[data-cat]');
+  if (!p) return;
+  curCat = p.dataset.cat;
+  document.querySelectorAll('#cats .pill[data-cat]').forEach(x =>
+    x.classList.toggle('on', x === p));
+  renderGrid();
+});
+$('q').addEventListener('input', e => { keyword = e.target.value; renderGrid(); });
+$('reset').addEventListener('click', () => {
+  sampleText = DEFAULT_SAMPLE; fontSize = 22;
+  $('sample').value = DEFAULT_SAMPLE; $('size').value = 22; $('sizeVal').textContent = 22;
+  refreshAllDemos();
+});
+$('clearSel').addEventListener('click', () => { sel = []; refreshSelectionUI(); });
+$('copyCss').addEventListener('click', () => copyText(
+  'font-family: ' + cssStack() + ';', 'CSS 已复制'));
+$('copyList').addEventListener('click', () => copyText(sel.join('\n'), '名称列表已复制'));
+
+/* ---------------- 复制 + toast ---------------- */
+let toastTimer = null;
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1600);
+}
+function copyText(text, okMsg){
+  const done = () => toast(okMsg || '已复制');
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else fallbackCopy(text, done);
+}
+function fallbackCopy(text, done){
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); done(); }
+  catch(e){ toast('复制失败，请手动选择'); }
+  document.body.removeChild(ta);
+}
+
+/* ---------------- 启动：先骨架屏再探测 ---------------- */
+function skeletons(n){
+  grid.innerHTML = '';
+  for (let i=0;i<n;i++){
+    const s = document.createElement('div');
+    s.className = 'skeleton'; grid.appendChild(s);
+  }
+}
+skeletons(12);
+setTimeout(() => {
+  const t0 = performance.now();
+  installed = detectInstalled();
+  const ms = Math.round(performance.now() - t0);
+  stat.classList.add('done');
+  statText.innerHTML = '本机探测到 <b>' + installed.length + '</b> 款字体 · ' +
+    CANDIDATES.length + ' 位候选 · ' + ms + 'ms · 零上传';
+  renderGrid();
+}, 60);
+</script>
+</body>
+</html>
