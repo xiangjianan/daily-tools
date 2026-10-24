@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MINDORBIT 思维星轨 · 大纲变放射思维导图</title>
+<meta name="description" content="粘贴缩进大纲或 Markdown 标题，即时生成放射状思维导图：分支如星轨按扇区展开，可折叠、缩放，一键导出独立 SVG。全程本地零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛰️</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2330;--fg:#e6edf3;--mut:#8b949e;
+  --line:#21262d;--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  display:flex;flex-direction:column;min-height:100dvh}
+header{padding:14px 18px 10px;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;border-bottom:1px solid var(--line)}
+header h1{font-size:18px;letter-spacing:.5px}
+header h1 i{font-style:normal;color:var(--mut);font-weight:400;font-size:13px;margin-left:6px}
+.chips{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.chip{background:var(--panel);border:1px solid var(--line);color:var(--mut);border-radius:99px;
+  padding:1px 10px;font-size:12px;font-variant-numeric:tabular-nums}
+.chip b{color:var(--fg);font-weight:600}
+main{flex:1;display:grid;grid-template-columns:360px 1fr;min-height:0}
+@media (max-width:760px){main{grid-template-columns:1fr;grid-template-rows:auto 1fr}}
+.side{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:220px}
+@media (max-width:760px){.side{border-right:none;border-bottom:1px solid var(--line)}
+  .side textarea{height:132px}}
+.side label{padding:10px 14px 6px;color:var(--mut);font-size:12.5px;display:flex;gap:8px;align-items:center}
+.side label .fmt{margin-left:auto;display:flex;gap:4px}
+.fmt button{background:var(--panel2);border:1px solid var(--line);color:var(--mut);border-radius:6px;
+  font-size:11.5px;padding:2px 8px;cursor:pointer}
+.fmt button.on{color:var(--acc);border-color:var(--acc)}
+.side textarea{flex:1;min-height:150px;resize:vertical;background:transparent;border:none;outline:none;
+  color:var(--fg);font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  padding:4px 14px 12px;width:100%}
+.acts{display:flex;gap:6px;padding:10px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+.acts button{background:var(--panel2);border:1px solid var(--line);color:var(--fg);border-radius:8px;
+  padding:6px 12px;font-size:13px;cursor:pointer;transition:border-color .15s}
+.acts button:hover{border-color:var(--acc);color:var(--acc)}
+.acts button.primary{background:var(--acc);border-color:var(--acc);color:#0d1117;font-weight:600}
+.acts button.primary:hover{filter:brightness(1.1);color:#0d1117}
+.hint{padding:6px 14px 12px;color:var(--mut);font-size:12px}
+.hint kbd{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:11px}
+.stage{position:relative;min-height:320px;overflow:hidden;background:
+  radial-gradient(1200px 800px at 60% 40%, #10161f 0%, var(--bg) 70%)}
+.stage svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab}
+.stage svg.dragging{cursor:grabbing}
+.stage .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:var(--mut);font-size:14px;text-align:center;padding:24px;pointer-events:none}
+.zoombar{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:6px}
+.zoombar button{width:34px;height:34px;border-radius:9px;background:var(--panel);border:1px solid var(--line);
+  color:var(--fg);font-size:16px;cursor:pointer}
+.zoombar button:hover{border-color:var(--acc);color:var(--acc)}
+.tip{position:absolute;left:12px;bottom:12px;color:var(--mut);font-size:11.5px;pointer-events:none;
+  background:color-mix(in srgb,var(--bg) 75%,transparent);padding:3px 8px;border-radius:6px}
+footer{padding:8px 18px;color:var(--mut);font-size:12px;border-top:1px solid var(--line)}
+footer a{color:var(--acc);text-decoration:none}
+#toast{position:fixed;left:50%;top:18px;transform:translateX(-50%) translateY(-8px);opacity:0;
+  background:var(--panel2);border:1px solid var(--acc);color:var(--fg);border-radius:9px;
+  padding:7px 16px;font-size:13px;transition:all .25s;pointer-events:none;z-index:9}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+svg text{user-select:none}
+.node{cursor:pointer}
+g.node.dim, path.dim{opacity:.14;transition:opacity .15s}
+path{transition:opacity .15s}
+</style>
+</head>
+<body>
+<header>
+  <h1>🛰️ MINDORBIT<i>思维星轨 · 大纲变放射导图</i></h1>
+  <div class="chips">
+    <span class="chip">节点 <b id="stN">0</b></span>
+    <span class="chip">层级 <b id="stD">0</b></span>
+    <span class="chip">末端 <b id="stL">0</b></span>
+    <span class="chip">🔒 本地</span>
+  </div>
+</header>
+<main>
+  <section class="side">
+    <label>大纲输入（缩进层级 / Markdown 标题 / 列表符号均可）
+      <span class="fmt">
+        <button id="fmtIndent" class="on">缩进</button>
+        <button id="fmtMd">MD</button>
+      </span>
+    </label>
+    <textarea id="src" spellcheck="false" aria-label="大纲输入"></textarea>
+    <div class="acts">
+      <button id="btnSample">🎲 示例</button>
+      <button id="btnClear">清空</button>
+      <button id="btnDl" class="primary">⬇ 下载 SVG</button>
+      <button id="btnCopy">复制 SVG</button>
+    </div>
+    <div class="hint">
+      语法：<kbd>两空格/Tab</kbd> 缩进一级；<kbd>#</kbd> 数量即层级；<kbd>-</kbd> <kbd>*</kbd> <kbd>1.</kbd> 自动剥离。
+      点节点<b>折叠/展开</b>分支，滚轮/双指缩放，拖拽平移。
+    </div>
+  </section>
+  <section class="stage" id="stage">
+    <svg id="canvas" role="img" aria-label="思维导图画布"></svg>
+    <div class="empty" id="empty" hidden>左侧贴入大纲，星轨即刻生成 ✦<br>试试点「🎲 示例」</div>
+    <div class="zoombar">
+      <button id="zin" aria-label="放大">＋</button>
+      <button id="zout" aria-label="缩小">－</button>
+      <button id="zfit" aria-label="适配">⌂</button>
+    </div>
+    <div class="tip">滚轮缩放 · 拖拽平移 · 点击折叠</div>
+  </section>
+</main>
+<footer>
+  MINDORBIT #43 · <a href="../">Daily Tools</a> · 数据全程在浏览器本地处理，不联网不上传 · 导出的 SVG 为独立文件可直接插入文档
+</footer>
+<div id="toast" role="status"></div>
+<script>
+"use strict";
+/* ---------- utils ---------- */
+const $ = s => document.querySelector(s);
+const src = $("#src"), canvas = $("#canvas"), stage = $("#stage"), emptyEl = $("#empty");
+const SVGNS = "http://www.w3.org/2000/svg";
+let toastTimer = null;
+function toast(msg){
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>t.classList.remove("show"), 1800);
+}
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+/* ---------- palette: hue per top branch, lightened by depth ---------- */
+const HUES = [212,158,42,350,282,96,18,190,330,60];
+function hsl(h,s,l,a=1){ return `hsla(${h},${s}%,${l}%,${a})`; }
+function branchHue(i){ return HUES[i % HUES.length]; }
+
+/* ---------- parse outline text -> tree ---------- */
+function parseOutline(text){
+  const lines = text.replace(/\t/g,"  ").split(/\r?\n/);
+  const root = { label:"", depth:-1, children:[] };
+  const stack = [root];
+  for(const raw of lines){
+    if(!raw.trim()) continue;
+    let depth = 0, s = raw;
+    const h = s.match(/^(#{1,6})\s+(.*)$/);
+    if(h){ depth = h[1].length - 1; s = h[2]; }
+    else {
+      while(s.startsWith("  ")){ depth++; s = s.slice(2); }
+      s = s.replace(/^\s+/, "");
+      if(depth === 0 && stack.length > 1){ /* 成熟大纲常首行顶格，保持语义：非首行顶格视为根级 */ }
+    }
+    s = s.replace(/^[-*•·+]\s+/, "").replace(/^\d+[.)、]\s+/, "").trim();
+    // 跳过无实义行（纯符号/纯标点，如 "***"、"###"、"- - -"）
+    if(!s || !/[0-9A-Za-z\u4e00-\u9fff\u00c0-\u024f\u0400-\u04ff\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u.test(s)) continue;
+    const node = { label:s, depth, children:[] };
+    while(stack.length > 1 && stack[stack.length-1].depth >= depth) stack.pop();
+    stack[stack.length-1].children.push(node);
+    stack.push(node);
+  }
+  // 首个顶层条目提升为圆心根
+  if(root.children.length){
+    const first = root.children[0];
+    root.label = first.label;
+    root.children = first.children;
+  }
+  return root;
+}
+
+/* ---------- layout: radial / clock sectors ---------- */
+function countLeaves(n){
+  if(!n.children.length){ n.leaves = 1; return 1; }
+  n.leaves = n.children.reduce((a,c)=>a+countLeaves(c),0);
+  return n.leaves;
+}
+let seqId = 0;
+function layout(root){
+  countLeaves(root);
+  const maxDepth = (function d(n){ return n.children.length ? 1+Math.max(...n.children.map(d)) : 0; })(root);
+  const ring = maxDepth <= 3 ? 120 : maxDepth <= 5 ? 100 : 86;
+  const start = -Math.PI/2;                 // 12 点钟开始
+  let cursor = start;
+  (function place(node, depth, a0, a1){
+    node.depth = depth; node.id = "n"+(seqId++);
+    if(depth >= 0){
+      const r = ring * (depth + (root.children.length ? 0.55 : 0));
+      const mid = (a0+a1)/2;
+      node.r = r; node.a = mid;
+      node.x = Math.cos(mid)*r; node.y = Math.sin(mid)*r;
+    } else { node.x = 0; node.y = 0; }
+    let c = a0;
+    for(const ch of node.children){
+      const span = (a1-a0) * (ch.leaves / node.leaves);
+      place(ch, depth+1, c, c+span);
+      c += span;
+    }
+  })(root, -1, start, start + Math.PI*2);
+  return { root, maxDepth, ring };
+}
+
+/* ---------- render ---------- */
+const view = { x:0, y:0, k:1 };
+let model = null;          // {root,maxDepth,ring}
+let collapsed = new Set(); // node.id
+let hoverPath = null;      // Set of ids on root path of hovered node
+
+function fmtSize(n){
+  if(n < 1024) return n + " B";
+  if(n < 1048576) return (n/1024).toFixed(1) + " KB";
+  return (n/1048576).toFixed(2) + " MB";
+}
+function buildSvgString(inner, w, h){
+  return `<svg xmlns="${SVGNS}" viewBox="0 0 ${w} ${h}" font-family="-apple-system,'Segoe UI','PingFang SC','Noto Sans SC',sans-serif">`
+   + `<rect width="${w}" height="${h}" fill="#0d1117"/>` + inner + `</svg>`;
+}
+function nodeVisible(n){
+  // 祖先链上任一折叠即隐藏
+  let p = n.parent;
+  while(p){ if(collapsed.has(p.id)) return false; p = p.parent; }
+  return true;
+}
+function assignParents(n, parent){ n.parent = parent; n.children.forEach(c=>assignParents(c,n)); }
+
+function subtreeLeaves(n){
+  if(collapsed.has(n.id)) return 0;
+  if(!nodeVisible(n)) return 0;
+  return n.children.length ? n.children.reduce((a,c)=>a+subtreeLeaves(c),0) : 1;
+}
+
+function render(){
+  if(!model) return;
+  const { root } = model;
+  assignParents(root, null);
+  seqId = 0;
+  // 统计
+  let nCount = 0, leaves = 0, maxD = 0;
+  (function walk(n){
+    nCount++; maxD = Math.max(maxD, n.depth);
+    if(!n.children.length){ leaves++; }
+    n.children.forEach(walk);
+  })(root);
+  $("#stN").textContent = nCount; $("#stD").textContent = maxD+2; $("#stL").textContent = leaves;
+  emptyEl.hidden = nCount > 0;
+  if(!nCount){ canvas.innerHTML = ""; model = null; return; }
+
+  const parts = [];
+  const FS = 13; // font size
+  // 分支着色：根的每个孩子一个 hue
+  root.children.forEach((c,i)=>{
+    (function paint(n){
+      n.hue = branchHue(i); n.hueIdx = i;
+      n.children.forEach(paint);
+    })(c);
+  });
+  root.hue = 220; root.hueIdx = -1;
+
+  // 角度参考线（12/3/6/9 点刻度）
+  for(let q=0;q<4;q++){
+    const a = -Math.PI/2 + q*Math.PI/2;
+    const R = model.ring*(model.maxDepth+1.1);
+    parts.push(`<line x1="${(Math.cos(a)*R*0.18).toFixed(1)}" y1="${(Math.sin(a)*R*0.18).toFixed(1)}"
+      x2="${(Math.cos(a)*R).toFixed(1)}" y2="${(Math.sin(a)*R).toFixed(1)}"
+      stroke="#21262d" stroke-width="1" stroke-dasharray="2 6"/>`);
+  }
+
+  const drawNode = (n) => {
+    const vis = nodeVisible(n);
+    if(n.depth >= 0 && vis){
+      const p = n.parent;
+      const hue = n.hue;
+      const mx = (p.x + n.x)/2, my = (p.y + n.y)/2;
+      // 弧形连线：以中垂方向弯曲
+      const len = Math.hypot(n.x-p.x, n.y-p.y);
+      const nx = -(n.y-p.y)/len, ny = (n.x-p.x)/len; // 法向
+      const bow = Math.min(24, len*0.18);
+      parts.push(`<path data-root="${n.hueIdx}" d="M ${p.x.toFixed(1)} ${p.y.toFixed(1)} Q ${(mx+nx*bow).toFixed(1)} ${(my+ny*bow).toFixed(1)} ${n.x.toFixed(1)} ${n.y.toFixed(1)}"
+        fill="none" stroke="${hsl(hue,62,56)}" stroke-width="1.8" stroke-linecap="round"/>`);
+      const isLeaf = !n.children.length || collapsed.has(n.id);
+      const rr = isLeaf ? 4 : 6 + Math.min(6, n.leaves/6);
+      parts.push(`<g class="node" data-id="${n.id}" data-root="${n.hueIdx}">`
+        + `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${(rr+5).toFixed(1)}" fill="transparent"/>`
+        + `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${rr.toFixed(1)}" fill="${hsl(hue,70,66)}"/>`);
+      // 标签
+      const lx = n.x + (Math.cos(n.a) >= 0 ? rr+6 : -(rr+6));
+      const anchor = Math.cos(n.a) >= 0 ? "start" : "end";
+      const lab = n.label.length > 26 ? n.label.slice(0,25)+"…" : n.label;
+      parts.push(`<text x="${lx.toFixed(1)}" y="${(n.y+4).toFixed(1)}" text-anchor="${anchor}"
+        font-size="${n.depth===0?FS+2:FS}" fill="#e6edf3"
+        style="paint-order:stroke" stroke="#0d1117" stroke-width="3">${esc(lab)}</text>`);
+      if(collapsed.has(n.id) && n.children.length){
+        const plus = `+${n.children.reduce((a,c)=>a+c.leaves,0)}`;
+        parts.push(`<text x="${(n.x).toFixed(1)}" y="${(n.y-rr-7).toFixed(1)}" text-anchor="middle"
+          font-size="10.5" fill="${hsl(hue,70,68)}">${plus}</text>`);
+      }
+      parts.push(`</g>`);
+    }
+    if(!(collapsed.has(n.id))) n.children.forEach(drawNode);
+  };
+  drawNode(root);
+  // 根
+  const rootLab = root.label.length > 16 ? root.label.slice(0,15)+"…" : root.label;
+  parts.push(`<g class="node" data-id="${root.id}" data-root="-1">
+    <circle cx="0" cy="0" r="9" fill="${hsl(220,70,55)}"/>
+    <circle cx="0" cy="0" r="16" fill="transparent"/>
+    <text x="0" y="32" text-anchor="middle" font-size="14" font-weight="700" fill="#e6edf3"
+      style="paint-order:stroke" stroke="#0d1117" stroke-width="4">${esc(rootLab)}</text>
+  </g>`);
+
+  canvas.innerHTML =
+    `<g id="vp" transform="translate(${view.x},${view.y}) scale(${view.k})">` + parts.join("") + `</g>`;
+}
+
+/* 交互：事件委托（避免重渲染时监听器丢失/循环触发） */
+let hoverBranch = null;
+function setHover(branch){
+  if(hoverBranch === branch) return;
+  hoverBranch = branch;
+  canvas.querySelectorAll("g.node, path").forEach(el=>{
+    if(el.tagName === "path"){
+      el.classList.toggle("dim", branch !== null && el.dataset.root !== undefined && +el.dataset.root !== branch);
+    } else if(el.dataset.id){
+      el.classList.toggle("dim", branch !== null && +el.dataset.root !== branch);
+    }
+  });
+}
+canvas.addEventListener("pointerover", e=>{
+  const g = e.target.closest && e.target.closest("g.node");
+  if(g && g.dataset.id) setHover(+g.dataset.root);
+});
+canvas.addEventListener("pointerout", e=>{
+  const g = e.target.closest && e.target.closest("g.node");
+  const to = e.relatedTarget;
+  if(g && (!to || !to.closest || !to.closest("g.node") || to.closest("g.node") !== g)) setHover(null);
+});
+canvas.addEventListener("click", e=>{
+  if(dragMoved) return;
+  const g = e.target.closest && e.target.closest("g.node");
+  if(!g || !g.dataset.id || !model) return;
+  const n = findNode(g.dataset.id);
+  if(!n || !n.children.length) return;
+  collapsed.has(n.id) ? collapsed.delete(n.id) : collapsed.add(n.id);
+  setHover(null);
+  render();
+});
+function findNode(id){
+  let found = null;
+  (function w(n){ if(n.id===id){found=n;return;} n.children.forEach(w); })(model.root);
+  return found;
+}
+
+/* ---------- view: pan / zoom / fit ---------- */
+function applyView(){
+  const vp = canvas.querySelector("#vp");
+  if(vp) vp.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`);
+}
+function contentBBox(){
+  if(!model) return null;
+  let x0=0,y0=0,x1=0,y1=0;   // 根恒在原点，作为种子
+  (function w(n){
+    if(n.depth>=0 && nodeVisible(n)){
+      x0=Math.min(x0,n.x); x1=Math.max(x1,n.x); y0=Math.min(y0,n.y); y1=Math.max(y1,n.y);
+    }
+    if(!collapsed.has(n.id)) n.children.forEach(w);
+  })(model.root);
+  x0-=90;x1+=90;y0-=30;y1+=30;
+  return {x0,y0,x1,y1};
+}
+function fit(){
+  const bb = contentBBox(); if(!bb) return;
+  const W = stage.clientWidth, H = stage.clientHeight;
+  const k = Math.min(W/(bb.x1-bb.x0), H/(bb.y1-bb.y0), 2.2) * 0.94;
+  view.k = Math.max(k, 0.08);
+  view.x = W/2 - (bb.x0+bb.x1)/2*view.k;
+  view.y = H/2 - (bb.y0+bb.y1)/2*view.k;
+  applyView();
+}
+function zoomAt(cx, cy, factor){
+  const k2 = Math.min(8, Math.max(0.06, view.k*factor));
+  const r = k2/view.k;
+  view.x = cx - (cx-view.x)*r;
+  view.y = cy - (cy-view.y)*r;
+  view.k = k2; applyView();
+}
+canvas.addEventListener("wheel", e=>{
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  zoomAt(e.clientX-rect.left, e.clientY-rect.top, Math.exp(-e.deltaY*0.0016));
+}, {passive:false});
+$("#zin").onclick = ()=>zoomAt(stage.clientWidth/2, stage.clientHeight/2, 1.25);
+$("#zout").onclick = ()=>zoomAt(stage.clientWidth/2, stage.clientHeight/2, 0.8);
+$("#zfit").onclick = fit;
+
+// pointer pan + pinch
+const pts = new Map();
+let dragMoved = false, pinch0 = null;
+canvas.addEventListener("pointerdown", e=>{
+  canvas.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  dragMoved = false;
+  canvas.classList.add("dragging");
+  if(pts.size === 2){
+    const [a,b] = [...pts.values()];
+    pinch0 = { d:Math.hypot(a.x-b.x,a.y-b.y), k:view.k,
+      mx:(a.x+b.x)/2, my:(a.y+b.y)/2, vx:view.x, vy:view.y };
+  }
+});
+canvas.addEventListener("pointermove", e=>{
+  if(!pts.has(e.pointerId)) return;
+  const prev = pts.get(e.pointerId);
+  const dx = e.clientX-prev.x, dy = e.clientY-prev.y;
+  pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(Math.abs(dx)+Math.abs(dy) > 2) dragMoved = true;
+  if(pts.size === 1){
+    view.x += dx; view.y += dy; applyView();
+  } else if(pts.size === 2 && pinch0){
+    const [a,b] = [...pts.values()];
+    const d = Math.hypot(a.x-b.x, a.y-b.y);
+    const rect = canvas.getBoundingClientRect();
+    const mx = pinch0.mx-rect.left, my = pinch0.my-rect.top;
+    const k2 = Math.min(8, Math.max(0.06, pinch0.k * d/pinch0.d));
+    const r = k2/pinch0.k;
+    view.x = mx - (mx-pinch0.vx)*r;
+    view.y = my - (my-pinch0.vy)*r;
+    view.k = k2; applyView();
+  }
+});
+const endPtr = e=>{ pts.delete(e.pointerId); pinch0 = null; canvas.classList.remove("dragging"); };
+canvas.addEventListener("pointerup", endPtr);
+canvas.addEventListener("pointercancel", endPtr);
+window.addEventListener("resize", ()=>{ clearTimeout(window.__rz); window.__rz = setTimeout(fit, 150); });
+
+/* ---------- export ---------- */
+function exportSvg(){
+  if(!model) return null;
+  const bb = contentBBox(); if(!bb) return null;
+  const pad = 40;
+  const w = Math.round(bb.x1-bb.x0+pad*2), h = Math.round(bb.y1-bb.y0+pad*2);
+  const vp = canvas.querySelector("#vp");
+  const clone = vp.cloneNode(true);
+  clone.setAttribute("transform",
+    `translate(${(pad-bb.x0).toFixed(1)},${(pad-bb.y0).toFixed(1)})`);
+  return buildSvgString(clone.innerHTML, w, h);
+}
+$("#btnDl").onclick = ()=>{
+  const s = exportSvg();
+  if(!s){ toast("先输入大纲再导出"); return; }
+  const blob = new Blob([s], {type:"image/svg+xml"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "mindorbit-" + Date.now() + ".svg";
+  a.click(); URL.revokeObjectURL(a.href);
+  toast("SVG 已下载 ✓");
+};
+$("#btnCopy").onclick = async ()=>{
+  const s = exportSvg();
+  if(!s){ toast("先输入大纲再复制"); return; }
+  try{ await navigator.clipboard.writeText(s); toast("SVG 代码已复制 ✓"); }
+  catch{ toast("复制失败，请用下载"); }
+};
+
+/* ---------- input handling ---------- */
+let inputTimer = null;
+src.addEventListener("input", ()=>{
+  clearTimeout(inputTimer);
+  inputTimer = setTimeout(()=>{ rebuild(); }, 140);
+});
+function rebuild(keepView){
+  const text = src.value;
+  const parsed = parseOutline(text);
+  const isEmpty = !parsed.children.length && !parsed.label;
+  model = isEmpty ? null : layout(parsed);
+  collapsed.clear(); hoverPath = null;
+  if(model) assignParents(model.root, null);
+  if(!model){
+    $("#stN").textContent = 0; $("#stD").textContent = 0; $("#stL").textContent = 0;
+    emptyEl.hidden = false; canvas.innerHTML = "";
+    return;
+  }
+  emptyEl.hidden = true;
+  render();
+  if(!keepView) fit();
+}
+$("#btnClear").onclick = ()=>{ src.value = ""; rebuild(); src.focus(); };
+$("#btnSample").onclick = ()=>{ src.value = SAMPLES[sampleIdx++ % SAMPLES.length]; rebuild(); };
+$("#fmtIndent").onclick = ()=>{ fmtMode = "indent"; syncFmt(); };
+$("#fmtMd").onclick = ()=>{ fmtMode = "md"; syncFmt(); };
+let fmtMode = "indent";
+function syncFmt(){
+  $("#fmtIndent").classList.toggle("on", fmtMode==="indent");
+  $("#fmtMd").classList.toggle("on", fmtMode==="md");
+  // MD 模式：仅靠 # 分级，忽略缩进；缩进模式反之
+  rebuild();
+}
+
+/* ---------- samples ---------- */
+const SAMPLES = [
+`MINDORBIT 发布计划
+  周一 定方向
+    调研 markmap / tldraw
+    定位：放射布局差异化
+  周二 写核心
+    解析器 缩进+MD 兼容
+    放射布局 叶子均分扇区
+    弧线连边 分支着色
+  周三 打磨
+    折叠展开
+    缩放拖拽 适配
+    导出独立 SVG
+  周四 发布
+    写双语 README
+    推 daily-tools #43
+    推特发帖 附图`,
+`今天的三杯咖啡
+  早9 冷萃
+    因果：清醒开局
+    副作用：心率 +8
+  午后 拿铁
+    配饼干 风味更佳
+    奶泡拉花失败
+  傍晚 抹茶
+    抢在就寝线前
+    半衰期 倒计时中
+  结论
+    总摄入 320mg
+    明天试试无因版`];
+let sampleIdx = 0;
+
+/* ---------- boot ---------- */
+src.value = SAMPLES[0];
+rebuild();
+</script>
+</body>
+</html>
