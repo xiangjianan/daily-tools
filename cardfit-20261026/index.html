@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CardFit · 分享卡片试衣镜</title>
+<meta name="description" content="粘贴 HTML head，预览链接在 Google/X/Slack/Telegram/微信里的分享卡片，本地解析零上传">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪞</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2330;--line:#29313d;--fg:#e6edf3;--mut:#8b949e;--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 14px max(40px,env(safe-area-inset-bottom))}
+main{max-width:1180px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.4px}
+.sub{color:var(--mut);font-size:13px;margin:4px 0 18px}
+.sub b{color:var(--acc);font-weight:500}
+.layout{display:grid;grid-template-columns:400px 1fr;gap:16px;align-items:start}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.panel h2{font-size:13px;color:var(--mut);font-weight:600;letter-spacing:.6px;margin-bottom:10px;text-transform:uppercase}
+textarea{width:100%;height:300px;background:#0b0f14;color:#d7e2ee;border:1px solid var(--line);border-radius:8px;
+  padding:10px;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:vertical}
+textarea:focus{outline:none;border-color:var(--acc)}
+.hint{color:var(--mut);font-size:12px;margin-top:8px}
+.hint button{background:var(--panel2);color:var(--acc);border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:12px;margin-left:6px}
+.hint button:hover{border-color:var(--acc)}
+/* drop zone */
+.drop{margin-top:10px;border:1.5px dashed var(--line);border-radius:8px;padding:12px;text-align:center;color:var(--mut);font-size:12.5px;cursor:pointer;transition:.15s}
+.drop.on{border-color:var(--acc);color:var(--acc);background:#58a6ff12}
+/* audit */
+.audit{margin-top:12px}
+.score{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+.score b{font-size:22px;font-variant-numeric:tabular-nums}
+.score span{color:var(--mut);font-size:12px}
+.score .bar{flex:1;height:6px;border-radius:3px;background:var(--panel2);overflow:hidden}
+.score .bar i{display:block;height:100%;border-radius:3px;background:var(--ok);transition:.3s}
+.aitem{display:flex;gap:8px;font-size:12.5px;padding:5px 0;border-top:1px solid var(--line);align-items:flex-start}
+.aitem .ic{width:16px;flex:none;text-align:center}
+.aitem.ok{color:var(--mut)} .aitem.warn{color:var(--warn)} .aitem.bad{color:var(--bad)}
+.fixbtn{width:100%;margin-top:12px;background:var(--acc);color:#04121f;border:none;border-radius:8px;padding:9px;font-weight:600;font-size:13.5px;cursor:pointer}
+.fixbtn:hover{filter:brightness(1.1)}
+/* cards area */
+.cardshead{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.cardshead h2{font-size:14px}
+.cardshead span{color:var(--mut);font-size:12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.card .cap{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+.card .cap b{font-size:12.5px;letter-spacing:.5px}
+.card .cap em{font-style:normal;font-size:11px;color:var(--mut)}
+.fallback{font-size:10.5px;color:var(--bg);background:var(--warn);border-radius:4px;padding:1px 6px;font-weight:600}
+.mock{border-radius:8px;overflow:hidden;font-size:13px}
+/* Google */
+.g{background:#fff;color:#202124;padding:14px 16px}
+.g .site{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+.g .fav{width:22px;height:22px;border-radius:50%;background:#e8eaed;display:flex;align-items:center;justify-content:center;font-size:11px;color:#5f6368;overflow:hidden}
+.g .fav img{width:100%;height:100%;object-fit:cover}
+.g .sn{font-size:12.5px;color:#202124;line-height:1.3}
+.g .sn i{font-style:normal;color:#4d5156;font-size:12px}
+.g .ttl{color:#1a0dab;font-size:17px;line-height:1.35;margin:3px 0 2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.g .dsn{color:#4d5156;font-size:13px;line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+/* X */
+.x{background:#000;color:#e7e9ea;padding:1px}
+.x .img{aspect-ratio:1.91/1;background:#22303c;display:flex;align-items:center;justify-content:center;color:#8899a6;font-size:12px;overflow:hidden}
+.x .img img{width:100%;height:100%;object-fit:cover}
+.x .body{border:1px solid #2f3336;border-top:none;border-radius:0 0 12px 12px;padding:8px 12px}
+.x .dm{color:#8899a6;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.x .dt{font-weight:600;font-size:14px;margin:1px 0;color:#e7e9ea;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.x .dd{color:#8899a6;font-size:13px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.x.noimg .body{border-radius:12px;border:1px solid #2f3336}
+/* Slack */
+.sl{background:#fff;color:#1d1c1d;padding:2px 2px 2px 0;display:flex;gap:10px}
+.sl .bar{width:4px;border-radius:4px;background:#ecb22e;flex:none}
+.sl .c{flex:1;min-width:0;padding:4px 0}
+.sl .sn{font-size:12px;font-weight:700}
+.sl .ttl{color:#1264a3;font-weight:600;font-size:14px;margin:2px 0 1px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.sl .dd{color:#454245;font-size:12.5px;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.sl .th{width:80px;height:80px;border-radius:6px;background:#f6f6f6;flex:none;margin-left:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#b5b5b5;font-size:10px}
+.sl .th img{width:100%;height:100%;object-fit:cover}
+/* Telegram */
+.tg{background:#effdde;color:#000;padding:8px;border-radius:10px 10px 10px 2px;border:1px solid #d9f0d3;max-width:100%}
+.tg .img{aspect-ratio:1.91/1;border-radius:6px;background:#dcefd8;margin-bottom:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#7aa87a;font-size:12px}
+.tg .img img{width:100%;height:100%;object-fit:cover}
+.tg .sn{color:#c25e3a;font-size:12.5px;font-weight:600}
+.tg .dt{font-weight:600;font-size:13.5px;margin:1px 0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.tg .dd{color:#4d4d4d;font-size:12.5px;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.tg .tail{display:flex;justify-content:flex-end;color:#62a85e;font-size:10.5px;margin-top:2px}
+/* WeChat */
+.wx{background:#fff;color:#111;padding:12px 14px;display:flex;gap:12px;align-items:flex-start}
+.wx .c{flex:1;min-width:0}
+.wx .sn{color:#9e9e9e;font-size:11px;margin-bottom:4px}
+.wx .dt{font-weight:600;font-size:15px;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.wx .th{width:56px;height:56px;border-radius:4px;background:#eee;flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:10px}
+.wx .th img{width:100%;height:100%;object-fit:cover}
+/* crops strip */
+.crops{display:flex;gap:10px;margin-top:6px}
+.crop{flex:1;min-width:0}
+.crop .box{background:var(--panel2);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.crop .box img{width:100%;display:block}
+.crop .box.t191 img{aspect-ratio:1.91/1;object-fit:cover}
+.crop .box.t11 img{aspect-ratio:1/1;object-fit:cover}
+.crop p{font-size:11px;color:var(--mut);margin-top:3px;text-align:center}
+/* modal */
+.mask{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:9;padding:16px}
+.mask.on{display:flex}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:720px;width:100%;max-height:85vh;display:flex;flex-direction:column}
+.modal header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+.modal header b{font-size:14px}
+.modal header button{background:none;border:none;color:var(--mut);font-size:18px;cursor:pointer}
+.modal pre{margin:0;padding:14px 16px;overflow:auto;font:12px/1.6 ui-monospace,Menlo,Consolas,monospace;color:#9ecbff;flex:1}
+.modal footer{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end}
+.modal footer button{background:var(--acc);color:#04121f;border:none;border-radius:7px;padding:7px 16px;font-weight:600;font-size:13px;cursor:pointer}
+footer{margin-top:26px;color:var(--mut);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<main>
+<h1>🪞 CardFit · 分享卡片试衣镜</h1>
+<p class="sub">粘贴网页 HTML（整页或仅 &lt;head&gt;），立刻看这条链接在 <b>Google / X / Slack / Telegram / 微信</b> 里各是什么样子——补齐标签再出门，别让分享卡片翻车。全部本地解析，<b>零上传</b>。</p>
+
+<div class="layout">
+  <section class="panel">
+    <h2>① 输入网页 HTML</h2>
+    <textarea id="src" spellcheck="false" placeholder="粘贴 &lt;head&gt; 部分，或整个 HTML 页面…"></textarea>
+    <p class="hint">试试内置示例：
+      <button id="loadDemo">一篇博客</button>
+      <button id="loadBad">一份翻车的</button>
+    </p>
+    <div class="drop" id="drop">② 把一张图拖进来 / 点这里选文件，充当 og:image<br>（本地读取，看各平台怎么裁）</div>
+    <input type="file" id="file" accept="image/*" hidden>
+
+    <div class="audit">
+      <h2>③ 体检清单</h2>
+      <div class="score"><b id="scoreN">–</b><span id="scoreT">就绪度 · 粘贴后评估</span><span class="bar"><i id="scoreBar" style="width:0%"></i></span></div>
+      <div id="alist"></div>
+      <button class="fixbtn" id="fixBtn">🔧 生成补齐缺项的 &lt;head&gt; 片段</button>
+    </div>
+  </section>
+
+  <section>
+    <div class="cardshead">
+      <h2>各平台试衣间</h2>
+      <span id="imgNote"></span>
+    </div>
+    <div class="crops" id="crops" style="display:none">
+      <div class="crop"><div class="box t191"><img id="c191" alt=""></div><p>X / Telegram 用 1.91 : 1 横裁</p></div>
+      <div class="crop"><div class="box t11"><img id="c11" alt=""></div><p>微信 / WhatsApp 用 1 : 1 方裁</p></div>
+    </div>
+    <div class="cards" id="cards" style="margin-top:12px"></div>
+  </section>
+</div>
+
+<footer>CardFit · 每日创意小工具 #44 · 纯浏览器本地解析，输入不发往任何服务器 · <a style="color:var(--acc)" href="../">daily-tools</a></footer>
+</main>
+
+<div class="mask" id="mask">
+  <div class="modal">
+    <header><b>🔧 修复版 &lt;head&gt; 片段（含占位值，替换后使用）</b><button id="mClose">✕</button></header>
+    <pre id="mCode"></pre>
+    <footer><button id="mCopy">复制</button></footer>
+  </div>
+</div>
+
+<script>
+'use strict';
+var $=function(s){return document.querySelector(s)};
+var src=$('#src'),cards=$('#cards'),alist=$('#alist'),drop=$('#drop'),file=$('#file');
+var imgUrl=null, imgName=null;
+var PLATFORMS=[
+  {k:'google',n:'Google 搜索',d:'网页摘要'},
+  {k:'x',n:'X / Twitter',d:'大图摘要卡'},
+  {k:'slack',n:'Slack',d:'链接预览'},
+  {k:'telegram',n:'Telegram',d:'链接预览'},
+  {k:'wechat',n:'微信',d:'聊天链接卡片'}
+];
+var DEMO_OK='<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="utf-8">\n  <title>用一杯咖啡的时间搞懂 HTTP 缓存</title>\n  <meta name="description" content="从 Cache-Control 到 ETag，一篇讲清浏览器缓存的判定链路，附 5 个常见翻车场景与排查命令。">\n  <link rel="icon" href="/favicon.ico">\n  <meta property="og:type" content="article">\n  <meta property="og:site_name" content="后端茶水间">\n  <meta property="og:url" content="https://tearoom.dev/blog/http-cache">\n  <meta property="og:title" content="用一杯咖啡的时间搞懂 HTTP 缓存">\n  <meta property="og:description" content="从 Cache-Control 到 ETag，一篇讲清浏览器缓存的判定链路，附 5 个常见翻车场景与排查命令。">\n  <meta property="og:image" content="https://tearoom.dev/img/http-cache-cover.png">\n  <meta name="twitter:card" content="summary_large_image">\n</head>\n<body>…</body>\n</html>';
+var DEMO_BAD='<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="utf-8">\n  <title>记一次线上事故排查与复盘总结以及关于微服务架构下可观测性建设的深度思考</title>\n  <meta property="og:image" content="/static/cover.png">\n</head>\n<body>…</body>\n</html>';
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function clamp(s){return s||''}
+
+/* ---------- parse ---------- */
+function parseHead(html){
+  var r={title:'',description:'',siteName:'',url:'',image:'',favicon:'',twCard:'',ogType:''};
+  var doc=new DOMParser().parseFromString(html,'text/html');
+  var t=doc.querySelector('title');
+  r.title=(t&&t.textContent||'').trim();
+  doc.querySelectorAll('meta').forEach(function(m){
+    var key=(m.getAttribute('property')||m.getAttribute('name')||'').toLowerCase();
+    var val=(m.getAttribute('content')||'').trim();
+    if(!key||!val)return;
+    if(key==='description'&&!r.description)r.description=val;
+    else if(key==='og:site_name')r.siteName=val;
+    else if(key==='og:url')r.url=val;
+    else if(key==='og:image'&&!r.image)r.image=val;
+    else if(key==='og:title'&&!r.ogTitle)r.ogTitle=val;
+    else if(key==='og:description'&&!r.ogDesc)r.ogDesc=val;
+    else if(key==='og:type')r.ogType=val;
+    else if(key==='twitter:card')r.twCard=val;
+    else if(key==='twitter:image'&&!r.image)r.image=val;
+  });
+  var fav=doc.querySelector('link[rel~="icon"]');
+  if(fav)r.favicon=(fav.getAttribute('href')||'').trim();
+  return r;
+}
+function hostOf(u){
+  var m=String(u||'').match(/^https?:\/\/([^\/?#]+)/i);
+  return m?m[1]:null;
+}
+function titleOf(r){return r.ogTitle||r.title}
+function descOf(r){return r.ogDesc||r.description}
+function siteOf(r){return r.siteName||hostOf(r.url)||'未知站点'}
+
+/* ---------- render cards ---------- */
+function render(r){
+  var T=titleOf(r),D=descOf(r),S=siteOf(r);
+  var cardsHtml='';
+  // Google
+  var tG=T?cut(T,120):'（缺标题：Google 将显示纯网址）';
+  var gFav='<svg width="12" height="12" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#9aa0a6"/></svg>';
+  cardsHtml+='<div class="card"><div class="cap"><b>GOOGLE 搜索</b><em>'+(r.title?'':'<span class="fallback">缺 &lt;title&gt;</span>')+'</em></div>'+
+   '<div class="mock g"><div class="site"><span class="fav">'+gFav+'</span>'+
+   '<span class="sn">'+esc(S)+' <i>'+esc(r.url?r.url.replace(/^https?:\/\//,'').split('/')[0]:'example.com')+' › …</i></span></div>'+
+   '<div class="ttl">'+esc(tG)+'</div><div class="dsn">'+esc(D?cut(D,320):'（缺 description，Google 会从正文随机抓一段——结果不可控）')+'</div></div></div>';
+  // X
+  var xPh=imgUrl?'':'<div style="text-align:center;line-height:1.5">未提供图片<br>'+(r.image?'远端图不在此预览（试衣间不联网）<br>可拖一张本地图代替':'拖一张本地图即可试穿')+'</div>';
+  var ximg='<div class="img">'+(imgUrl?'<img src="'+esc(imgUrl)+'" alt="">':xPh)+'</div>';
+  cardsHtml+='<div class="card"><div class="cap"><b>X / TWITTER</b><em>'+(imgUrl?'':(r.image?'<span class="fallback">仅远端图</span>':'<span class="fallback">无 og:image</span>'))+'</em></div>'+
+   '<div class="mock x'+(imgUrl?'':' noimg')+'">'+ximg+'<div class="body"><div class="dm">'+esc(S)+'</div><div class="dt">'+esc(T||'（缺标题）')+'</div><div class="dd">'+esc(D||'')+'</div></div></div></div>';
+  // Slack
+  cardsHtml+='<div class="card"><div class="cap"><b>SLACK</b><em>'+(imgUrl?'':'<span class="fallback">无缩略图</span>')+'</em></div>'+
+   '<div class="mock sl"><span class="bar"></span><div class="c"><div class="sn">'+esc(S)+'</div><div class="ttl">'+esc(T||'（缺标题，仅显示 URL）')+'</div><div class="dd">'+esc(D||'（缺描述）')+'</div></div>'+
+   '<span class="th">'+(imgUrl?'<img src="'+esc(imgUrl)+'" alt="">':'no img')+'</span></div></div>';
+  // Telegram
+  cardsHtml+='<div class="card"><div class="cap"><b>TELEGRAM</b><em></em></div>'+
+   '<div class="mock tg">'+(imgUrl?'<div class="img"><img src="'+esc(imgUrl)+'" alt=""></div>':'')+
+   '<div class="sn">'+esc(S)+'</div><div class="dt">'+esc(T||'（缺标题）')+'</div><div class="dd">'+esc(D||'')+'</div>'+
+   '<div class="tail">☑✓ 12:0'+(2+Math.floor(Math.random()*7))+'</div></div></div>';
+  // WeChat
+  cardsHtml+='<div class="card"><div class="cap"><b>微信</b><em>'+(imgUrl?'':'<span class="fallback">无小图</span>')+'</em></div>'+
+   '<div class="mock wx"><div class="c"><div class="sn">'+esc(S)+'</div><div class="dt">'+esc(T||'（缺标题，将显示链接 URL）')+'</div></div>'+
+   '<span class="th">'+(imgUrl?'<img src="'+esc(imgUrl)+'" alt="">':'图')+'</span></div></div>';
+  cards.innerHTML=cardsHtml;
+}
+
+function cut(s,n){s=String(s);return s.length>n?s.slice(0,n-1)+'…':s}
+function wlen(s){s=String(s);var w=0;for(var i=0;i<s.length;i++)w+=s.charCodeAt(i)>0x2e80?2:1;return w}
+
+/* ---------- audit ---------- */
+var checks=[];
+function audit(r){
+  var T=titleOf(r),D=descOf(r);
+  var tw=wlen(T),dw=wlen(D);
+  var checks=[
+    {ok:!!r.title, w:1,
+     pass:'<title> 就绪', fail:'缺 <title>——所有平台都无标题可显示'},
+    {ok:!!T, w:1,
+     pass:'标题就绪（'+cut(T,26)+'，共 '+T.length+' 字）', fail:'缺 og:title——将回退 <title>，但部分平台只认 og:title'},
+    {ok:tw<=60, w:1,
+     pass:'标题宽 '+tw+'，搜索场景不会被截断',
+     fail:'标题宽 '+tw+'（'+T.length+' 字）：Google 约 60 宽（≈30 个汉字 / 60 个字母）处截断，大卡可显示约 2 行，自行取舍'},
+    {ok:!!D, w:1,
+     pass:'描述就绪（'+D.length+' 字）', fail:'缺 description / og:description——描述区会空白或被平台随机抓正文'},
+    {ok:dw<=155, w:1,
+     pass:'描述宽 '+dw+'，在安全线内',
+     fail:'描述宽 '+dw+'（'+D.length+' 字）：超出约 155 宽的部分会被 Google 截断'},
+    {ok:!!r.image||!!imgUrl, w:2,
+     pass:'配图就绪'+(r.image?'':'（本次试衣用的是你拖入的本地图）'),
+     fail:'缺 og:image——X 退为纯文字小卡，微信/Slack 无缩略图，点击率明显打折'},
+    {ok:!r.image||/^https?:\/\//i.test(r.image), w:2,
+     pass:'og:image 是绝对地址 ✓',
+     fail:'og:image 是相对路径（'+cut(r.image,36)+'）——外部平台抓不到，必须换成含域名的绝对地址'},
+    {ok:!!r.url, w:1,
+     pass:'og:url 就绪', fail:'缺 og:url——同内容多 URL 会分摊权重，分享计数也分散'},
+    {ok:!!r.siteName, w:1,
+     pass:'og:site_name 就绪（'+cut(r.siteName,20)+'）', fail:'缺 og:site_name——各卡片站点名只能靠域名猜'},
+    {ok:!!r.twCard, w:1,
+     pass:'twitter:card 就绪（'+r.twCard+'）', fail:'缺 twitter:card——X 默认按 summary 小卡处理，要大图得显式声明 summary_large_image'}
+  ];
+  var score=0,total=0;
+  var h='';
+  checks.forEach(function(c){
+    total+=c.w;
+    if(c.ok)score+=c.w;
+    var cls=c.ok?'ok':(c.w>=2?'bad':'warn'), ic=c.ok?'✓':'✗';
+    h+='<div class="aitem '+cls+'"><span class="ic">'+ic+'</span><span>'+(c.ok?c.pass:c.fail)+'</span></div>';
+  });
+  var pct=total?Math.round(score/total*100):0;
+  $('#scoreN').textContent=pct;
+  $('#scoreT').textContent='% 就绪度（加权 '+total+' 项）';
+  $('#scoreBar').style.width=pct+'%';
+  $('#scoreBar').style.background=pct>=80?'var(--ok)':(pct>=50?'var(--warn)':'var(--bad)');
+  alist.innerHTML=h;
+}
+
+/* ---------- fix snippet ---------- */
+function fixSnippet(r){
+  var T=titleOf(r)||'把这里换成你的标题（建议 ≤60 字）';
+  var D=descOf(r)||'把这里换成一句 155 字以内的描述：这页解决什么问题、给谁看。';
+  var host=hostOf(r.url)||'https://example.com';
+  var img=r.image;
+  if(!img||!/^https?:\/\//i.test(img))img=host.replace(/\/$/,'')+'/og-cover.png  ← 换成 1200×630 绝对地址图';
+  var L=[];
+  L.push('<meta property="og:type" content="'+(r.ogType||'website')+'">');
+  L.push('<meta property="og:site_name" content="'+(r.siteName||'你的站点名')+'">');
+  if(!r.url)L.push('<meta property="og:url" content="'+host+'/your-page">');
+  if(!r.ogTitle)L.push('<meta property="og:title" content="'+T+'">');
+  if(!r.ogDesc)L.push('<meta property="og:description" content="'+D+'">');
+  L.push('<meta property="og:image" content="'+img+'">');
+  L.push('<meta property="og:image:width" content="1200">');
+  L.push('<meta property="og:image:height" content="630">');
+  if(!r.twCard)L.push('<meta name="twitter:card" content="summary_large_image">');
+  if(!r.title)L.push('<title>'+T+'</title>');
+  if(!r.description)L.push('<meta name="description" content="'+D+'">');
+  if(!r.favicon)L.push('<link rel="icon" href="/favicon.ico">');
+  return '<!-- 补齐缺项 · 占位值请替换 -->\n'+L.join('\n');
+}
+
+/* ---------- main ---------- */
+function run(){
+  var txt=src.value;
+  if(!txt.trim()){
+    cards.innerHTML='<div class="card" style="grid-column:1/-1;color:var(--mut);font-size:13.5px">👆 在左边粘贴一段网页 HTML（整页或仅 &lt;head&gt; 都行），五面试衣镜立刻亮起来。没有现成页面？点「一篇博客」看满分配置，「一份翻车的」看常见翻车现场。</div>';
+    alist.innerHTML='<div class="aitem ok"><span class="ic">…</span><span>等待输入</span></div>';
+    $('#scoreN').textContent='–';$('#scoreBar').style.width='0%';
+    return;
+  }
+  var r=parseHead(txt);
+  render(r);audit(r);lastParsed=r;
+}
+var lastParsed=null;
+
+src.addEventListener('input',run);
+
+/* demo loaders */
+$('#loadDemo').addEventListener('click',function(){src.value=DEMO_OK;run()});
+$('#loadBad').addEventListener('click',function(){src.value=DEMO_BAD;run()});
+
+/* image drop */
+function setImg(u,name){
+  imgUrl=u;imgName=name||'';
+  $('#imgNote').textContent=imgName?('试衣图：'+imgName+'（仅本地内存）'):'';
+  $('#crops').style.display=imgUrl?'flex':'none';
+  if(imgUrl){$('#c191').src=imgUrl;$('#c11').src=imgUrl;}
+  if(drop.classList.contains('on')){drop.classList.remove('on');drop.innerHTML=DROP_TXT;}
+  run();
+}
+var DROP_TXT=drop.innerHTML;
+drop.addEventListener('click',function(){file.click()});
+file.addEventListener('change',function(){
+  if(file.files&&file.files[0])readImg(file.files[0]);
+});
+function readImg(f){
+  if(!/^image\//.test(f.type)){alert('请选择图片文件（PNG/JPG/WebP…）');return}
+  var rd=new FileReader();
+  rd.onload=function(){setImg(rd.result,f.name)};
+  rd.readAsDataURL(f);
+}
+['dragenter','dragover'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.add('on')})});
+['dragleave','drop'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove('on')})});
+drop.addEventListener('drop',function(e){
+  var dt=e.dataTransfer;
+  if(dt.files&&dt.files[0]){readImg(dt.files[0]);return}
+  var u=dt.getData('text/uri-list')||dt.getData('text/plain');
+  if(/^https?:\/\/\S+\.(png|jpe?g|webp|gif)/i.test(u.trim()))setImg(u.trim(),u.trim().split('/').pop());
+});
+window.addEventListener('dragover',function(e){e.preventDefault()});
+window.addEventListener('drop',function(e){if(!drop.contains(e.target))e.preventDefault()});
+
+/* fix modal */
+$('#fixBtn').addEventListener('click',function(){
+  if(!lastParsed){alert('先粘贴一段 HTML 再生成修复片段');return}
+  $('#mCode').textContent=fixSnippet(lastParsed);
+  $('#mask').classList.add('on');
+});
+$('#mClose').addEventListener('click',function(){$('#mask').classList.remove('on')});
+$('#mask').addEventListener('click',function(e){if(e.target===this)this.classList.remove('on')});
+$('#mCopy').addEventListener('click',function(){
+  var b=this, txt=$('#mCode').textContent;
+  function done(){b.textContent='✓ 已复制';setTimeout(function(){b.textContent='复制'},1500)}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done,function(){fallbackCopy(txt);done()});
+  }else{fallbackCopy(txt);done()}
+});
+function fallbackCopy(txt){
+  var ta=document.createElement('textarea');
+  ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy')}catch(e){}
+  document.body.removeChild(ta);
+}
+
+run();
+src.value=DEMO_BAD;run();
+</script>
+</body>
+</html>
