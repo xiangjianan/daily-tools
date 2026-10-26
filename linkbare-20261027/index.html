@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LINKBARE · 链接拆解台 — 追踪参数点名器</title>
+<meta name="description" content="粘贴链接或整段分享文案，即出 URL 全解剖：追踪参数逐个点名分类，点选去留，一键得干净链接。全程本地，零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--card:#161b22;--line:#21262d;--fg:#e6edf3;--mut:#8b949e;
+  --acc:#58a6ff;--red:#f85149;--org:#d29922;--yel:#e3b341;--grn:#3fb950;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:var(--bg);color:var(--fg);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom));
+}
+main{max-width:760px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.4px}
+h1 i{font-style:normal;color:var(--mut);font-size:14px;font-weight:400;margin-left:8px}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 18px}
+textarea{
+  width:100%;min-height:96px;resize:vertical;
+  background:var(--card);border:1px solid var(--line);border-radius:10px;
+  color:var(--fg);font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  padding:12px 14px;outline:none;
+}
+textarea:focus{border-color:var(--acc)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px;align-items:center}
+button{
+  background:var(--card);border:1px solid var(--line);border-radius:8px;color:var(--fg);
+  font:13px/1 inherit;font-family:inherit;padding:8px 14px;cursor:pointer;-webkit-tap-highlight-color:transparent;
+}
+button:hover{border-color:var(--acc);color:var(--acc)}
+button.pri{background:#1f3a5f;border-color:#2f5a8f}
+button.pri:hover{background:#264a77;color:#fff}
+.spacer{flex:1}
+.msg{font-size:13px;color:var(--mut)}
+.msg.err{color:var(--red)}
+section{margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+h2{font-size:13px;color:var(--mut);font-weight:600;letter-spacing:1px;margin-bottom:10px}
+.hidden{display:none!important}
+/* URL 骨架 */
+.url-parts{font:13px/1.9 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all}
+.up{padding:1px 0}
+.up b{font-weight:400;padding:1px 6px;border-radius:5px;background:#21262d;margin-right:2px}
+.up small{color:var(--mut);margin-left:8px;font-family:inherit;font-size:12px}
+.seg-scheme{color:#a371f7}.seg-host{color:var(--acc)}.seg-path{color:var(--grn)}
+.seg-hash{color:var(--org)}
+/* 参数 chips */
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--mut);margin-bottom:12px}
+.legend i{font-style:normal;display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:0}
+.dot1{background:var(--red)}.dot2{background:var(--org)}.dot3{background:var(--yel)}.dot0{background:#6e7681}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  display:inline-flex;align-items:center;gap:7px;max-width:100%;
+  border:1px solid var(--line);border-radius:9px;background:#0d1117;
+  padding:6px 11px;font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;
+}
+.chip .k{color:var(--fg);font-weight:600}
+.chip .v{color:var(--mut);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip .tag{font:10px/1 sans-serif;padding:3px 5px;border-radius:4px;color:#fff}
+.t1{background:var(--red)}.t2{background:var(--org)}.t3{background:var(--yel);color:#222!important}.t0{background:#30363d;color:var(--mut)!important}
+.chip.off{opacity:.42}
+.chip.off .k{text-decoration:line-through}
+.chip:hover{border-color:var(--acc)}
+.hint-empty{color:var(--grn);font-size:13px;margin:4px 0 0}
+/* 输出 */
+.beforeafter{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.baline{display:flex;gap:8px;align-items:center;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.baline b{min-width:52px;color:var(--mut);font-weight:400}
+.batrack{flex:1;height:10px;border-radius:5px;background:#30363d;overflow:hidden;display:flex}
+.batrack i{display:block;height:100%}
+.batrack .kept{background:#238636}.batrack .cut{background:var(--red)}
+.balen{min-width:96px;text-align:right;color:var(--mut)}
+.out{
+  font:13.5px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all;
+  background:#0d1117;border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:var(--grn);
+}
+.statline{font-size:13px;margin:10px 0 4px}
+.statline b{color:var(--acc)}
+.removed-list{font-size:12.5px;color:var(--mut);margin:6px 0 0;word-break:break-all}
+.removed-list s{margin-right:6px}
+footer{margin-top:26px;color:var(--mut);font-size:12.5px}
+a{color:var(--acc);text-decoration:none}
+@media (max-width:560px){
+  body{padding-left:12px;padding-right:12px}
+  h1{font-size:18px}
+  .chip .v{max-width:110px}
+  .balen{min-width:80px}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>🔗 LINKBARE<i>链接拆解台</i></h1>
+<p class="sub">粘贴一条链接——或直接整段分享文案——立刻拆开看：追踪参数逐个点名，点选去留，一键得干净链接。全程本地，不联网、不读剪贴板后台。</p>
+
+<textarea id="in" placeholder="粘贴分享链接，例如：&#10;https://store.example.com/drone?utm_source=wechat&gclid=EhUb&color=midnight&#10;也可以直接粘贴整段分享文案，我会自动抽出里面的链接"></textarea>
+<div class="bar">
+  <button id="btnSample" type="button">装个例子</button>
+  <button id="btnClear" type="button">清空</button>
+  <span class="spacer"></span>
+  <span id="msg" class="msg"></span>
+</div>
+
+<section id="secAnatomy" class="hidden">
+  <h2>URL 解剖</h2>
+  <div id="skeleton" class="url-parts"></div>
+  <h2 style="margin-top:14px">参数点名 <span style="font-weight:400;letter-spacing:0">（点 chip 切换去留）</span></h2>
+  <div class="legend">
+    <span><i class="dot1"></i>点击归因 ID · 默认移除</span>
+    <span><i class="dot2"></i>UTM / 统计 · 默认移除</span>
+    <span><i class="dot3"></i>社交分享噪音 · 默认移除</span>
+    <span><i class="dot0"></i>正常参数 · 保留</span>
+  </div>
+  <div id="chips" class="chips"></div>
+  <p id="cleanNote" class="hint-empty hidden">✓ 这条链接已经没有可识别的追踪参数了</p>
+</section>
+
+<section id="secOut" class="hidden">
+  <h2>干净链接</h2>
+  <div class="beforeafter">
+    <div class="baline"><b>原始</b><div class="batrack"><i class="kept" id="barKept"></i><i class="cut" id="barCut"></i></div><span class="balen" id="lenBefore"></span></div>
+  </div>
+  <div id="out" class="out"></div>
+  <p class="statline" id="statline"></p>
+  <p class="removed-list" id="removedList"></p>
+  <div class="bar" style="margin-top:12px">
+    <button id="btnCopy" class="pri" type="button">复制干净链接</button>
+    <button id="btnMd" type="button">复制为 Markdown</button>
+    <span class="spacer"></span>
+    <button id="btnKeepAll" type="button">全部保留</button>
+    <button id="btnDefault" type="button">恢复默认</button>
+  </div>
+</section>
+
+<footer>LINKBARE · 每日创意小工具 #45 · 识别清单仅含公认可离去参数，拿不准的只标不动；所有解析在你浏览器里完成。<a href="../">← 返回目录</a></footer>
+</main>
+
+<script>
+"use strict";
+/* ==== 追踪参数知识库 ==== */
+var RED = ['gclid','gbraid','wbraid','dclid','msclkid','fbclid','twclid','ttclid','yclid','igshid',
+  'li_fat_id','mc_cid','mc_eid','_hsenc','_hsmi','vero_id','rb_clickid','s_kwcid','mtm_cid','pk_cid'];
+var ORANGE_PREFIX = ['utm_','mtm_','pk_'];
+var ORANGE_EXACT = ['spm','spm_id','_openstat','utm','nh'];
+var YELLOW = ['si','feature','ref_src','ref_url','ref_loc','ref_cta','ref_domain','share_id','share_token',
+  'share_source','share_medium','share_campaign','share_app_id','share_scene','tt_medium','tt_content',
+  'cmpid','is_from_webapp','sender_device','sender_web_id','sender_source','fb_action_ids','fb_action_types'];
+function catOf(key){
+  var k = key.toLowerCase();
+  if (RED.indexOf(k) >= 0) return 1;
+  for (var i=0;i<ORANGE_PREFIX.length;i++) if (k.indexOf(ORANGE_PREFIX[i])===0) return 2;
+  if (ORANGE_EXACT.indexOf(k) >= 0) return 2;
+  if (YELLOW.indexOf(k) >= 0) return 3;
+  return 0;
+}
+var CAT_NAME = {0:'正常',1:'点击 ID',2:'统计',3:'疑似'};
+
+/* ==== 从文本抽 URL ==== */
+var RE_URL = /https?:\/\/[^\s<>"'（）【】《》]+/i;
+var RE_BARE = /^(www\.[a-z0-9-]+\.[a-z]{2,}|([a-z0-9-]+\.)+[a-z]{2,})(\/|\?|#|$)/i;
+function extractUrl(text){
+  var s = String(text||'').trim();
+  if (!s) return {err:''};
+  var m = s.match(RE_URL);
+  var raw;
+  if (m) raw = m[0];
+  else if (s.indexOf('//') === 0) raw = s.split(/\s+/)[0];
+  else if (RE_BARE.test(s)) raw = s.split(/\s+/)[0];
+  else raw = null;
+  if (!raw) return {err:'没找到链接——直接粘贴一条 URL，或含 URL 的分享文案都行'};
+  raw = raw.replace(/[。，；！、）】》…]+$/,'');
+  if (raw.indexOf('//') === 0) raw = 'https:' + raw;
+  else if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = 'https://' + raw;
+  return {url: raw, fromText: !!m};
+}
+/* ==== 手工解剖（保字节）==== */
+var RE_PARTS = /^([a-z][a-z0-9+.-]*:)\/\/([^/?#]*)([^?#]*)(\?[^#]*)?(#[\s\S]*)?$/i;
+function dissect(url){
+  var m = url.match(RE_PARTS);
+  if (!m) return null;
+  var q = m[4] || '';
+  var pairs = [];
+  if (q.length > 1){
+    var parts = q.slice(1).split('&');
+    for (var i=0;i<parts.length;i++){
+      var p = parts[i];
+      if (!p) continue;
+      var eq = p.indexOf('=');
+      var rk = eq < 0 ? p : p.slice(0,eq);
+      var rv = eq < 0 ? null : p.slice(eq+1);
+      pairs.push({raw:p, rk:rk, rv:rv, k:safeDec(rk), cat:catOf(safeDec(rk)), on:catOf(safeDec(rk))===0});
+    }
+  }
+  return {scheme:m[1], host:m[2], path:m[3] || '/', hash:m[5] || '', pairs:pairs, hadQuery:q.length>0};
+}
+function safeDec(s){
+  try { return decodeURIComponent(s.replace(/\+/g,' ')); } catch(e){ return s; }
+}
+function rebuild(d){
+  var kept = [];
+  for (var i=0;i<d.pairs.length;i++) if (d.pairs[i].on) kept.push(d.pairs[i].raw);
+  var out = d.scheme + '//' + d.host + (d.path || '/');
+  if (kept.length) out += '?' + kept.join('&');
+  if (d.hash) out += d.hash;
+  return out;
+}
+/* ==== 渲染 ==== */
+function $(id){ return document.getElementById(id); }
+var state = {d:null, srcUrl:''};
+function esc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function trunc(s,n){ s = String(s); return s.length > n ? s.slice(0,n-1) + '…' : s; }
+function renderAnatomy(d){
+  var h = '<div class="up"><b class="seg-scheme">' + esc(d.scheme) + '//</b>' +
+          '<b class="seg-host">' + esc(d.host) + '</b><small>站点</small></div>';
+  if (d.path && d.path !== '/') h += '<div class="up"><b class="seg-path">' + esc(d.path) + '</b><small>路径</small></div>';
+  else h += '<div class="up"><b class="seg-path">/</b><small>路径</small></div>';
+  if (d.hash) h += '<div class="up"><b class="seg-hash">' + esc(trunc(d.hash,120)) + '</b><small>锚点（保留）</small></div>';
+  $('skeleton').innerHTML = h;
+  var box = $('chips');
+  box.innerHTML = '';
+  var anyTracker = false;
+  for (var i=0;i<d.pairs.length;i++){
+    var p = d.pairs[i];
+    if (p.cat > 0) anyTracker = true;
+    var el = document.createElement('span');
+    el.className = 'chip' + (p.on ? '' : ' off');
+    el.dataset.i = String(i);
+    el.setAttribute('role','button');
+    el.setAttribute('tabindex','0');
+    var vt = p.rv === null ? '' : safeDec(p.rv);
+    el.innerHTML = '<span class="t' + p.cat + ' tag">' + CAT_NAME[p.cat] + '</span>' +
+      '<span class="k">' + esc(p.k || p.rk) + '</span>' +
+      (vt !== '' ? '<span class="v" title="' + esc(vt) + '">' + esc(trunc(vt,60)) + '</span>' : '');
+    box.appendChild(el);
+  }
+  $('cleanNote').classList.toggle('hidden', anyTracker);
+}
+function renderOut(){
+  var d = state.d;
+  if (!d) return;
+  var clean = rebuild(d);
+  var rawLen = state.srcUrl.length, cleanLen = clean.length;
+  var cut = rawLen - cleanLen;
+  var cutBytes = 0;
+  for (var i=0;i<d.pairs.length;i++) if (!d.pairs[i].on) cutBytes += d.pairs[i].raw.length + 1;
+  var pct = rawLen ? Math.max(0, Math.min(100, cutBytes * 100 / rawLen)) : 0;
+  $('barKept').style.width = (100 - pct) + '%';
+  $('barCut').style.width = pct + '%';
+  $('lenBefore').textContent = rawLen + ' → ' + cleanLen + ' 字节';
+  $('out').textContent = clean;
+  var removed = [];
+  for (var j=0;j<d.pairs.length;j++) if (!d.pairs[j].on) removed.push(d.pairs[j].k || d.pairs[j].rk);
+  var nId = 0, nStat = 0;
+  for (var k2=0;k2<d.pairs.length;k2++){
+    if (d.pairs[k2].on) continue;
+    if (d.pairs[k2].cat === 1) nId++; else if (d.pairs[k2].cat === 2) nStat++;
+  }
+  var s = [];
+  if (nId) s.push('<b>' + nId + '</b> 颗点击归因 ID');
+  if (nStat) s.push('<b>' + nStat + '</b> 颗 UTM/统计参数');
+  $('statline').innerHTML = s.length ? ('已摘除 ' + s.join('、') + '，瘦了 <b>' + cut + '</b> 字节。') :
+    (removed.length ? '按你的点选移除了 <b>' + removed.length + '</b> 项。' : '没有移除任何参数。');
+  $('removedList').innerHTML = removed.length ?
+    ('移除：<s>' + removed.map(esc).join('</s><s>') + '</s>') : '';
+}
+function renderMsg(text, isErr){
+  var el = $('msg');
+  el.textContent = text;
+  el.classList.toggle('err', !!isErr);
+}
+function run(){
+  var r = extractUrl($('in').value);
+  if (r.err !== undefined){
+    state.d = null;
+    $('secAnatomy').classList.add('hidden');
+    $('secOut').classList.add('hidden');
+    renderMsg(r.err || '等一条链接…', !!r.err);
+    return;
+  }
+  var d = dissect(r.url);
+  if (!d){
+    state.d = null;
+    $('secAnatomy').classList.add('hidden');
+    $('secOut').classList.add('hidden');
+    renderMsg('这条没法按 URL 拆——检查一下是不是少了域名？', true);
+    return;
+  }
+  state.d = d;
+  state.srcUrl = r.url;
+  $('secAnatomy').classList.remove('hidden');
+  $('secOut').classList.remove('hidden');
+  renderAnatomy(d);
+  renderOut();
+  renderMsg(r.fromText ? '已从文案里抽出链接' : '', false);
+}
+/* ==== 交互 ==== */
+$('chips').addEventListener('click', function(ev){
+  var chip = ev.target.closest('.chip');
+  if (!chip) return;
+  var i = Number(chip.dataset.i);
+  var p = state.d.pairs[i];
+  p.on = !p.on;
+  chip.classList.toggle('off', !p.on);
+  renderOut();
+});
+$('chips').addEventListener('keydown', function(ev){
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  var chip = ev.target.closest('.chip');
+  if (!chip) return;
+  ev.preventDefault();
+  var p = state.d.pairs[Number(chip.dataset.i)];
+  p.on = !p.on;
+  chip.classList.toggle('off', !p.on);
+  renderOut();
+});
+function setAll(cat, on){
+  var d = state.d;
+  if (!d) return;
+  for (var i=0;i<d.pairs.length;i++)
+    if (cat === null ? true : d.pairs[i].cat === cat) d.pairs[i].on = on;
+  renderAnatomy(d);
+  renderOut();
+}
+function setDefaults(){
+  var d = state.d;
+  if (!d) return;
+  for (var i=0;i<d.pairs.length;i++) d.pairs[i].on = d.pairs[i].cat === 0;
+  renderAnatomy(d);
+  renderOut();
+}
+$('btnKeepAll').addEventListener('click', function(){ setAll(null, true); });
+$('btnDefault').addEventListener('click', setDefaults);
+function toast(text){
+  renderMsg(text, false);
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ renderMsg('', false); }, 1800);
+}
+function copyText(text, okMsg){
+  function fallback(){
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast(okMsg); }
+    catch(e){ toast('复制失败——请手动选择输出框复制', true); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ toast(okMsg); }, fallback);
+  } else fallback();
+}
+$('btnCopy').addEventListener('click', function(){
+  if (state.d) copyText(rebuild(state.d), '干净链接已复制 ✓');
+});
+$('btnMd').addEventListener('click', function(){
+  if (!state.d) return;
+  var md = '[' + state.d.host + '](' + rebuild(state.d) + ')';
+  copyText(md, 'Markdown 已复制 ✓');
+});
+$('btnClear').addEventListener('click', function(){ $('in').value = ''; run(); $('in').focus(); });
+$('btnSample').addEventListener('click', function(){
+  $('in').value = '刚看到的无人机好便宜！快看：https://store.example.com/gadgets/mini-drone-4k?utm_source=newsletter&utm_medium=email&utm_campaign=oct_launch&gclid=EhUbCjD2x&fbclid=IwZXh0bgNv&mc_eid=ab12cd34&si=9xKqLm2T&feature=share&ref_src=twsrc%5Egoogle%7Ctwtcamp%5Eoct&color=midnight&size=std&sku=DR-4K-01\n（还有黄色款）';
+  run();
+});
+$('in').addEventListener('input', run);
+/* 空态先给一句引导，等用户开始输入再刷新 */
+renderMsg('等一条链接…', false);
+</script>
+</body>
+</html>
