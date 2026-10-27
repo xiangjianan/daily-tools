@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OHMBAND · 电阻色环解码台</title>
+<meta name="description" content="点色环换色即时读阻值，反向粘贴 4k7/2M2 工程写法点亮色环，E24/E96 最近标准值推荐。全程本地零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎰</text></svg>">
+<style>
+:root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--line:#21262d;--acc:#f2b23e;--acc2:#58a6ff;--bad:#f85149;--ok:#3fb950;--card:#161b22}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom))}
+main{max-width:720px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.5px}
+h1 .zh{color:var(--mut);font-weight:400;font-size:15px;margin-left:8px}
+.sub{color:var(--mut);font-size:13px;margin:4px 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+/* mode switch */
+.modes{display:flex;gap:8px;margin-bottom:14px}
+.modes button{flex:1;background:var(--card);border:1px solid var(--line);color:var(--mut);font:inherit;font-size:14px;
+padding:9px 6px;border-radius:9px;cursor:pointer;transition:.15s}
+.modes button.on{background:#1f2937;border-color:var(--acc);color:var(--fg)}
+.modes button:hover{color:var(--fg)}
+/* resistor */
+.stage{padding:10px 4px 4px}
+#svg{width:100%;height:auto;display:block}
+.bandlead{stroke:#8b949e;stroke-width:5;stroke-linecap:round}
+.bodyr{fill:#c9a06b}
+.bodyshade{fill:url(#sheen)}
+.bandrect{cursor:pointer;transition:fill .12s}
+.bandhit{fill:transparent;cursor:pointer}
+.bandhit:hover{fill:rgba(255,255,255,.09)}
+.bstroke{stroke:rgba(0,0,0,.35);stroke-width:.6}
+/* band chips row */
+.bands-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;justify-content:center}
+.bchip{display:flex;align-items:center;gap:7px;background:#0d1117;border:1px solid var(--line);border-radius:8px;
+padding:6px 10px;font-size:13px;cursor:pointer;min-height:40px}
+.bchip .sw{width:15px;height:15px;border-radius:4px;border:1px solid rgba(255,255,255,.25);flex:none}
+.bchip .lab{color:var(--mut);font-size:12px}
+.bchip:hover{border-color:var(--acc)}
+.bchip:disabled{opacity:.75;cursor:default}
+.bchip:disabled:hover{border-color:var(--line)}
+.modes button.on2{border-color:var(--acc2);color:var(--fg)}
+/* readout */
+.readout{text-align:center;padding:18px 12px 14px}
+.ohm{font-size:clamp(30px,8vw,44px);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.5px}
+.ohm small{font-size:.55em;color:var(--mut);font-weight:400;margin-left:4px}
+.rng{color:var(--mut);font-size:13px;margin-top:4px;font-variant-numeric:tabular-nums}
+.bnstr{margin-top:8px;font-size:13px;display:flex;justify-content:center;align-items:center;gap:5px;flex-wrap:wrap}
+.bnstr .dot{width:12px;height:12px;border-radius:3px;border:1px solid rgba(255,255,255,.25)}
+.actions{display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+.actions button{background:#21262d;border:1px solid #30363d;color:var(--fg);font:inherit;font-size:13.5px;
+padding:8px 16px;border-radius:8px;cursor:pointer;min-height:40px}
+.actions button:hover{border-color:var(--acc)}
+/* encode panel */
+.hint{color:var(--mut);font-size:12.5px;margin-bottom:8px}
+.enc-row{display:flex;gap:8px}
+#vin{flex:1;min-width:0;background:#0d1117;border:1px solid #30363d;border-radius:9px;color:var(--fg);
+font:inherit;font-size:17px;padding:10px 12px;letter-spacing:.5px}
+#vin:focus{outline:none;border-color:var(--acc2)}
+#vin.bad{border-color:var(--bad)}
+.msg{font-size:13px;margin-top:8px;min-height:20px}
+.msg.err{color:var(--bad)}
+.msg.ok{color:var(--ok)}
+.cands{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.cand{background:#0d1117;border:1px solid var(--line);border-radius:8px;padding:7px 11px;font-size:13.5px;
+cursor:pointer;font-variant-numeric:tabular-nums}
+.cand b{font-variant-numeric:tabular-nums}
+.cand .dev{color:var(--mut);font-size:12px;margin-left:5px}
+.cand.best{border-color:var(--acc)}
+.cand:hover{border-color:var(--acc2)}
+.samples{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.samples button{background:transparent;border:1px dashed #30363d;color:var(--mut);font:inherit;font-size:12.5px;
+padding:5px 12px;border-radius:99px;cursor:pointer}
+.samples button:hover{color:var(--fg);border-color:var(--mut)}
+/* legend */
+.legend{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:5px 14px;font-size:12.5px}
+.legend div{display:flex;align-items:center;gap:7px;color:var(--mut)}
+.legend .sw{width:13px;height:13px;border-radius:3px;border:1px solid rgba(255,255,255,.25);flex:none}
+.legend b{color:var(--fg);font-weight:500}
+h2{font-size:15px;margin-bottom:10px;color:var(--fg)}
+footer{color:var(--mut);font-size:12.5px;text-align:center;margin-top:20px}
+/* toast */
+#toast{position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+background:#21262d;border:1px solid var(--acc);color:var(--fg);padding:9px 18px;border-radius:99px;font-size:13.5px;
+opacity:0;pointer-events:none;transition:.25s;z-index:9}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<main>
+<h1>OHMBAND<span class="zh">电阻色环解码台</span></h1>
+<p class="sub">色环电阻就是用颜色写成的科学计数法。点色环逐位换色读阻值，或反向粘贴 4k7 / 2M2 工程写法点亮色环 · 全程本地零上传</p>
+
+<div class="modes" role="tablist">
+<button id="mDecode" class="on">🎨 色环 → 阻值</button>
+<button id="mEncode">⌨️ 阻值 → 色环</button>
+</div>
+
+<div class="card stage" id="stageCard">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap">
+    <span style="font-size:13px;color:var(--mut)">点色环或下方色块换色（数字位循环 0–9）</span>
+    <span style="display:flex;gap:6px">
+      <button id="m4" class="bchip" style="min-height:34px;padding:4px 12px">4 环 · E24</button>
+      <button id="m5" class="bchip" style="min-height:34px;padding:4px 12px">5 环 · E96</button>
+    </span>
+  </div>
+  <svg id="svg" viewBox="0 0 560 130" aria-label="电阻色环示意">
+    <defs>
+      <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="rgba(255,255,255,.34)"/>
+        <stop offset=".45" stop-color="rgba(255,255,255,0)"/>
+        <stop offset="1" stop-color="rgba(0,0,0,.28)"/>
+      </linearGradient>
+    </defs>
+    <line class="bandlead" x1="14" y1="65" x2="118" y2="65"/>
+    <line class="bandlead" x1="442" y1="65" x2="546" y2="65"/>
+    <rect class="bodyr" x="108" y="34" width="344" height="62" rx="26"/>
+    <rect class="bodyshade" x="108" y="34" width="344" height="62" rx="26" pointer-events="none"/>
+    <g id="gBands"></g>
+    <text id="svgBad" x="280" y="120" text-anchor="middle" font-size="13" fill="#8b949e"></text>
+  </svg>
+  <div class="bands-row" id="bandsRow"></div>
+</div>
+
+<div class="card readout" id="readCard">
+  <div class="ohm" id="ohmMain">—</div>
+  <div class="rng" id="ohmRange"></div>
+  <div class="bnstr" id="bandStr"></div>
+  <div class="actions">
+    <button id="btnCopy">复制读值</button>
+    <button id="btnSample">随机来一颗</button>
+  </div>
+</div>
+
+<div class="card" id="encCard" hidden>
+  <h2>输入阻值，点亮色环</h2>
+  <p class="hint">支持 4.7k、4k7、2M2、10R、0.47、100m 等写法（R 是小数点，m = 毫欧）。4 环吸附 E24、5 环吸附 E96 标准序列。</p>
+  <div class="enc-row">
+    <input id="vin" type="text" inputmode="text" placeholder="例：4k7" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="msg" id="vmsg"></div>
+  <div class="cands" id="cands"></div>
+  <div class="samples">
+    <button data-v="4.7k">4.7k</button>
+    <button data-v="10k">10k</button>
+    <button data-v="220">220</button>
+    <button data-v="2M2">2M2</button>
+    <button data-v="0.47">0.47</button>
+    <button data-v="51R">51R</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>色环速查</h2>
+  <div class="legend" id="legend"></div>
+</div>
+
+<footer>OHMBAND · daily-tools #46 · 点击上方色环或色块即可换色 · 数据不出浏览器</footer>
+</main>
+<div id="toast"></div>
+<script>
+"use strict";
+/* ============ color data ============ */
+/* per color: n name, hex, d digit, m multiplier (null => from d), t tolerance % */
+var COL=[
+ {n:"黑",hex:"#181818",d:0,t:null},
+ {n:"棕",hex:"#7a5230",d:1,t:1},
+ {n:"红",hex:"#e0392f",d:2,t:2},
+ {n:"橙",hex:"#f08c1e",d:3,t:null},
+ {n:"黄",hex:"#f5cf2f",d:4,t:null},
+ {n:"绿",hex:"#3d9e4d",d:5,t:0.5},
+ {n:"蓝",hex:"#2b7fd4",d:6,t:0.25},
+ {n:"紫",hex:"#8d3fc0",d:7,t:0.1},
+ {n:"灰",hex:"#9aa0a6",d:8,t:0.05},
+ {n:"白",hex:"#f2f2f2",d:9,t:null},
+ {n:"金",hex:"#d4af37",d:null,m:0.1,t:5},
+ {n:"银",hex:"#c4c8cc",d:null,m:0.01,t:10}
+];
+var IDX_BY_TOL={1:1,2:2,0.5:5,0.25:6,0.1:7,0.05:8,5:10,10:11};
+var MULT_OF=function(i){var c=COL[i];return c.m!==null&&c.m!==undefined?c.m:Math.pow(10,c.d);};
+var DIGIT_OF=function(i){return COL[i].d;};
+var TOL_SET=[1,2,0.5,0.25,0.1,0.05,5,10];        /* allowed tolerance colors, cycling order */
+var MULT_SET=[0,1,2,3,4,5,6,7,8,9,10,11];        /* all colors as multiplier */
+var E24=[10,11,12,13,15,16,18,20,22,24,27,30,33,36,39,43,47,51,56,62,68,75,82,91];
+var E96=[100,102,105,107,110,113,115,118,121,124,127,130,133,137,140,143,147,150,154,158,162,165,169,174,
+178,182,187,191,196,200,205,210,215,221,226,232,237,243,249,255,261,267,274,280,287,294,301,309,316,324,332,
+340,348,357,365,374,383,392,402,412,422,432,442,453,464,475,487,499,511,523,536,549,562,576,590,604,619,634,
+649,665,681,698,715,732,750,768,787,806,825,845,866,887,909,931,953,976];
+
+/* ============ pure functions ============ */
+/* bands = array of COL indexes, roles by length: 4 => d,d,mult,tol ; 5 => d,d,d,mult,tol */
+function bandsToValue(bands){
+  var n=bands.length;
+  var ti=n-1;
+  var v;
+  for(var k=0;k<n-2;k++){ if(bands[k]>9||DIGIT_OF(bands[k])===null) return null; }
+  if(n===4){ v=(DIGIT_OF(bands[0])*10+DIGIT_OF(bands[1]))*MULT_OF(bands[2]); }
+  else if(n===5){ v=(DIGIT_OF(bands[0])*100+DIGIT_OF(bands[1])*10+DIGIT_OF(bands[2]))*MULT_OF(bands[3]); }
+  else return null;
+  if(!isFinite(v)||v<=0) return null;
+  return {ohms:v,tol:COL[bands[ti]].t};
+}
+/* parse engineering notation: 4.7k 4k7 2M2 10R 0.47 100m 4700 */
+function parseValue(s){
+  s=(s||"").trim().replace(/Ω|ohm/gi,"");
+  if(!s) return {err:"空输入——试试 4.7k、4k7、2M2"};
+  var m;
+  /* 4k7 / 2M2 / 10R / 51R0 form: digits + letter + optional digits */
+  m=s.match(/^(\d*\.?\d+)\s*([kKmMgGrR])\s*(\d*)$/);
+  if(m && (m[3]||/[rR]/.test(m[2]))){
+    var base=parseFloat(m[1]), mult={k:1e3,K:1e3,M:1e6,m:1e-3,G:1e9,R:1,r:1}[m[2]];
+    var frac=m[3]?parseFloat("0."+m[3]):0;
+    return {ohms:(base+frac)*mult};
+  }
+  /* 4.7k plain */
+  m=s.match(/^(\d*\.?\d+)\s*([kKmMgG])$/);
+  if(m){ var mu={k:1e3,K:1e3,M:1e6,m:1e-3,G:1e9}[m[2]]; return {ohms:parseFloat(m[1])*mu}; }
+  /* plain number */
+  if(/^\d*\.?\d+$/.test(s)){ var v=parseFloat(s); return {ohms:v}; }
+  return {err:"看不懂「"+s+"」——支持 4.7k / 4k7 / 2M2 / 10R / 0.47 这类写法"};
+}
+/* nearest series mantissa for a value; returns {mantissa,exp10,std} */
+function snapSeries(value,digits){
+  var ser=digits===2?E24:E96;
+  if(!(value>0)||!isFinite(value)) return null;
+  var e=Math.floor(Math.log10(value))-(digits-1);
+  var raw=value/Math.pow(10,e);
+  var best=ser[0],bd=1e9;
+  for(var i=0;i<ser.length;i++){var d=Math.abs(ser[i]-raw);if(d<bd){bd=d;best=ser[i];}}
+  return {mantissa:best,exp10:e,std:best*Math.pow(10,e)};
+}
+/* candidate standard values around value (nearest N), for chips */
+function candidatesNear(value,digits,limit){
+  var ser=digits===2?E24:E96;
+  var out=[];
+  var s=snapSeries(value,digits);
+  if(!s) return out;
+  var raw=value/Math.pow(10,s.exp10);
+  var scored=ser.map(function(m){return {m:m,std:m*Math.pow(10,s.exp10),dev:(m-raw)/raw*100};});
+  scored.sort(function(a,b){return Math.abs(a.dev)-Math.abs(b.dev);});
+  out=scored.slice(0,limit||5);
+  out.sort(function(a,b){return a.std-b.std;});
+  return out;
+}
+/* encode: value -> band indexes for given band count (snap to series) */
+function valueToBands(value,bandCount){
+  var digits=bandCount===4?2:3;
+  var s=snapSeries(value,digits);
+  if(!s) return null;
+  var ds;
+  if(digits===2){ ds=[Math.floor(s.mantissa/10),s.mantissa%10]; }
+  else{ ds=[Math.floor(s.mantissa/100),Math.floor(s.mantissa/10)%10,s.mantissa%10]; }
+  var mi=digits; /* multiplier band index in bands array */
+  var mult=Math.pow(10,s.exp10);
+  /* find COL index whose multiplier matches */
+  var mIdx=-1;
+  for(var i=0;i<12;i++){ if(MULT_OF(i)===mult){mIdx=i;break;} }
+  if(mIdx<0) return null;
+  var tol=bandCount===4?5:1; /* gold 5% for 4-band, brown 1% for 5-band */
+  return ds.concat([mIdx,IDX_BY_TOL[tol]]);
+}
+function fmtNum(x){
+  var s=(Math.round(x*100)/100).toString();
+  return s;
+}
+function formatOhms(v){
+  if(v>=1e9) return fmtNum(v/1e9)+" GΩ";
+  if(v>=1e6) return fmtNum(v/1e6)+" MΩ";
+  if(v>=1e3) return fmtNum(v/1e3)+" kΩ";
+  if(v>=1)   return fmtNum(v)+" Ω";
+  return fmtNum(v*1e3)+" mΩ";
+}
+function fmtTol(t){
+  if(t===null||t===undefined) return "—";
+  return (t<1? t.toFixed(2).replace(/0+$/,"").replace(/\.$/,"") : String(t))+"%";
+}
+function bandSummary(bands){
+  var n=bands.length;
+  var lab=n===4?["第1位","第2位","倍率","容差"]:["第1位","第2位","第3位","倍率","容差"];
+  return bands.map(function(b,i){return {i:b,name:COL[b].n+"·"+lab[i],hex:COL[b].hex};});
+}
+
+/* ============ state & dom ============ */
+function $(id){return document.getElementById(id);}
+var st={mode:4,view:"decode",bands:[2,0,2,10]}; /* start: red black red gold = 2k ±5% */
+if(st.mode===5) st.bands=[1,0,0,2,1];
+
+function toast(t){
+  var el=$("toast");el.textContent=t;el.classList.add("show");
+  clearTimeout(el._t);el._t=setTimeout(function(){el.classList.remove("show");},1600);
+}
+function cycleSet(bandIdx){
+  var pos;
+  if(bandIdx<st.mode-2) pos=[0,1,2,3,4,5,6,7,8,9];          /* digit bands */
+  else if(bandIdx===st.mode-2) pos=MULT_SET;                 /* multiplier band */
+  else pos=TOL_SET;                                          /* tolerance band */
+  var cur=st.bands[bandIdx];
+  var at=pos.indexOf(cur);
+  if(at<0){ at=0; }
+  return pos[(at+1)%pos.length];
+}
+function renderBands(){
+  var g=$("gBands");g.innerHTML="";
+  var n=st.mode;
+  var gap=344/n;
+  var w=Math.min(20,gap*0.5);
+  var xs=[];
+  for(var i=0;i<n;i++){ xs.push(108+gap*(i+0.5)-w/2); }
+  var svgns="http://www.w3.org/2000/svg";
+  for(var j=0;j<n;j++){
+    var r=document.createElementNS(svgns,"rect");
+    r.setAttribute("x",xs[j]);r.setAttribute("y",34);
+    r.setAttribute("width",w);r.setAttribute("height",62);
+    r.setAttribute("class","bandrect bstroke");
+    r.setAttribute("fill",COL[st.bands[j]].hex);
+    r.setAttribute("data-band",j);
+    g.appendChild(r);
+    var h=document.createElementNS(svgns,"rect");
+    h.setAttribute("x",xs[j]-7);h.setAttribute("y",30);
+    h.setAttribute("width",w+14);h.setAttribute("height",70);
+    h.setAttribute("class","bandhit");
+    h.setAttribute("data-band",j);
+    g.appendChild(h);
+  }
+  /* chips */
+  var row=$("bandsRow");row.innerHTML="";
+  var sum=bandSummary(st.bands);
+  sum.forEach(function(b,k){
+    var d=document.createElement("button");
+    d.className="bchip";d.setAttribute("data-band",k);
+    if(st.view==="encode") d.disabled=true;
+    d.innerHTML='<span class="sw" style="background:'+b.hex+'"></span><span>'+b.name+'</span>';
+    row.appendChild(d);
+  });
+}
+function renderValue(){
+  var r=bandsToValue(st.bands);
+  if(!r||r.tol===null){
+    $("ohmMain").textContent="—";
+    $("ohmRange").textContent="这个组合读不出有效阻值——数字环点了金色/银色？或容差环还没选到有效颜色";
+    $("bandStr").innerHTML="";
+    return;
+  }
+  $("ohmMain").innerHTML=formatOhms(r.ohms)+"<small>±"+fmtTol(r.tol)+"</small>";
+  var lo=r.ohms*(1-r.tol/100),hi=r.ohms*(1+r.tol/100);
+  $("ohmRange").textContent="实际范围 "+formatOhms(lo)+" ~ "+formatOhms(hi)+"（"+fmtNum(r.ohms)+" Ω）";
+  var sum=bandSummary(st.bands);
+  $("bandStr").innerHTML=sum.map(function(b){
+    return '<span class="dot" style="background:'+b.hex+'"></span>'+COL[b.i].n;
+  }).join(" ");
+}
+function applyView(){
+  var dec=$("mDecode"),enc=$("mEncode");
+  if(st.view==="decode"){
+    dec.classList.add("on");enc.classList.remove("on");
+    $("encCard").hidden=true;$("readCard").hidden=false;
+    $("svgBad").textContent="";
+  }else{
+    enc.classList.add("on");dec.classList.remove("on");
+    $("encCard").hidden=false;$("readCard").hidden=true;
+  }
+  renderBands();
+  if(st.view==="decode") renderValue();
+}
+function setMode(n){
+  st.mode=n;
+  if(n===5){ st.bands=[1,0,0,2,1]; } else { st.bands=[2,0,2,10]; }
+  if(st.view==="encode") doEncode();
+  renderBands();
+  if(st.view==="decode") renderValue();
+  $("m4").classList.toggle("on2",n===4);
+  $("m5").classList.toggle("on2",n===5);
+}
+/* encode pipeline */
+function doEncode(){
+  var raw=$("vin").value;
+  var msg=$("vmsg"),cands=$("cands");
+  if(!raw.trim()){
+    msg.textContent="";msg.className="msg";
+    $("vin").classList.remove("bad");
+    $("svgBad").textContent="输入一个阻值开始，比如 4k7";
+    $("cands").innerHTML="";
+    return;
+  }
+  var p=parseValue(raw);
+  if(p.err){
+    msg.textContent=p.err;msg.className="msg err";
+    $("vin").classList.add("bad");
+    $("svgBad").textContent="";
+    cands.innerHTML="";
+    return;
+  }
+  var v=p.ohms;
+  if(!(v>0)||!isFinite(v)){
+    msg.textContent="阻值得是个大于 0 的数";msg.className="msg err";
+    $("vin").classList.add("bad");return;
+  }
+  if(v<0.01||v>=1e11){
+    msg.textContent="超出色环能表达的量程（10 mΩ ~ 数十 GΩ），换个数试试";msg.className="msg err";
+    $("vin").classList.add("bad");
+    $("svgBad").textContent="";cands.innerHTML="";
+    return;
+  }
+  $("vin").classList.remove("bad");
+  msg.className="msg ok";
+  var digits=st.mode===4?2:3;
+  var s=snapSeries(v,digits);
+  var bands=valueToBands(v,st.mode);
+  if(!bands){ msg.textContent="这个倍率没有对应色环颜色";msg.className="msg err";return; }
+  st.bands=bands;
+  renderBands();
+  var r=bandsToValue(bands);
+  var dev=(s.std-v)/v*100;
+  var devTxt=Math.abs(dev)<0.005?"":("（吸附到标准值，偏差 "+(dev>0?"+":"")+fmtNum(dev)+"%）");
+  msg.textContent="色环已点亮："+formatOhms(r.ohms)+" ±"+fmtTol(r.tol)+devTxt;
+  $("svgBad").textContent="";
+  /* candidates */
+  var list=candidatesNear(v,digits,5);
+  cands.innerHTML="";
+  list.forEach(function(c){
+    var b=document.createElement("button");
+    b.className="cand"+(c.std===s.std?" best":"");
+    b.innerHTML="<b>"+formatOhms(c.std)+"</b><span class='dev'>"+(c.dev>0?"+":"")+fmtNum(c.dev)+"%</span>";
+    b.addEventListener("click",function(){
+      $("vin").value=fmtNum(c.std);
+      doEncode();
+    });
+    cands.appendChild(b);
+  });
+}
+/* events */
+function onBandTap(bandIdx){
+  if(st.view==="encode") return;
+  var next=cycleSet(bandIdx);
+  st.bands[bandIdx]=next;
+  renderBands();
+  renderValue();
+}
+document.addEventListener("click",function(e){
+  var t=e.target.closest("[data-band]");
+  if(t){ onBandTap(parseInt(t.getAttribute("data-band"),10)); }
+});
+$("mDecode").addEventListener("click",function(){st.view="decode";applyView();});
+$("mEncode").addEventListener("click",function(){st.view="encode";applyView();
+  if(!$("vin").value.trim()){$("svgBad").textContent="输入一个阻值开始，比如 4k7";}
+});
+$("vin").addEventListener("input",doEncode);
+document.querySelectorAll(".samples button").forEach(function(b){
+  b.addEventListener("click",function(){
+    st.view="encode";applyView();
+    $("vin").value=b.getAttribute("data-v");
+    doEncode();
+  });
+});
+/* mode toggle 4/5 */
+function toggleBandCount(n){
+  if(st.mode===n) return;
+  setMode(n);
+  toast(n===4?"4 环模式（E24）":"5 环模式（E96）");
+}
+$("m4").addEventListener("click",function(){toggleBandCount(4);});
+$("m5").addEventListener("click",function(){toggleBandCount(5);});
+$("btnSample").addEventListener("click",function(){
+  var r=Math.random();
+  var bands;
+  if(st.mode===4){
+    var mIdx=MULT_SET[Math.floor(r*12)];
+    bands=[Math.floor(Math.random()*10),Math.floor(Math.random()*10),mIdx,IDX_BY_TOL[TOL_SET[Math.floor(Math.random()*TOL_SET.length)]]];
+  }else{
+    var mIdx2=MULT_SET[Math.floor(Math.random()*12)];
+    bands=[Math.floor(Math.random()*10),Math.floor(Math.random()*10),Math.floor(Math.random()*10),mIdx2,IDX_BY_TOL[TOL_SET[Math.floor(Math.random()*TOL_SET.length)]]];
+  }
+  st.view="decode";applyView();
+  st.bands=bands;
+  renderBands();renderValue();
+});
+$("btnCopy").addEventListener("click",function(){
+  var r=bandsToValue(st.bands);
+  if(!r||r.tol===null){toast("先给容差环选个有效颜色");return;}
+  var sum=bandSummary(st.bands).map(function(b){return b.name;}).join(" · ");
+  var txt=formatOhms(r.ohms)+" ±"+fmtTol(r.tol)+"（"+fmtNum(r.ohms)+" Ω，实际 "+formatOhms(r.ohms*(1-r.tol/100))+" ~ "+formatOhms(r.ohms*(1+r.tol/100))+"）\n色环："+sum;
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){toast("已复制 ✓");},function(){fallbackCopy(txt);});
+  }else{ fallbackCopy(txt); }
+});
+function fallbackCopy(t){
+  var ta=document.createElement("textarea");ta.value=t;
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand("copy");toast("已复制 ✓");}catch(e){toast("复制失败，请手动选择");}
+  document.body.removeChild(ta);
+}
+/* legend */
+(function buildLegend(){
+  var lg=$("legend");
+  COL.forEach(function(c,i){
+    var bits=[];
+    if(c.d!==null&&c.d!==undefined) bits.push("数字 "+c.d);
+    if(c.m!==null&&c.m!==undefined) bits.push("×"+c.m);
+    if(c.t!==null&&c.t!==undefined) bits.push("±"+fmtTol(c.t));
+    if(!bits.length) bits.push("数字 "+c.d);
+    var d=document.createElement("div");
+    d.innerHTML='<span class="sw" style="background:'+c.hex+'"></span><b>'+c.n+'</b> '+bits.join("，");
+    lg.appendChild(d);
+  });
+})();
+/* stage hint: click bands in decode mode; in encode mode bands are outputs */
+$("stageCard").addEventListener("click",function(e){
+  if(st.view==="encode"&&!e.target.closest("[data-band]")){
+    toast("编码模式下色环是输出——切换到「色环 → 阻值」才能点");
+  }
+});
+setMode(4);
+applyView();
+</script>
+</body>
+</html>
