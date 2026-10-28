@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JSONDIFF · JSON 对比树</title>
+<meta name="description" content="粘贴两份 JSON，即时长出红绿对比树：新增/删除/改值逐字段点亮，jq 风格路径一键复制，全程本地零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌳</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2129;--line:#2d333b;--fg:#e6edf3;--mut:#8b949e;
+  --add:#3fb950;--add-bg:rgba(63,185,80,.12);--del:#f85149;--del-bg:rgba(248,81,73,.12);
+  --chg:#d29922;--chg-bg:rgba(210,153,34,.12);--acc:#58a6ff;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+padding:max(16px,env(safe-area-inset-top)) 14px max(28px,env(safe-area-inset-bottom))}
+main{max-width:980px;margin:0 auto}
+h1{font-size:18px;letter-spacing:.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+h1 .zh{color:var(--mut);font-size:13px;font-weight:400;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif}
+.sub{color:var(--mut);font-size:12.5px;margin:6px 0 16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif}
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.pane-head{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--line);font-size:12px;color:var(--mut)}
+.pane-head .tag-add{color:var(--add)}.pane-head .tag-del{color:var(--del)}
+.pane textarea{width:100%;min-height:150px;background:transparent;color:var(--fg);border:0;outline:0;resize:vertical;
+padding:10px;font:inherit;font-size:13px;line-height:1.5;white-space:pre;overflow:auto}
+.pane textarea::placeholder{color:#484f58}
+.pane.drag{border-color:var(--acc)}
+.bar{display:flex;align-items:center;gap:10px;margin:12px 0;flex-wrap:wrap}
+button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px;
+padding:6px 14px;font:inherit;font-size:13px;cursor:pointer;transition:background .15s,border-color .15s}
+button:hover{background:#22272e;border-color:#444c56}
+button:active{transform:translateY(1px)}
+button.acc{background:#1f3a5f;border-color:#388bfd}
+button.acc:hover{background:#26507f}
+.stats{display:flex;gap:12px;font-size:12.5px;color:var(--mut);margin-left:auto;font-variant-numeric:tabular-nums}
+.stats b{font-weight:600}
+.stats .c-add b{color:var(--add)}.stats .c-del b{color:var(--del)}.stats .c-chg b{color:var(--chg)}
+.err{display:none;background:var(--del-bg);border:1px solid rgba(248,81,73,.4);border-radius:6px;
+padding:8px 12px;margin-bottom:12px;font-size:12.5px;color:#ffb0ae;white-space:pre-wrap;word-break:break-all}
+.err.show{display:block}
+.ok{display:none;background:var(--add-bg);border:1px solid rgba(63,185,80,.4);border-radius:6px;
+padding:8px 12px;margin-bottom:12px;font-size:12.5px;color:#7ee2a8;
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif}
+.ok.show{display:block}
+.tabs{display:flex;gap:0;margin-bottom:0}
+.tabs button{border-radius:6px 6px 0 0;border-bottom:none;background:transparent;color:var(--mut)}
+.tabs button.on{background:var(--panel);color:var(--fg)}
+.view{display:none;background:var(--panel);border:1px solid var(--line);border-radius:0 8px 8px 8px;padding:12px;overflow:auto}
+.view.on{display:block}
+/* 树 */
+.tree{font-size:13px;line-height:1.7}
+.tnode{padding-left:18px;border-left:1px dashed #2d333b;margin-left:4px}
+.tnode.root{padding-left:0;border-left:none;margin-left:0}
+.trow{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;border-radius:4px;padding:0 4px;min-width:0}
+.trow:hover{background:#21262d}
+.trow.add{background:var(--add-bg)}.trow.del{background:var(--del-bg)}.trow.chg{background:var(--chg-bg)}
+.k{color:#79c0ff;word-break:break-all}
+.k.arr{color:var(--mut)}
+.punct{color:#8b949e}
+.v{word-break:break-all}
+.v.s{color:#a5d6ff}.v.n{color:#f2cc60}.v.b{color:#d2a8ff}.v.z{color:#8b949e;font-style:italic}
+.v.o{color:#8b949e}
+.oldv{color:var(--del);text-decoration:line-through;text-decoration-color:rgba(248,81,73,.6)}
+.arrow{color:var(--mut)}
+.badge{font-size:10.5px;padding:0 6px;border-radius:8px;border:1px solid;vertical-align:1px;
+font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+.badge.add{color:var(--add);border-color:var(--add)}
+.badge.del{color:var(--del);border-color:var(--del)}
+.badge.chg{color:var(--chg);border-color:var(--chg)}
+.badge.type{color:var(--mut);border-color:var(--line)}
+.more{color:var(--mut);font-style:italic;padding-left:18px}
+/* 清单 */
+.changes{font-size:13px}
+.changes table{width:100%;border-collapse:collapse}
+.changes td{padding:5px 8px;border-top:1px solid var(--line);vertical-align:top;word-break:break-all}
+.changes tr:first-child td{border-top:none}
+.changes .cp{color:var(--acc);cursor:pointer;white-space:nowrap}
+.changes .cp:hover{text-decoration:underline}
+.changes .why{color:var(--mut);font-size:12px}
+.copy-all{margin-bottom:8px}
+.hint{color:var(--mut);font-size:12.5px;padding:6px 2px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif}
+footer{margin-top:24px;color:var(--mut);font-size:12px;text-align:center;
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif}
+footer a{color:var(--acc);text-decoration:none}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;
+background:#30363d;color:var(--fg);padding:8px 18px;border-radius:8px;font-size:13px;pointer-events:none;
+transition:opacity .25s,transform .25s;z-index:9;max-width:86vw}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (max-width:720px){
+  .panes{grid-template-columns:minmax(0,1fr)}
+  .stats{margin-left:0;width:100%}
+  .tree{font-size:12.5px}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>🌳 JSONDIFF <span class="zh">JSON 对比树 —— 两份 JSON 之间的每一处变化，一眼看清</span></h1>
+<p class="sub">粘贴左右两份 JSON 即对比：新增绿、删除红、改值黄，数组逐项对位，jq 风格路径点击复制。所有解析与对比都在你的浏览器本地完成，数据零上传。</p>
+
+<div class="panes">
+  <div class="pane" id="paneL">
+    <div class="pane-head"><span>原始 JSON <span class="tag-del">A（旧）</span></span><span id="statL"></span></div>
+    <textarea id="ta" placeholder='粘贴旧版 JSON，或拖入 .json 文件…' spellcheck="false"></textarea>
+  </div>
+  <div class="pane" id="paneR">
+    <div class="pane-head"><span>新版 JSON <span class="tag-add">B（新）</span></span><span id="statR"></span></div>
+    <textarea id="tb" placeholder='粘贴新版 JSON，或拖入 .json 文件…' spellcheck="false"></textarea>
+  </div>
+</div>
+
+<div class="bar">
+  <button id="btnSample" class="acc">载入示例</button>
+  <button id="btnSwap">左右互换</button>
+  <button id="btnClear">清空</button>
+  <span class="stats">
+    <span class="c-add">+ 新增 <b id="nAdd">0</b></span>
+    <span class="c-del">− 删除 <b id="nDel">0</b></span>
+    <span class="c-chg">~ 改值 <b id="nChg">0</b></span>
+  </span>
+</div>
+
+<div class="err" id="err"></div>
+<div class="ok" id="ok">✓ 两份 JSON 完全一致，没有任何差异。</div>
+
+<div class="tabs">
+  <button id="tabTree" class="on">对比树</button>
+  <button id="tabList">变更清单</button>
+</div>
+<div class="view on" id="viewTree"><div class="hint">粘贴两份 JSON 后，这里会长出红绿对比树。还没有数据？点上面「载入示例」试试。</div></div>
+<div class="view" id="viewList"><div class="hint">变更清单会在这里按路径列出每一处差异。</div></div>
+
+<footer>JSONDIFF · 每日创意小工具 #47 · <a href="../">返回目录</a> · 纯前端本地处理，数据不离开浏览器</footer>
+</main>
+<div id="toast"></div>
+<script>
+"use strict";
+/* ========= 常量与状态 ========= */
+var MAX_CHANGES = 600;      // 变更清单最多渲染条数
+var MAX_NODES = 2500;       // 对比树最多渲染节点数
+var state = { a: null, b: null, changes: [], nodeBudget: 0, truncated: false };
+
+function $(id){ return document.getElementById(id); }
+
+/* ========= 纯函数：解析 ========= */
+function tryParse(text){
+  if (text == null || text.trim() === "") return { ok: false, empty: true };
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch (e) {
+    var msg = String(e.message || e);
+    var pos = -1;
+    var m = msg.match(/position\s+(\d+)/i);
+    if (m) {
+      pos = parseInt(m[1], 10);
+      var before = text.slice(0, pos);
+      var line = before.split("\n").length;
+      var col = pos - before.lastIndexOf("\n");
+      msg += "（约第 " + line + " 行第 " + col + " 列）";
+    }
+    return { ok: false, error: msg };
+  }
+}
+
+/* ========= 纯函数：类型 ========= */
+function typeOf(v){
+  if (v === null) return "null";
+  if (Array.isArray(v)) return "array";
+  return typeof v === "object" ? "object"
+       : typeof v === "number" ? "number"
+       : typeof v === "boolean" ? "boolean" : "string";
+}
+
+/* ========= 纯函数：jq 风格路径 ========= */
+function joinPath(base, key){
+  if (base === "$") {
+    return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? "$." + key : "$[" + JSON.stringify(key) + "]";
+  }
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? base + "." + key : base + "[" + JSON.stringify(key) + "]";
+}
+function joinIndex(base, i){ return base + "[" + i + "]"; }
+
+/* ========= 纯函数：diff（产出变更清单 + 供树渲染的节点标记） ========= */
+function diff(a, b){
+  var changes = [];
+  function walk(x, y, path){
+    var tx = typeOf(x), ty = typeOf(y);
+    if (tx !== ty) {
+      changes.push({ path: path, kind: "chg", old: x, nv: y, oldT: tx, newT: ty, note: "类型变化 " + tx + " → " + ty });
+      return;
+    }
+    if (tx === "object") {
+      var keys = {}, i, k;
+      for (i in x) if (Object.prototype.hasOwnProperty.call(x, i)) keys[i] = 1;
+      for (i in y) if (Object.prototype.hasOwnProperty.call(y, i)) keys[i] = 1;
+      Object.keys(keys).sort().forEach(function(k){
+        var p = joinPath(path, k);
+        var inX = Object.prototype.hasOwnProperty.call(x, k);
+        var inY = Object.prototype.hasOwnProperty.call(y, k);
+        if (inX && inY) walk(x[k], y[k], p);
+        else if (inY) changes.push({ path: p, kind: "add", nv: y[k], newT: typeOf(y[k]) });
+        else changes.push({ path: p, kind: "del", old: x[k], oldT: typeOf(x[k]) });
+      });
+    } else if (tx === "array") {
+      var n = Math.max(x.length, y.length), i;
+      if (x.length !== y.length) {
+        changes.push({ path: path, kind: "chg", old: x.length, nv: y.length, oldT: "len", newT: "len",
+                       note: "数组长度 " + x.length + " → " + y.length, lenOnly: true });
+      }
+      for (i = 0; i < n; i++) {
+        var p = joinIndex(path, i);
+        if (i < x.length && i < y.length) walk(x[i], y[i], p);
+        else if (i < y.length) changes.push({ path: p, kind: "add", nv: y[i], newT: typeOf(y[i]), note: "数组新增第 " + i + " 项" });
+        else changes.push({ path: p, kind: "del", old: x[i], oldT: typeOf(x[i]), note: "数组删除第 " + i + " 项" });
+      }
+    } else {
+      if (x !== y) changes.push({ path: path, kind: "chg", old: x, nv: y, oldT: tx, newT: ty });
+    }
+  }
+  walk(a, b, "$");
+  return changes;
+}
+
+/* ========= 渲染：值 ========= */
+function esc(s){
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function fmtVal(v, cls){
+  var t = typeOf(v), s;
+  if (t === "string") s = '"' + esc(v) + '"';
+  else if (t === "null") s = "null";
+  else if (t === "object") s = "{…} " + Object.keys(v).length + " keys";
+  else if (t === "array") s = "[…] " + v.length + " items";
+  else s = esc(String(v));
+  var c = { string: "s", number: "n", boolean: "b", null: "z", object: "o", array: "o" }[t] || "";
+  return '<span class="v ' + cls + " " + c + '">' + s + "</span>";
+}
+function fmtLen(n){ return esc(String(n)); }
+
+/* ========= 渲染：对比树 ========= */
+function kindBadge(kind, note){
+  var label = kind === "add" ? "新增" : kind === "del" ? "删除" : "改值";
+  return '<span class="badge ' + kind + '">' + label + "</span>" +
+         (note ? ' <span class="badge type">' + esc(note) + "</span>" : "");
+}
+function changeAt(path){
+  var m = null;
+  state.changes.forEach(function(c){ if (c.path === path && (!m || c.kind !== "chg" || !c.lenOnly)) m = m || c; });
+  return m;
+}
+function renderTree(a, b){
+  state.nodeBudget = MAX_NODES;
+  state.truncated = false;
+  var html = [];
+  function row(cls, parts, path){
+    var c = path ? changeAt(path) : null;
+    var badge = c ? " " + kindBadge(c.kind, c.note) : "";
+    html.push('<div class="trow ' + (c ? c.kind : (cls || "")) + '">' + parts.join("") + badge + "</div>");
+    state.nodeBudget--;
+    if (state.nodeBudget <= 0) { state.truncated = true; }
+  }
+  function walk(x, y, key, path, depth){
+    if (state.nodeBudget <= 0) return;
+    var tx = typeOf(x), ty = typeOf(y);
+    var isArrKey = /^\[\d+\]$/.test(key || "");
+    var kLabel = key == null ? "" :
+      '<span class="k ' + (isArrKey ? "arr" : "") + '">' + esc(key) + '</span><span class="punct">: </span>';
+    if (tx !== ty && x !== undefined && y !== undefined) {
+      row("chg", [kLabel, fmtVal(x, "oldv"), '<span class="arrow">→</span>', fmtVal(y, "")], path);
+      return;
+    }
+    if (tx === "object") {
+      row("", [kLabel, '<span class="v o">{</span>'], path);
+      html.push('<div class="tnode">');
+      var keys = {}, i;
+      for (i in x) if (Object.prototype.hasOwnProperty.call(x, i)) keys[i] = 1;
+      for (i in y) if (Object.prototype.hasOwnProperty.call(y, i)) keys[i] = 1;
+      Object.keys(keys).sort().forEach(function(k){
+        if (state.nodeBudget <= 0) return;
+        var inX = Object.prototype.hasOwnProperty.call(x, k);
+        var inY = Object.prototype.hasOwnProperty.call(y, k);
+        var p = joinPath(path, k);
+        if (inX && inY) walk(x[k], y[k], k, p, depth + 1);
+        else if (inY) {
+          row("add", ['<span class="k">' + esc(k) + '</span><span class="punct">: </span>', fmtVal(y[k], "")], p);
+          if (typeOf(y[k]) === "object" || typeOf(y[k]) === "array") {
+            html.push('<div class="tnode">');
+            expandAll(y[k], p, k);
+            html.push("</div>");
+          }
+        } else {
+          row("del", ['<span class="k">' + esc(k) + '</span><span class="punct">: </span>', fmtVal(x[k], "oldv")], p);
+          if (typeOf(x[k]) === "object" || typeOf(x[k]) === "array") {
+            html.push('<div class="tnode">');
+            expandAll(x[k], p, k);
+            html.push("</div>");
+          }
+        }
+      });
+      html.push("</div>");
+      row("", ['<span class="v o">}</span>'], null);
+    } else if (tx === "array") {
+      row("", [kLabel, '<span class="v o">[</span>'], path);
+      html.push('<div class="tnode">');
+      var n = Math.max(x.length, y.length), i;
+      for (i = 0; i < n; i++) {
+        if (state.nodeBudget <= 0) break;
+        var p = joinIndex(path, i);
+        if (i < x.length && i < y.length) walk(x[i], y[i], "[" + i + "]", p, depth + 1);
+        else if (i < y.length) {
+          row("add", ['<span class="k arr">[' + i + ']</span><span class="punct">: </span>', fmtVal(y[i], "")], p);
+          if (typeOf(y[i]) === "object" || typeOf(y[i]) === "array") {
+            html.push('<div class="tnode">'); expandAll(y[i], p, "[" + i + "]"); html.push("</div>");
+          }
+        } else {
+          row("del", ['<span class="k arr">[' + i + ']</span><span class="punct">: </span>', fmtVal(x[i], "oldv")], p);
+          if (typeOf(x[i]) === "object" || typeOf(x[i]) === "array") {
+            html.push('<div class="tnode">'); expandAll(x[i], p, "[" + i + "]"); html.push("</div>");
+          }
+        }
+      }
+      html.push("</div>");
+      row("", ['<span class="v o">]</span>'], null);
+    } else {
+      var changed = x !== y;
+      if (changed) row("chg", [kLabel, fmtVal(x, "oldv"), '<span class="arrow">→</span>', fmtVal(y, "")], path);
+      else row("", [kLabel, fmtVal(x, "")], path);
+    }
+  }
+  /* 单侧存在子树整体展开（新增/删除的 object/array 内容） */
+  function expandAll(v, path, key){
+    if (state.nodeBudget <= 0) return;
+    var t = typeOf(v);
+    if (t === "object") {
+      Object.keys(v).sort().forEach(function(k){
+        if (state.nodeBudget <= 0) return;
+        var p = joinPath(path, k);
+        row("", ['<span class="k">' + esc(k) + '</span><span class="punct">: </span>', fmtVal(v[k], "")], null);
+        if (typeOf(v[k]) === "object" || typeOf(v[k]) === "array") {
+          html.push('<div class="tnode">'); expandAll(v[k], p, k); html.push("</div>");
+        }
+      });
+    } else if (t === "array") {
+      v.forEach(function(item, i){
+        if (state.nodeBudget <= 0) return;
+        row("", ['<span class="k arr">[' + i + ']</span><span class="punct">: </span>', fmtVal(item, "")], null);
+        if (typeOf(item) === "object" || typeOf(item) === "array") {
+          html.push('<div class="tnode">'); expandAll(item, joinIndex(path, i), "[" + i + "]"); html.push("</div>");
+        }
+      });
+    }
+  }
+  html.push('<div class="tnode root">');
+  if (typeOf(a) === "object" || typeOf(a) === "array") walk(a, b, null, "$", 0);
+  else if (typeOf(b) === "object" || typeOf(b) === "array") walk(a, b, null, "$", 0);
+  else row(a === b ? "" : "chg", [fmtVal(a, a === b ? "" : "oldv")].concat(a === b ? [] : ['<span class="arrow">→</span>', fmtVal(b, "")]), "$");
+  html.push("</div>");
+  if (state.truncated) html.push('<div class="more">… 结构过大，已折叠后续节点（清单模式仍完整列出所有变更）</div>');
+  return html.join("");
+}
+
+/* ========= 渲染：变更清单 ========= */
+function renderList(changes){
+  if (!changes.length) return '<div class="hint">没有差异。</div>';
+  var rows = [], shown = changes.slice(0, MAX_CHANGES);
+  shown.forEach(function(c){
+    var detail;
+    if (c.kind === "add") detail = fmtVal(c.nv, "");
+    else if (c.kind === "del") detail = fmtVal(c.old, "oldv");
+    else detail = fmtVal(c.old, "oldv") + ' <span class="arrow">→</span> ' + fmtVal(c.nv, "");
+    rows.push("<tr><td>" + kindBadge(c.kind, c.note) + "</td>" +
+      '<td><span class="cp" data-p="' + esc(c.path) + '" title="点击复制路径">' + esc(c.path) + "</span></td>" +
+      "<td>" + detail + "</td></tr>");
+  });
+  var html = '<button class="copy-all" id="btnCopyAll">复制全部变更（Markdown）</button>';
+  html += '<div class="changes"><table>' + rows.join("") + "</table></div>";
+  if (changes.length > MAX_CHANGES)
+    html += '<div class="more">… 共 ' + changes.length + " 条变更，仅显示前 " + MAX_CHANGES + " 条</div>";
+  return html;
+}
+
+/* ========= 主流程 ========= */
+var lastChanges = [];
+function run(){
+  hideMsg();
+  var ra = tryParse($("ta").value), rb = tryParse($("tb").value);
+  $("statL").textContent = ra.ok ? typeOf(ra.value) + " · " + jsonSize($("ta").value) : (ra.empty ? "" : "解析失败");
+  $("statR").textContent = rb.ok ? typeOf(rb.value) + " · " + jsonSize($("tb").value) : (rb.empty ? "" : "解析失败");
+  if (ra.empty && rb.empty) { renderIdle(); return; }
+  if (ra.empty || rb.empty) { showErr((ra.empty ? "A（旧）" : "B（新）") + " 侧还没有内容——两边都粘贴后才能对比。"); renderIdle(); return; }
+  if (!ra.ok) { showErr("A（旧）不是合法 JSON：" + ra.error); renderIdle(); return; }
+  if (!rb.ok) { showErr("B（新）不是合法 JSON：" + rb.error); renderIdle(); return; }
+  state.a = ra.value; state.b = rb.value;
+  lastChanges = diff(ra.value, rb.value);
+  state.changes = lastChanges;
+  $("nAdd").textContent = lastChanges.filter(function(c){ return c.kind === "add"; }).length;
+  $("nDel").textContent = lastChanges.filter(function(c){ return c.kind === "del"; }).length;
+  $("nChg").textContent = lastChanges.filter(function(c){ return c.kind === "chg"; }).length;
+  if (!lastChanges.length) {
+    showOk();
+    $("viewTree").innerHTML = '<div class="hint">两份输入完全一致。</div>';
+    $("viewList").innerHTML = '<div class="hint">没有差异。</div>';
+    return;
+  }
+  $("viewTree").innerHTML = renderTree(ra.value, rb.value);
+  $("viewList").innerHTML = renderList(lastChanges);
+}
+function jsonSize(s){ return s.length < 1024 ? s.length + " B" : (s.length / 1024).toFixed(1) + " KB"; }
+function renderIdle(){
+  $("nAdd").textContent = "0"; $("nDel").textContent = "0"; $("nChg").textContent = "0";
+  lastChanges = []; state.changes = [];
+}
+function showErr(msg){ var e = $("err"); e.textContent = "⚠ " + msg; e.className = "err show"; }
+function showOk(){ $("ok").className = "ok show"; }
+function hideMsg(){ $("err").className = "err"; $("ok").className = "ok"; }
+
+/* ========= 剪贴板 ========= */
+function copyText(t, tip){
+  function done(){ toast(tip || "已复制 ✓"); }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(t).then(done, function(){ legacy(); });
+  } else legacy();
+  function legacy(){
+    var ta = document.createElement("textarea");
+    ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { toast("复制失败，请手动选择"); }
+    document.body.removeChild(ta);
+  }
+}
+var toastTimer = null;
+function toast(msg){
+  var t = $("toast");
+  t.textContent = msg; t.className = "show";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.className = ""; }, 1600);
+}
+
+/* ========= 示例数据 ========= */
+var SAMPLE_A = {
+  "name": "shop-admin",
+  "version": "1.4.2",
+  "features": { "darkMode": false, "betaSearch": true, "export": "csv" },
+  "users": [
+    { "id": 1, "name": "Ada", "roles": ["admin"] },
+    { "id": 2, "name": "Ben", "roles": ["editor", "viewer"] }
+  ],
+  "limits": { "uploadMB": 20, "requests": 600 },
+  "legacyKeys": true
+};
+var SAMPLE_B = {
+  "name": "shop-admin",
+  "version": "2.0.0",
+  "features": { "darkMode": true, "betaSearch": true, "export": "xlsx", "aiTags": false },
+  "users": [
+    { "id": 1, "name": "Ada", "roles": ["admin", "billing"] },
+    { "id": 2, "name": "Benjamin", "roles": ["viewer"] },
+    { "id": 3, "name": "Chen", "roles": ["editor"] }
+  ],
+  "limits": { "uploadMB": 50, "requests": "unlimited" },
+  "region": "ap-east-1"
+};
+
+/* ========= 事件绑定 ========= */
+$("ta").addEventListener("input", run);
+$("tb").addEventListener("input", run);
+$("btnSample").addEventListener("click", function(){
+  $("ta").value = JSON.stringify(SAMPLE_A, null, 2);
+  $("tb").value = JSON.stringify(SAMPLE_B, null, 2);
+  run();
+});
+$("btnSwap").addEventListener("click", function(){
+  var t = $("ta").value; $("ta").value = $("tb").value; $("tb").value = t;
+  run();
+});
+$("btnClear").addEventListener("click", function(){
+  $("ta").value = ""; $("tb").value = "";
+  hideMsg(); renderIdle();
+  $("viewTree").innerHTML = '<div class="hint">粘贴两份 JSON 后，这里会长出红绿对比树。</div>';
+  $("viewList").innerHTML = '<div class="hint">变更清单会在这里按路径列出每一处差异。</div>';
+});
+$("tabTree").addEventListener("click", function(){ switchTab("tree"); });
+$("tabList").addEventListener("click", function(){ switchTab("list"); });
+function switchTab(which){
+  $("tabTree").className = which === "tree" ? "on" : "";
+  $("tabList").className = which === "list" ? "on" : "";
+  $("viewTree").className = "view" + (which === "tree" ? " on" : "");
+  $("viewList").className = "view" + (which === "list" ? " on" : "");
+}
+/* 路径点击复制（事件委托） */
+document.addEventListener("click", function(e){
+  var cp = e.target.closest ? e.target.closest(".cp") : null;
+  if (cp) copyText(cp.getAttribute("data-p"), "路径已复制 ✓");
+});
+/* 清单页「复制全部」按钮（动态渲染，委托） */
+document.addEventListener("click", function(e){
+  if (e.target.id === "btnCopyAll") {
+    var lines = ["| 类型 | 路径 | 变化 |", "| --- | --- | --- |"];
+    lastChanges.forEach(function(c){
+      var kind = c.kind === "add" ? "新增" : c.kind === "del" ? "删除" : "改值";
+      var o = c.kind === "add" ? fmtPlain(c.nv) : c.kind === "del" ? fmtPlain(c.old)
+            : fmtPlain(c.old) + " → " + fmtPlain(c.nv);
+      lines.push("| " + kind + " | `" + c.path + "` | " + o.replace(/\|/g, "\\|") + " |");
+    });
+    copyText(lines.join("\n"), "已复制 " + lastChanges.length + " 条变更 ✓");
+  }
+});
+function fmtPlain(v){
+  var t = typeOf(v);
+  if (t === "string") return '"' + v + '"';
+  if (t === "object") return "{…}";
+  if (t === "array") return "[…]";
+  return String(v);
+}
+/* 拖拽 .json 文件 */
+["ta", "tb"].forEach(function(id){
+  var pane = $(id === "ta" ? "paneL" : "paneR");
+  var box = $(id);
+  ["dragenter", "dragover"].forEach(function(ev){
+    pane.addEventListener(ev, function(e){ e.preventDefault(); pane.className = "pane drag"; });
+  });
+  ["dragleave", "drop"].forEach(function(ev){
+    pane.addEventListener(ev, function(e){ e.preventDefault(); pane.className = "pane"; });
+  });
+  pane.addEventListener("drop", function(e){
+    e.preventDefault();
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    if (!/\.json$/i.test(f.name) && f.type !== "application/json") { toast("请拖入 .json 文件"); return; }
+    var r = new FileReader();
+    r.onload = function(){ box.value = String(r.result); run(); };
+    r.readAsText(f);
+  });
+});
+</script>
+</body>
+</html>
