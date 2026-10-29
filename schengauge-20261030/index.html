@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SCHENGAUGE · 申根 90/180 天窗仪</title>
+<meta name="description" content="滚动 180 天窗口可视化：行程体检、剩余天数、回血日期、未来行程即时判定。全程本地，零上传。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e1116'/%3E%3Cpath d='M5 20 Q10 8 16 12 T27 10' stroke='%234cc38a' stroke-width='2.5' fill='none'/%3E%3Cline x1='5' y1='24' x2='27' y2='24' stroke='%232a3038' stroke-width='2'/%3E%3Ccircle cx='16' cy='12' r='2.4' fill='%23e8b64c'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0e1116; --panel:#141920; --panel2:#181f28; --line:#232b36; --line2:#2e3947;
+  --tx:#dde4ec; --tx2:#8a95a5; --tx3:#5c6675;
+  --ac:#4cc38a; --ac-dim:#2b5e46; --warn:#e8b64c; --bad:#e5654f; --info:#5aa7e8;
+  --r:10px; --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--tx);font:15px/1.55 -apple-system,'PingFang SC','Noto Sans SC','Microsoft YaHei',sans-serif;
+  padding:calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 30px)}
+main,header,footer{max-width:980px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;padding:2px 2px 12px;border-bottom:1px solid var(--line)}
+h1{font-size:20px;letter-spacing:.5px}
+h1 b{color:var(--ac)}
+.sub{color:var(--tx2);font-size:13px}
+.today{margin-left:auto;font-family:var(--mono);font-size:12.5px;color:var(--tx3)}
+main{display:flex;flex-direction:column;gap:14px;margin-top:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.card h2{font-size:12px;font-weight:600;letter-spacing:1.5px;color:var(--tx2);text-transform:uppercase;margin-bottom:10px}
+/* 状态条 */
+#stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;position:relative;overflow:hidden}
+.stat .k{font-size:11.5px;color:var(--tx2);letter-spacing:.4px}
+.stat .v{font-family:var(--mono);font-size:26px;font-weight:700;margin-top:2px;line-height:1.15}
+.stat .n{font-size:11.5px;color:var(--tx3);margin-top:1px}
+.stat .v.warn{color:var(--warn)} .stat .v.bad{color:var(--bad)} .stat .v.ok{color:var(--ac)}
+.stat .bar{position:absolute;left:0;bottom:0;height:3px;background:var(--ac);width:0%;transition:width .4s}
+#globalVerdict{grid-column:1/-1;font-size:13.5px;border-radius:8px;padding:9px 12px;display:none}
+#globalVerdict.show{display:block}
+#globalVerdict.bad{background:rgba(229,101,79,.1);border:1px solid rgba(229,101,79,.4);color:#f2a294}
+#globalVerdict.ok{background:rgba(76,195,138,.08);border:1px solid rgba(76,195,138,.3);color:#9fd8bd}
+/* 时间带 */
+#vizCard{padding:12px 10px 8px}
+#tl{width:100%;height:170px;display:block;touch-action:pan-y;cursor:crosshair;border-radius:6px}
+#tip{position:fixed;pointer-events:none;background:#0a0d11;border:1px solid var(--line2);border-radius:8px;
+  padding:7px 10px;font-size:12px;font-family:var(--mono);display:none;z-index:9;box-shadow:0 6px 18px rgba(0,0,0,.5);white-space:nowrap}
+#tip .d{color:var(--tx2);font-size:11px}
+#tip .u{font-size:14px;font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:8px 6px 2px;font-size:11.5px;color:var(--tx2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+/* 双面板 */
+.panels{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px}
+/* 行程 */
+#tripList{display:flex;flex-direction:column;gap:6px;max-height:230px;overflow:auto;margin-bottom:10px}
+.trip{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px}
+.trip .dot{width:9px;height:9px;border-radius:50%;flex:none}
+.trip .rng{font-family:var(--mono);font-size:12.5px}
+.trip .len{margin-left:auto;color:var(--tx2);font-size:12px;white-space:nowrap}
+.trip .del{background:none;border:none;color:var(--tx3);font-size:16px;cursor:pointer;padding:2px 6px;line-height:1;border-radius:5px}
+.trip .del:hover{color:var(--bad);background:rgba(229,101,79,.12)}
+.trip.future{border-style:dashed}
+.addRow{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center}
+input[type=date],input[type=number]{background:var(--bg);border:1px solid var(--line2);color:var(--tx);border-radius:8px;
+  padding:8px 10px;font-size:13.5px;font-family:var(--mono);width:100%;min-height:40px}
+input:focus{outline:none;border-color:var(--ac)}
+button{cursor:pointer;border-radius:8px;font-size:13.5px;min-height:40px;border:1px solid var(--line2);
+  background:var(--panel2);color:var(--tx);padding:0 14px;transition:border-color .15s,background .15s}
+button:hover{border-color:var(--ac)} 
+button.primary{background:var(--ac);border-color:var(--ac);color:#08130d;font-weight:700}
+button.primary:hover{background:#5bd29a}
+button.ghost{color:var(--tx2);min-height:34px;font-size:12.5px}
+.btnRow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+#tripHint{font-size:12.5px;color:var(--tx3);margin-top:10px}
+#tripMsg{font-size:12.5px;margin-top:8px;display:none;border-radius:6px;padding:6px 10px}
+#tripMsg.show{display:block}
+#tripMsg.bad{color:#f2a294;background:rgba(229,101,79,.1)}
+#tripMsg.ok{color:#9fd8bd;background:rgba(76,195,138,.08)}
+/* 规划器 */
+.planRow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.sliderRow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+input[type=range]{flex:1;accent-color:var(--ac);min-height:24px}
+#nightsNum{width:74px;text-align:center}
+#verdict{border-radius:8px;border:1px solid var(--line);padding:12px 14px;font-size:13.5px;min-height:64px}
+#verdict .big{font-size:15px;font-weight:700;margin-bottom:4px}
+#verdict.ok{border-color:rgba(76,195,138,.4);background:rgba(76,195,138,.06)}
+#verdict.ok .big{color:var(--ac)}
+#verdict.bad{border-color:rgba(229,101,79,.4);background:rgba(229,101,79,.06)}
+#verdict.bad .big{color:var(--bad)}
+#verdict.idle .big{color:var(--tx2)}
+#verdict .mono{font-family:var(--mono);color:var(--tx2);font-size:12.5px}
+#copyBtn{margin-top:10px}
+footer{margin-top:22px;padding-top:12px;border-top:1px solid var(--line);color:var(--tx3);font-size:12px;display:flex;gap:14px;flex-wrap:wrap}
+@media(max-width:760px){
+  #stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .panels{grid-template-columns:minmax(0,1fr)}
+  #tl{height:150px}
+  .stat .v{font-size:22px}
+  body{padding-left:10px;padding-right:10px}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>SCHEN<b>GAUGE</b> 申根天窗仪</h1>
+  <span class="sub">90 天 / 滚动 180 天窗口 · 可视化体检 + 行程规划</span>
+  <span class="today" id="todayLabel"></span>
+</header>
+<main>
+  <section id="stats">
+    <div class="stat"><div class="k">近 180 天已用</div><div class="v" id="stUsed">—</div><div class="n" id="stUsedN">截至今天</div><div class="bar" id="stBar"></div></div>
+    <div class="stat"><div class="k">今天还可停留</div><div class="v" id="stLeft">—</div><div class="n">基于 90 天配额</div></div>
+    <div class="stat"><div class="k">下一次回血</div><div class="v" id="stRegain">—</div><div class="n" id="stRegainN">最早腾出额度的日期</div></div>
+    <div class="stat"><div class="k">超留预警</div><div class="v" id="stOver">—</div><div class="n">任何一天窗口超 90</div></div>
+    <div id="globalVerdict"></div>
+  </section>
+
+  <section class="card" id="vizCard">
+    <h2>滚动窗口 · 时间带</h2>
+    <canvas id="tl"></canvas>
+    <div id="tip"></div>
+    <div class="legend">
+      <span><i style="background:var(--ac)"></i>已发生停留</span>
+      <span><i style="border:1.5px dashed var(--ac);background:transparent"></i>计划中停留</span>
+      <span><i style="background:var(--warn);height:3px;width:14px;border-radius:0"></i>90 天红线（顶部曲线 = 当天窗口用量）</span>
+      <span><i style="background:var(--info);height:10px;width:3px;border-radius:0"></i>今天</span>
+    </div>
+  </section>
+
+  <div class="panels">
+    <section class="card">
+      <h2>我的行程</h2>
+      <div id="tripList"></div>
+      <div class="addRow">
+        <input type="date" id="inStart" aria-label="入境日期">
+        <input type="date" id="inEnd" aria-label="离境日期">
+        <button class="primary" id="addBtn">＋ 添加</button>
+      </div>
+      <div id="tripMsg"></div>
+      <div class="btnRow">
+        <button class="ghost" id="sampleBtn">载入示例</button>
+        <button class="ghost" id="clearBtn">清空全部</button>
+      </div>
+      <div id="tripHint">日期均含首尾两天。行程只存在本页内存里，刷新即清空，不会上传任何数据。</div>
+    </section>
+
+    <section class="card">
+      <h2>未来行程规划</h2>
+      <div class="planRow">
+        <input type="date" id="planDate" aria-label="计划入境日">
+        <input type="number" id="nightsNum" min="1" max="365" value="30" aria-label="计划停留天数">
+      </div>
+      <div class="sliderRow">
+        <input type="range" id="nightsRange" min="1" max="180" value="30" aria-label="停留天数滑杆">
+        <span class="sub" id="nightsLabel">30 天</span>
+      </div>
+      <div id="verdict" class="idle"><div class="big">选择入境日期后即时判定</div><div class="mono">将综合已有行程（含计划中）逐天核对窗口。</div></div>
+      <button class="ghost" id="copyBtn">复制体检摘要</button>
+    </section>
+  </div>
+</main>
+<footer>
+  <span>🔒 全程本地计算 · 行程数据不出浏览器</span>
+  <span>规则口径：任意滚动 180 天窗口内停留 ≤ 90 天（含首尾）</span>
+  <span>非官方法律意见，以边检认定为准</span>
+</footer>
+
+<script>
+"use strict";
+/* ===== 纯函数区（无 DOM，可整段切片测试） ===== */
+var DAY_MS = 86400000;
+function parseDate(s){ // 'YYYY-MM-DD' -> local noon serial（整数天序号）
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+  if(!m) return null;
+  var d = new Date(+m[1], +m[2]-1, +m[3], 12);
+  if(d.getFullYear() !== +m[1] || d.getMonth() !== +m[2]-1 || d.getDate() !== +m[3]) return null;
+  return Math.round(d.getTime()/DAY_MS);
+}
+function serialToDate(sn){ return new Date(sn*DAY_MS + 12*3600*1000); }
+function fmtSerial(sn){
+  var d = serialToDate(sn);
+  var p = function(n){ return (n<10?'0':'')+n; };
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+function fmtShort(sn){
+  var d = serialToDate(sn);
+  return (d.getMonth()+1)+'/'+d.getDate();
+}
+function todaySerial(){
+  var n = new Date();
+  return Math.round(new Date(n.getFullYear(), n.getMonth(), n.getDate(), 12).getTime()/DAY_MS);
+}
+// 把行程数组（可乱序/可重叠）折叠为停留天序列号集合
+function buildStaySet(trips){
+  var set = new Set();
+  trips.forEach(function(t){
+    for(var s = t.s; s <= t.e; s++) set.add(s);
+  });
+  return set;
+}
+// 窗口 [d-179, d] 内的停留天数
+function usedOn(d, set){
+  var c = 0;
+  for(var k = d-179; k <= d; k++) if(set.has(k)) c++;
+  return c;
+}
+// 体检：所有已发生（≤ today）窗口超 90 的日期
+function findOverstays(trips, today){
+  var set = buildStaySet(trips);
+  if(set.size === 0) return [];
+  var minS = Math.min.apply(null, Array.from(set));
+  var bad = [];
+  for(var d = minS; d <= today; d++){
+    var u = usedOn(d, set);
+    if(u > 90) bad.push({d: d, used: u});
+  }
+  return bad;
+}
+// 从 X 起最多可连续停留几天（叠加现有集合，逐天验证）
+function maxStayFrom(x, set){
+  var sim = new Set(set);
+  var n = 0;
+  for(var k = 0; k < 365; k++){
+    var d = x + k;
+    sim.add(d);
+    if(usedOn(d, sim) > 90) return n;
+    n++;
+  }
+  return n;
+}
+// 下一次回血：> today 的最早一天，窗口用量低于今天
+function nextRegain(trips, today){
+  var set = buildStaySet(trips);
+  var cur = usedOn(today, set);
+  for(var d = today + 1; d <= today + 400; d++){
+    if(usedOn(d, set) < cur) return {d: d, from: cur, to: usedOn(d, set)};
+  }
+  return null;
+}
+// 汇总状态对象（供渲染与摘要共用）
+function computeStatus(trips, today){
+  var set = buildStaySet(trips);
+  var used = usedOn(today, set);
+  var over = findOverstays(trips, today);
+  var rg = nextRegain(trips, today);
+  return {
+    used: used,
+    left: Math.max(0, 90 - used),
+    regain: rg,
+    overstays: over,
+    set: set,
+    maxFromToday: usedOn(today, set) >= 90 ? 0 : maxStayFrom(today, set)
+  };
+}
+function buildSummary(trips, st, today){
+  var L = [];
+  L.push('SCHENGAUGE 申根天窗体检 · ' + fmtSerial(today));
+  L.push('近 180 天已用: ' + st.used + '/90 · 今天还可停留 ' + st.left + ' 天');
+  if(st.regain) L.push('下一次回血: ' + fmtSerial(st.regain.d) + '（' + st.regain.from + '→' + st.regain.to + '）');
+  L.push('超留预警: ' + (st.overstays.length === 0 ? '无' : st.overstays.length + ' 天超限（首次 ' + fmtSerial(st.overstays[0].d) + '，用到 ' + st.overstays[0].used + ' 天）'));
+  L.push('行程 ' + trips.length + ' 段:');
+  trips.slice().sort(function(a,b){return a.s-b.s;}).forEach(function(t){
+    L.push('  ' + fmtSerial(t.s) + ' → ' + fmtSerial(t.e) + '（' + (t.e-t.s+1) + ' 天）');
+  });
+  return L.join('\n');
+}
+/* ===== 状态 ===== */
+var state = { trips: [] };
+var $ = function(id){ return document.getElementById(id); };
+/* ===== 渲染：状态卡 ===== */
+function renderStatus(st, today){
+  $('stUsed').textContent = st.used + '/90';
+  $('stUsed').className = 'v ' + (st.used > 90 ? 'bad' : st.used >= 80 ? 'warn' : 'ok');
+  $('stUsedN').textContent = '窗口 ' + fmtShort(today-179) + ' ~ ' + fmtShort(today);
+  $('stBar').style.width = Math.min(100, st.used/90*100) + '%';
+  $('stBar').style.background = st.used > 90 ? 'var(--bad)' : st.used >= 80 ? 'var(--warn)' : 'var(--ac)';
+  $('stLeft').textContent = st.left;
+  $('stLeft').className = 'v ' + (st.left === 0 ? 'bad' : st.left <= 10 ? 'warn' : 'ok');
+  if(st.regain){
+    $('stRegain').textContent = fmtShort(st.regain.d);
+    $('stRegain').className = 'v';
+    $('stRegainN').textContent = st.regain.from + ' → ' + st.regain.to + ' 天 · ' + Math.abs(st.regain.d - today) + ' 天后';
+  } else {
+    $('stRegain').textContent = '—';
+    $('stRegain').className = 'v';
+    $('stRegainN').textContent = st.used === 0 ? '无行程，无需回血' : '400 天内无回血日';
+  }
+  $('stOver').textContent = st.overstays.length;
+  $('stOver').className = 'v ' + (st.overstays.length ? 'bad' : 'ok');
+  var gv = $('globalVerdict');
+  if(st.overstays.length){
+    gv.className = 'show bad';
+    gv.textContent = '⚠ 检测到超留：' + st.overstays.map(function(o){ return fmtSerial(o.d) + ' 用到 ' + o.used + ' 天'; }).join('；') + '（按滚动窗口口径）';
+  } else if(state.trips.length){
+    gv.className = 'show ok';
+    gv.textContent = '✓ 已核对全部历史行程：任意滚动 180 天窗口均未超过 90 天。';
+  } else {
+    gv.className = '';
+  }
+}
+/* ===== 渲染：行程 chips ===== */
+function renderTrips(today){
+  var box = $('tripList');
+  box.innerHTML = '';
+  if(state.trips.length === 0){
+    var p = document.createElement('div');
+    p.style.cssText = 'color:var(--tx3);font-size:13px;padding:6px 2px';
+    p.textContent = '还没有行程——手动添加，或点「载入示例」看效果。';
+    box.appendChild(p);
+    return;
+  }
+  state.trips.slice().sort(function(a,b){ return a.s-b.s; }).forEach(function(t){
+    var row = document.createElement('div');
+    row.className = 'trip' + (t.e >= today ? (t.s > today ? ' future' : '') : '');
+    var dot = document.createElement('span'); dot.className = 'dot';
+    dot.style.background = t.s > today ? 'transparent' : 'var(--ac)';
+    if(t.s > today){ dot.style.border = '1.5px dashed var(--ac)'; }
+    var rng = document.createElement('span'); rng.className = 'rng';
+    rng.textContent = fmtSerial(t.s) + ' → ' + fmtSerial(t.e);
+    var len = document.createElement('span'); len.className = 'len';
+    len.textContent = (t.e - t.s + 1) + ' 天' + (t.s > today ? ' · 计划' : t.e >= today ? ' · 进行中' : '');
+    var del = document.createElement('button'); del.className = 'del'; del.textContent = '×';
+    del.setAttribute('aria-label', '删除行程');
+    del.addEventListener('click', function(){
+      state.trips = state.trips.filter(function(x){ return x !== t; });
+      tripMsg('ok', '已删除 ' + fmtSerial(t.s) + ' → ' + fmtSerial(t.e));
+      renderAll();
+    });
+    row.appendChild(dot); row.appendChild(rng); row.appendChild(len); row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+function tripMsg(kind, text){
+  var el = $('tripMsg');
+  el.className = 'show ' + kind;
+  el.textContent = text;
+}
+/* ===== 渲染：时间带 canvas ===== */
+var tl = null, tctx = null, view = null; // view = {start, end, cellW, maxU}
+function setupCanvas(){
+  tl = $('tl');
+  var dpr = window.devicePixelRatio || 1;
+  var w = tl.clientWidth || 600, h = tl.clientHeight || 170;
+  tl.width = Math.round(w*dpr); tl.height = Math.round(h*dpr);
+  tctx = tl.getContext('2d');
+  tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function computeView(today, set){
+  var minD = today - 200, maxD = today + 210;
+  if(set.size){
+    var arr = Array.from(set);
+    minD = Math.min(minD, Math.min.apply(null, arr) - 10);
+    maxD = Math.max(maxD, Math.max.apply(null, arr) + 10);
+  }
+  var days = maxD - minD + 1;
+  var w = tl.clientWidth || 600;
+  view = { start: minD, end: maxD, days: days, cellW: w/days, maxU: 90 };
+  for(var d = minD; d <= maxD; d++){
+    var u = usedOn(d, set);
+    if(u > view.maxU) view.maxU = u;
+  }
+  view.maxU = Math.max(90, view.maxU) + 4;
+}
+function drawTimeline(st, today){
+  setupCanvas();
+  computeView(today, st.set);
+  var ctx = tctx, w = tl.clientWidth, h = tl.clientHeight;
+  var set = st.set;
+  ctx.clearRect(0, 0, w, h);
+  var chartH = h - 46, chartY = 8, stripY = h - 30, stripH = 16;
+  var xOf = function(sn){ return (sn - view.start) * view.cellW; };
+  // 月份分隔线
+  var d0 = serialToDate(view.start);
+  var my = d0.getFullYear(), mm = d0.getMonth();
+  ctx.font = '10px ui-monospace,monospace';
+  for(var guard = 0; guard < 40; guard++){
+    var ms = new Date(my, mm, 1, 12), sn = Math.round(ms.getTime()/DAY_MS);
+    if(sn > view.end) break;
+    if(sn >= view.start){
+      var gx = xOf(sn);
+      ctx.strokeStyle = 'rgba(255,255,255,.05)';
+      ctx.beginPath(); ctx.moveTo(gx, chartY); ctx.lineTo(gx, stripY + stripH); ctx.stroke();
+      ctx.fillStyle = 'rgba(138,149,165,.55)';
+      ctx.fillText((mm+1) + '月', gx + 3, chartY + 9);
+    }
+    mm++; if(mm > 11){ mm = 0; my++; }
+  }
+  // 90 红线
+  var y90 = chartY + chartH - (90/view.maxU)*chartH;
+  ctx.strokeStyle = 'rgba(232,182,76,.65)';
+  ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(0, y90); ctx.lineTo(w, y90); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(232,182,76,.8)';
+  ctx.fillText('90', 3, y90 - 3);
+  // 用量曲线（区域）
+  ctx.beginPath();
+  var first = true;
+  for(var d = view.start; d <= view.end; d++){
+    var u = usedOn(d, set);
+    var x = xOf(d) + view.cellW/2;
+    var y = chartY + chartH - (u/view.maxU)*chartH;
+    if(first){ ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#4cc38a'; ctx.lineWidth = 1.6; ctx.stroke();
+  ctx.lineTo(xOf(view.end), chartY + chartH); ctx.lineTo(xOf(view.start), chartY + chartH); ctx.closePath();
+  ctx.fillStyle = 'rgba(76,195,138,.12)'; ctx.fill();
+  ctx.lineWidth = 1;
+  // 停留色带
+  for(var d2 = view.start; d2 <= view.end; d2++){
+    if(!set.has(d2)) continue;
+    var x2 = xOf(d2);
+    ctx.fillStyle = d2 > today ? 'rgba(76,195,138,.32)' : '#4cc38a';
+    ctx.fillRect(x2, stripY, Math.max(1.2, view.cellW - .4), stripH);
+    if(d2 > today){
+      ctx.strokeStyle = 'rgba(76,195,138,.85)';
+      ctx.strokeRect(x2 + .5, stripY + .5, Math.max(1, view.cellW - 1.4), stripH - 1);
+    }
+  }
+  // 超留日红标
+  st.overstays.forEach(function(o){
+    if(o.d < view.start || o.d > view.end) return;
+    ctx.fillStyle = '#e5654f';
+    ctx.fillRect(xOf(o.d), stripY - 7, Math.max(1.5, view.cellW), 4);
+  });
+  // 今天
+  var tx = xOf(today) + view.cellW/2;
+  ctx.strokeStyle = '#5aa7e8'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(tx, chartY); ctx.lineTo(tx, stripY + stripH + 4); ctx.stroke();
+  ctx.fillStyle = '#5aa7e8';
+  ctx.fillText('今天', tx + 4, stripY + stripH + 12);
+  ctx.lineWidth = 1;
+  // 未来区底纹
+  if(today < view.end){
+    ctx.fillStyle = 'rgba(255,255,255,.025)';
+    ctx.fillRect(tx, chartY, xOf(view.end) - tx, stripY + stripH - chartY);
+  }
+}
+function timelineProbe(clientX){
+  var rect = tl.getBoundingClientRect();
+  var x = clientX - rect.left;
+  var sn = view.start + Math.floor(x/view.cellW);
+  if(sn < view.start || sn > view.end) return null;
+  return sn;
+}
+function showTip(clientX, clientY, sn, st, today){
+  var tip = $('tip');
+  var u = usedOn(sn, st.set);
+  var inZone = st.set.has(sn);
+  var tag = !inZone ? '区外' : sn > today ? '计划停留' : sn === today ? '停留中' : '停留';
+  tip.innerHTML = '<div class="d">' + fmtSerial(sn) + ' · ' + tag + '</div><div class="u" style="color:' + (u > 90 ? 'var(--bad)' : 'var(--ac)') + '">' + u + '/90 天</div>';
+  tip.style.display = 'block';
+  var tw = tip.offsetWidth;
+  var left = Math.min(Math.max(6, clientX + 12), window.innerWidth - tw - 6);
+  tip.style.left = left + 'px';
+  tip.style.top = (clientY - 58) + 'px';
+}
+/* ===== 渲染：规划器 ===== */
+function renderPlan(st, today){
+  var dv = $('planDate').value;
+  var n = parseInt($('nightsNum').value, 10);
+  var v = $('verdict');
+  var nl = $('nightsLabel');
+  nl.textContent = (isNaN(n) ? 0 : n) + ' 天';
+  if(!dv){
+    v.className = 'idle';
+    v.innerHTML = '<div class="big">选择入境日期后即时判定</div><div class="mono">将综合已有行程（含计划中）逐天核对窗口。</div>';
+    return;
+  }
+  var x = parseDate(dv);
+  if(x === null){
+    v.className = 'idle';
+    v.innerHTML = '<div class="big">日期格式无法识别</div><div class="mono">请用日期选择器重新选择。</div>';
+    return;
+  }
+  if(isNaN(n) || n < 1){
+    v.className = 'idle';
+    v.innerHTML = '<div class="big">请填写停留天数（≥1）</div>';
+    return;
+  }
+  var maxN = maxStayFrom(x, st.set);
+  var pastNote = x <= today ? '<div class="mono">注：该日期不在未来，按假设日核对。</div>' : '';
+  if(n <= maxN){
+    v.className = 'ok';
+    v.innerHTML = '<div class="big">✓ 可行：' + fmtSerial(x) + ' 入境停留 ' + n + ' 天</div>' +
+      '<div class="mono">' + fmtSerial(x) + ' → ' + fmtSerial(x + n - 1) + ' 离开（含首尾）。到离境日每个窗口都 ≤ 90。' +
+      (maxN < 365 ? '该日最多可停留 ' + maxN + ' 天。' : '该日额度充足。') + '</div>' + pastNote;
+  } else {
+    v.className = 'bad';
+    var suggest = maxN >= 1 ? '最多可停留 ' + maxN + ' 天（' + fmtSerial(x) + ' → ' + fmtSerial(x + maxN - 1) + '）。' : '该日额度已用尽，一天都不能停留。';
+    var later = '';
+    if(maxN < n){
+      for(var d = x + 1; d <= x + 400; d++){
+        if(maxStayFrom(d, st.set) >= n){ later = '若等到 ' + fmtSerial(d) + ' 入境，则可停留 ' + n + ' 天。'; break; }
+      }
+    }
+    v.innerHTML = '<div class="big">✗ 不可行：会在途中顶破 90 天红线</div>' +
+      '<div class="mono">' + suggest + (later ? ' ' + later : '') + '</div>' + pastNote;
+  }
+}
+/* ===== 总渲染 ===== */
+function renderAll(){
+  var today = todaySerial();
+  var st = computeStatus(state.trips, today);
+  renderStatus(st, today);
+  renderTrips(today);
+  drawTimeline(st, today);
+  renderPlan(st, today);
+  return st;
+}
+function lastStatus(){ return computeStatus(state.trips, todaySerial()); }
+/* ===== 事件 ===== */
+$('addBtn').addEventListener('click', function(){
+  var s = parseDate($('inStart').value), e = parseDate($('inEnd').value);
+  if(s === null || e === null){ tripMsg('bad', '请先选择入境和离境日期。'); return; }
+  if(e < s){ tripMsg('bad', '离境日期早于入境日期——已自动交换。'); var t = s; s = e; e = t; }
+  if(state.trips.length >= 60){ tripMsg('bad', '行程段数已达上限（60）。'); return; }
+  state.trips.push({s: s, e: e});
+  tripMsg('ok', '已添加 ' + fmtSerial(s) + ' → ' + fmtSerial(e) + '（' + (e-s+1) + ' 天）');
+  $('inStart').value = ''; $('inEnd').value = '';
+  renderAll();
+});
+$('sampleBtn').addEventListener('click', function(){
+  var td = todaySerial();
+  state.trips = [
+    {s: td - 170, e: td - 121},
+    {s: td - 50,  e: td - 13}
+  ];
+  tripMsg('ok', '已载入示例：两段历史行程（窗口用量 ' + usedOn(td, buildStaySet(state.trips)) + '/90）。');
+  renderAll();
+});
+$('clearBtn').addEventListener('click', function(){
+  if(state.trips.length === 0){ tripMsg('bad', '列表已经是空的。'); return; }
+  state.trips = [];
+  tripMsg('ok', '已清空全部行程。');
+  renderAll();
+});
+$('nightsRange').addEventListener('input', function(){
+  $('nightsNum').value = this.value;
+  renderPlan(lastStatus(), todaySerial());
+});
+$('nightsNum').addEventListener('input', function(){
+  var n = parseInt(this.value, 10);
+  if(!isNaN(n) && n >= 1 && n <= 180) $('nightsRange').value = n;
+  renderPlan(lastStatus(), todaySerial());
+});
+$('planDate').addEventListener('input', function(){ renderPlan(lastStatus(), todaySerial()); });
+$('copyBtn').addEventListener('click', function(){
+  var text = buildSummary(state.trips, lastStatus(), todaySerial());
+  var done = function(){ tripMsg('ok', '体检摘要已复制 ✓'); };
+  var fail = function(){
+    var ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(err){ tripMsg('bad', '复制失败，请手动选择文本。'); }
+    document.body.removeChild(ta);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done, fail);
+  } else fail();
+});
+// 时间带指针交互（鼠标 + 触屏）
+var tlEl = $('tl');
+function probeEv(ev){
+  var pt = ev.touches && ev.touches[0] ? ev.touches[0] : ev;
+  var sn = timelineProbe(pt.clientX);
+  if(sn !== null) showTip(pt.clientX, pt.clientY, sn, lastStatus(), todaySerial());
+  else $('tip').style.display = 'none';
+}
+tlEl.addEventListener('mousemove', probeEv);
+tlEl.addEventListener('touchstart', probeEv, {passive: true});
+tlEl.addEventListener('touchmove', probeEv, {passive: true});
+tlEl.addEventListener('mouseleave', function(){ $('tip').style.display = 'none'; });
+var rsTimer = null;
+window.addEventListener('resize', function(){
+  clearTimeout(rsTimer);
+  rsTimer = setTimeout(function(){ renderAll(); }, 120);
+});
+/* ===== 初始化：默认日期值 ===== */
+(function init(){
+  var td = todaySerial();
+  $('todayLabel').textContent = '今天 · ' + fmtSerial(td);
+  $('inStart').value = fmtSerial(td + 7);
+  $('inEnd').value = fmtSerial(td + 16);
+  $('planDate').value = fmtSerial(td + 30);
+  renderAll();
+})();
+</script>
+</body>
+</html>
