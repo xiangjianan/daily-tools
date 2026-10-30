@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WASHMARKS 洗标翻译官 · 衣服标签上的神秘符号，一秒翻译成人话</title>
+<meta name="description" content="点选衣服洗护标签上的 5 个 ISO 3758 符号，即时生成人话洗护卡：红线警告 + 娇气指数 + 中英双语，附洗标小测。全部本地运行，零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧺</text></svg>">
+<style>
+:root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--line:#21262d;--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--card:#161b22}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+padding:max(20px,env(safe-area-inset-top)) 14px max(40px,env(safe-area-inset-bottom))}
+main{max-width:760px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.5px}
+h1 .en{color:var(--acc)}
+.sub{color:var(--mut);font-size:13px;margin:4px 0 18px}
+.tabs{display:flex;gap:8px;margin-bottom:16px}
+.tab{flex:1;text-align:center;padding:9px 0;border:1px solid var(--line);border-radius:10px;background:var(--card);
+color:var(--mut);font-size:14px;cursor:pointer;user-select:none;transition:.15s}
+.tab.on{border-color:var(--acc);color:var(--fg);background:#1c2a3a}
+/* ---------- translator ---------- */
+.slots{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.slot{flex:1 1 120px;min-width:104px;background:var(--card);border:1.5px dashed #30363d;border-radius:12px;
+padding:10px 8px 8px;text-align:center;cursor:pointer;transition:.15s;position:relative}
+.slot.sel{border-style:solid;border-color:var(--acc)}
+.slot.open{border-color:var(--warn)}
+.slot .sym{width:52px;height:52px;color:var(--fg)}
+.slot .sym.empty{opacity:.28}
+.slot .cat{font-size:12px;color:var(--mut);margin-top:2px}
+.slot .nm{font-size:12px;color:var(--acc);min-height:17px;margin-top:1px}
+.slot .x{position:absolute;top:2px;right:6px;color:var(--mut);font-size:15px;display:none}
+.slot.sel .x{display:block}
+.hint{color:var(--mut);font-size:12.5px;margin:6px 2px 10px}
+.palette{display:none;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:14px}
+.palette.show{display:block}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px}
+.pcell{background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:8px 4px 6px;text-align:center;cursor:pointer;transition:.12s}
+.pcell:hover{border-color:var(--acc)}
+.pcell.on{border-color:var(--acc);background:#1c2a3a}
+.pcell .sym{width:46px;height:46px;color:var(--fg)}
+.pcell .t{font-size:11px;color:var(--mut);line-height:1.3;margin-top:2px}
+/* ---------- care card ---------- */
+.report{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:4px}
+.report h2{font-size:15px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.rline{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:14px}
+.rline:first-of-type{border-top:none}
+.rline .k{color:var(--mut);min-width:76px;font-size:13px;padding-top:1px}
+.rline .v{flex:1}
+.rline .v b{color:var(--bad);font-weight:600}
+.warnbox{margin-top:10px;background:#2d1214;border:1px solid #67272b;border-radius:10px;padding:10px 12px;font-size:13.5px;color:#ffb3ad}
+.warnbox:empty{display:none}
+.meter{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.stars{font-size:18px;letter-spacing:2px;color:var(--warn)}
+.meter .lbl{font-size:13.5px}
+.meter .why{flex-basis:100%;color:var(--mut);font-size:12.5px}
+.btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+button.bt{flex:1 1 120px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#1c2a3a;
+color:var(--fg);font-size:14px;cursor:pointer;transition:.15s;min-height:44px}
+button.bt:hover{border-color:var(--acc)}
+button.bt.pri{background:var(--acc);border-color:var(--acc);color:#0d1117;font-weight:600}
+button.bt.gh{background:transparent;color:var(--mut)}
+#toast{position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+background:#30363d;color:var(--fg);padding:9px 18px;border-radius:20px;font-size:13.5px;opacity:0;pointer-events:none;transition:.25s;z-index:9}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* ---------- quiz ---------- */
+#view-quiz{display:none}
+.qstage{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 16px;text-align:center}
+.qbig .sym{width:128px;height:128px;color:var(--fg)}
+.qmeta{color:var(--mut);font-size:12.5px;margin-bottom:8px}
+.qopts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+button.opt{padding:12px 8px;border-radius:10px;border:1px solid #30363d;background:#0d1117;color:var(--fg);
+font-size:13.5px;cursor:pointer;min-height:48px;transition:.12s}
+button.opt:hover{border-color:var(--acc)}
+button.opt.right{border-color:var(--ok);background:#12261a;color:#7ee29a}
+button.opt.wrong{border-color:var(--bad);background:#2d1214;color:#ffb3ad}
+button.opt:disabled{cursor:default;opacity:.85}
+.qfb{min-height:44px;margin-top:12px;font-size:13.5px;color:var(--mut)}
+.qfb b{color:var(--fg)}
+.qnext{margin-top:6px;display:none;width:100%}
+footer{margin-top:26px;color:var(--mut);font-size:12px;line-height:1.7}
+footer a{color:var(--acc);text-decoration:none}
+@media (max-width:480px){
+  .slots{gap:6px}
+  .slot{flex:1 1 30%;min-width:0;padding:8px 4px 6px}
+  .slot .sym{width:42px;height:42px}
+  .qopts{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="en">WASHMARKS</span> 洗标翻译官</h1>
+  <div class="sub">衣服标签上的神秘符号 → 一张人话洗护卡 · 全程本地，零上传</div>
+
+  <div class="tabs">
+    <div class="tab on" id="tab-t" onclick="switchTab('t')">🧺 翻译官</div>
+    <div class="tab" id="tab-q" onclick="switchTab('q')">🎯 洗标小测</div>
+  </div>
+
+  <div id="view-t">
+    <div class="slots" id="slots"></div>
+    <div class="hint" id="hint">点击上方槽位，挑一个和你标签上一模一样的符号。</div>
+    <div class="palette" id="palette"><div class="pgrid" id="pgrid"></div></div>
+
+    <div class="report" id="report" style="display:none">
+      <h2>📋 洗护卡 <span style="color:var(--mut);font-weight:400;font-size:12px" id="rprog"></span></h2>
+      <div id="rlines"></div>
+      <div class="warnbox" id="warnbox"></div>
+      <div class="meter" id="meter"></div>
+      <div class="btns">
+        <button class="bt pri" id="copyZh">📋 复制中文洗护卡</button>
+        <button class="bt" id="copyEn">📋 Copy English card</button>
+        <button class="bt gh" id="clear">清空重选</button>
+      </div>
+    </div>
+    <div class="btns" style="margin-top:10px">
+      <button class="bt gh" id="demo">👕 填个示例（一件娇气衬衫）</button>
+    </div>
+  </div>
+
+  <div id="view-quiz">
+    <div class="qstage">
+      <div class="qmeta" id="qmeta">连对 0 · 最佳 0 · 第 1 题</div>
+      <div class="qbig" id="qbig"></div>
+      <div class="qopts" id="qopts"></div>
+      <div class="qfb" id="qfb">这是哪个符号？点下面的选项。</div>
+      <button class="bt pri qnext" id="qnext">下一题 →</button>
+    </div>
+  </div>
+
+  <footer>
+    符号依据 ISO 3758 / GINETEX 洗护标签体系，够权威但请以衣物实际反应为准。<br>
+    WASHMARKS · <a href="https://github.com/xiangjianan/daily-tools/tree/main/washmarks-20261031">source</a>
+    · 单文件 · 无依赖 · 数据不出浏览器。
+  </footer>
+</main>
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ================= 符号库（ISO 3758 近似手绘） ================= */
+var LN='stroke="currentColor" fill="none" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"';
+var TH='stroke="currentColor" fill="none" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"';
+var TXT=function(sz){return 'fill="currentColor" stroke="none" font-size="'+sz+'" font-family="ui-monospace,Menlo,monospace" font-weight="700" text-anchor="middle"';};
+function svg(body){return '<svg viewBox="0 0 100 100" class="sym" aria-hidden="true">'+body+'</svg>';}
+var CROSS='<path d="M17,17 L83,83 M83,17 L17,83" '+LN+'/>';
+function bars(n,y){y=y||88;return n>=2?'<path d="M28,'+y+' L72,'+y+' M28,'+(y+6.5)+' L72,'+(y+6.5)+'" '+LN+'/>':'<path d="M28,'+y+' L72,'+y+'" '+LN+'/>';}
+var TUB='<path d="M13,32 L23,70 Q24.5,78 32,78 L68,78 Q75.5,78 77,70 L87,32" '+LN+'/>'+
+        '<path d="M22,44 q7,-7.5 14,0 t14,0 t14,0 t14,0" '+LN+'/>';
+var HAND='<path d="M41,62 L41,47 M47,62 L47,41 M53,62 L53,42 M59,62 L59,48" '+TH+'/>'+
+         '<path d="M41,62 Q40,52 34,50" '+TH+'/>';
+var TRI='<path d="M50,13 L90,82 L10,82 Z" '+LN+'/>';
+var SQ='<rect x="14" y="18" width="72" height="64" rx="3" '+LN+'/>';
+var CIRC='<circle cx="50" cy="46" r="29" '+LN+'/>';
+var IRON='<path d="M12,72 L88,72 L82,46 Q80,33 63,33 L37,33 Q26,33 24,44 Z" '+LN+'/>';
+function dot(x,y){return '<circle cx="'+x+'" cy="'+y+'" r="4.6" fill="currentColor"/>';}
+function letter(ch,sz){return '<text x="50" y="58" '+TXT(sz||34)+'>'+ch+'</text>';}
+
+/* 每条: id, cat, svg, zh 名, zh 卡句, en 名, en 卡句, 娇气分 */
+var SYM=[
+/* --- 洗涤 --- */
+{id:'w40',cat:0,b:TUB+'<text x="50" y="70" '+TXT(24)+'>'+40+'</text>',zh:'40°C 机洗',card:'最高 40°C 常规机洗',en:'Machine wash',encard:'Machine wash up to 40°C',w:0},
+{id:'w30',cat:0,b:TUB+'<text x="50" y="70" '+TXT(24)+'>'+30+'</text>',zh:'30°C 机洗',card:'最高 30°C 机洗（冷水更安全）',en:'Machine wash 30°',encard:'Machine wash up to 30°C',w:.5},
+{id:'w60',cat:0,b:TUB+'<text x="50" y="70" '+TXT(24)+'>'+60+'</text>',zh:'60°C 机洗',card:'最高 60°C 机洗（可高温消毒）',en:'Machine wash 60°',encard:'Machine wash up to 60°C',w:0},
+{id:'w30g',cat:0,b:TUB+'<text x="50" y="70" '+TXT(24)+'>'+30+'</text>'+bars(1),zh:'30°C 温和洗',card:'30°C 以下温和/轻柔程序，少装几件',en:'Gentle wash 30°',encard:'Gentle cycle at 30°C, reduced load',w:1.5},
+{id:'w40g',cat:0,b:TUB+'<text x="50" y="70" '+TXT(24)+'>'+40+'</text>'+bars(1),zh:'40°C 温和洗',card:'40°C 以下温和程序，忌大力搅摔',en:'Gentle wash 40°',encard:'Gentle cycle at 40°C',w:1.5},
+{id:'whand',cat:0,b:TUB+HAND,zh:'手洗',card:'只可手洗，最高 40°C，别拧绞',en:'Hand wash',encard:'Hand wash only, max 40°C, do not wring',w:2},
+{id:'wno',cat:0,b:TUB+CROSS,zh:'不可水洗',card:'不可水洗 —— 交给干洗吧',en:'Do not wash',encard:'Do not wash — professional care only',w:3.5},
+/* --- 漂白 --- */
+{id:'bany',cat:1,b:TRI,zh:'可漂白',card:'任意漂白剂都可以用',en:'Any bleach',encard:'All bleaches allowed',w:0},
+{id:'bcl',cat:1,b:TRI+'<text x="50" y="70" '+TXT(24)+'>Cl</text>',zh:'仅氯漂',card:'允许含氯漂白剂',en:'Chlorine bleach',encard:'Chlorine bleach allowed',w:.5},
+{id:'bnocl',cat:1,b:TRI+'<text x="50" y="62" '+TXT(22)+'>Cl</text>'+'<path d="M28,74 L72,44 M72,74 L28,44" '+TH+'/>',zh:'禁氯漂',card:'不可氯漂，含氧漂白剂可以',en:'No chlorine',encard:'Do not chlorine bleach; oxygen bleach OK',w:1},
+{id:'bno',cat:1,b:TRI+CROSS,zh:'不可漂白',card:'不可漂白，任何漂白剂都会伤色伤纤维',en:'Do not bleach',encard:'Do not bleach, any agent',w:2.5},
+/* --- 干燥（烘干 / 自然晾干） --- */
+{id:'dany',cat:2,b:SQ+'<circle cx="50" cy="50" r="19" '+LN+'/>'+dot(43,50)+dot(57,50),zh:'可烘干',card:'可转笼烘干（常规温度）',en:'Tumble dry',encard:'Tumble dry allowed, normal heat',w:0},
+{id:'dlow',cat:2,b:SQ+'<circle cx="50" cy="50" r="19" '+LN+'/>'+dot(50,50),zh:'低温烘干',card:'只能低温转笼烘干',en:'Tumble dry low',encard:'Tumble dry, low heat only',w:.5},
+{id:'dgent',cat:2,b:SQ+'<circle cx="50" cy="46" r="17" '+LN+'/>'+bars(1,70),zh:'温和烘干',card:'温和程序低温烘干',en:'Gentle tumble',encard:'Tumble dry, gentle low heat',w:1},
+{id:'dno',cat:2,b:SQ+'<circle cx="50" cy="50" r="19" '+LN+'/>'+CROSS,zh:'不可烘干',card:'不可转笼烘干 —— 会缩水的',en:'Do not tumble dry',encard:'Do not tumble dry',w:2},
+{id:'dline',cat:2,b:SQ+'<path d="M22,38 Q50,16 78,38" '+LN+'/>',zh:'悬挂晾干',card:'洗后挂起来自然晾干，别甩干太狠',en:'Line dry',encard:'Hang to dry (line dry)',w:.5},
+{id:'dshade',cat:2,b:SQ+'<path d="M22,38 Q50,16 78,38" '+LN+'/><path d="M14,18 L44,48" '+TH+'/>',zh:'阴干',card:'悬挂阴干，阳光直晒会褪色',en:'Dry in shade',encard:'Line dry away from sunlight',w:1},
+{id:'dflat',cat:2,b:SQ+'<path d="M26,52 L74,52" '+LN+'/>',zh:'平铺晾干',card:'平铺晾干 —— 挂起来会变形',en:'Flat dry',encard:'Dry flat to keep shape',w:1},
+{id:'ddrip',cat:2,b:SQ+'<path d="M34,28 L34,54 M50,28 L50,54 M66,28 L66,54" '+TH+'/>',zh:'滴干',card:'不拧绞，挂着滴水自然干',en:'Drip dry',encard:'Drip dry without spinning',w:1},
+/* --- 熨烫 --- */
+{id:'i110',cat:3,b:IRON+dot(56,58),zh:'低温熨',card:'熨斗一点档（约 110°C），化纤档',en:'Iron low',encard:'Iron at low temp (110°C, one dot)',w:1},
+{id:'i150',cat:3,b:IRON+dot(48,58)+dot(64,58),zh:'中温熨',card:'熨斗两点档（约 150°C），呢绒档',en:'Iron medium',encard:'Iron at medium temp (150°C, two dots)',w:.5},
+{id:'i200',cat:3,b:IRON+dot(42,58)+dot(56,58)+dot(70,58),zh:'高温熨',card:'熨斗三点档（约 200°C），棉麻随便熨',en:'Iron high',encard:'Iron at high temp (200°C, three dots)',w:0},
+{id:'isteam',cat:3,b:IRON+'<path d="M20,24 L20,32 M28,21 L28,29" '+TH+'/><path d="M16,18 L32,34 M32,18 L16,34" '+TH+'/>',zh:'禁蒸汽',card:'可以熨，但禁止蒸汽（会出亮痕）',en:'No steam',encard:'Do not steam',w:.5},
+{id:'ino',cat:3,b:IRON+CROSS,zh:'不可熨烫',card:'不可熨烫 —— 褶子就当是设计',en:'Do not iron',encard:'Do not iron',w:3},
+/* --- 专业护理 --- */
+{id:'pA',cat:4,b:CIRC+letter('A'),zh:'任意干洗',card:'常规干洗，溶剂不限',en:'Dry clean any',encard:'Dry clean, any solvent',w:0},
+{id:'pP',cat:4,b:CIRC+letter('P'),zh:'干洗 P',card:'常规干洗（四氯乙烯等常见溶剂）',en:'Dry clean P',encard:'Dry clean, any solvent except tetrachloroethene-restricted',w:.5},
+{id:'pPg',cat:4,b:CIRC+letter('P')+bars(1),zh:'缓和干洗',card:'干洗需缓和程序，挑剔织物',en:'Gentle dry clean',encard:'Gentle dry cleaning with restrictions',w:1.5},
+{id:'pF',cat:4,b:CIRC+letter('F'),zh:'干洗 F',card:'只能碳氢溶剂干洗（娇气面料）',en:'Dry clean F',encard:'Dry clean, hydrocarbons only',w:1.5},
+{id:'pFg',cat:4,b:CIRC+letter('F')+bars(1),zh:'缓和干洗 F',card:'碳氢溶剂干洗 + 缓和程序，最挑剔的一档',en:'Gentle dry F',encard:'Gentle dry clean, hydrocarbons only',w:2},
+{id:'pW',cat:4,b:CIRC+letter('W'),zh:'可湿洗',card:'专业湿洗（比干洗温和的机器水洗）',en:'Wet clean',encard:'Professional wet cleaning',w:.5},
+{id:'pWg',cat:4,b:CIRC+letter('W')+bars(1),zh:'缓和湿洗',card:'专业湿洗需缓和程序',en:'Gentle wet clean',encard:'Gentle professional wet cleaning',w:1},
+{id:'pno',cat:4,b:CIRC+CROSS,zh:'不可干洗',card:'不可干洗（别拿去洗衣店为难老板）',en:'No dry clean',encard:'Do not dry clean',w:1.5},
+{id:'pnoW',cat:4,b:CIRC+'<text x="50" y="58" '+TXT(34)+'>W</text>'+CROSS,zh:'禁湿洗',card:'不可专业湿洗',en:'No wet clean',encard:'Do not wet clean',w:1.5}
+];
+var CATS=[
+ {name:'洗涤',en:'Washing',emoji:'🧺'},
+ {name:'漂白',en:'Bleaching',emoji:'🧪'},
+ {name:'干燥',en:'Drying',emoji:'☀️'},
+ {name:'熨烫',en:'Ironing',emoji:'♨️'},
+ {name:'专业护理',en:'Professional care',emoji:'⭕'}
+];
+function symOf(id){for(var i=0;i<SYM.length;i++)if(SYM[i].id===id)return SYM[i];return null;}
+
+/* ================= 状态 ================= */
+var state=[null,null,null,null,null];
+var openCat=-1;
+function el(id){return document.getElementById(id);}
+
+function renderSlots(){
+  var h='';
+  for(var i=0;i<5;i++){
+    var s=state[i]?symOf(state[i]):null;
+    h+='<div class="slot'+(s?' sel':'')+(openCat===i?' open':'')+'" data-cat="'+i+'" role="button" tabindex="0" aria-label="'+CATS[i].name+'">';
+    h+='<span class="x" data-x="'+i+'" title="清除">×</span>';
+    h+=s?s.b:'<svg viewBox="0 0 100 100" class="sym empty"><text x="50" y="64" '+TXT(46)+' >?</text></svg>';
+    h+='<div class="cat">'+CATS[i].emoji+' '+CATS[i].name+'</div>';
+    h+='<div class="nm">'+(s?s.zh:'')+'</div></div>';
+  }
+  el('slots').innerHTML=h;
+}
+function renderPalette(){
+  var p=el('palette');
+  if(openCat<0){p.classList.remove('show');el('pgrid').innerHTML='';return;}
+  p.classList.add('show');
+  var c=openCat,h='<div class="hint" style="margin:0 0 10px">'+CATS[c].emoji+' '+CATS[c].name+' · '+CATS[c].en+' —— 挑一个：</div><div class="pgrid">';
+  for(var i=0;i<SYM.length;i++){
+    if(SYM[i].cat!==c)continue;
+    var on=state[c]===SYM[i].id?' on':'';
+    h+='<div class="pcell'+on+'" data-id="'+SYM[i].id+'" role="button" tabindex="0">'+SYM[i].b+'<div class="t">'+SYM[i].zh+'</div></div>';
+  }
+  el('pgrid').innerHTML=h+'</div>';
+}
+function pick(cat,id){
+  state[cat]=state[cat]===id?null:id;
+  if(state[cat])openCat=-1;
+  refresh();
+}
+function refresh(){
+  renderSlots();renderPalette();renderReport();
+}
+function renderReport(){
+  var n=state.filter(Boolean).length;
+  var rep=el('report');
+  if(n===0){rep.style.display='none';return;}
+  rep.style.display='block';
+  el('rprog').textContent=n<5?'已选 '+n+'/5，还差 '+(5-n)+' 项':'5/5 齐了 ✓';
+  var lines='',warn=[],score=0,zhCopy='🧺 洗护卡（WASHMARKS）\n',enCopy='🧺 Care card (WASHMARKS)\n';
+  for(var i=0;i<5;i++){
+    var s=state[i]?symOf(state[i]):null;
+    var v=s?s.card:'<span style="color:var(--mut)">— 未选择</span>';
+    lines+='<div class="rline"><span class="k">'+CATS[i].emoji+' '+CATS[i].name+'</span><span class="v">'+(s&&/不可|禁止|只能|只可/.test(s.card)?'<b>'+s.card+'</b>':s?s.card:v)+'</span></div>';
+    if(s){score+=s.w;zhCopy+=CATS[i].emoji+' '+CATS[i].name+'：'+s.card+'\n';enCopy+=CATS[i].emoji+' '+CATS[i].en+': '+s.encard+'\n';
+      if(/不可|禁止|只能|只可/.test(s.card))warn.push(s.card);}
+  }
+  el('rlines').innerHTML=lines;
+  el('warnbox').innerHTML=warn.length?'⚠️ 红线（先记住这几条）：<br>· '+warn.join('<br>· '):'';
+  /* 娇气指数 */
+  var sc=Math.min(10,score),full=Math.ceil(sc/2),st='';
+  for(var k=1;k<=5;k++)st+=k<=full?'★':'☆';
+  var verdict=sc<=1?'皮实耐造，怎么造都行':sc<=3?'正常衣物，常规对待':sc<=5?'有点娇气，多看两眼标签':sc<=7?'相当娇气，洗手盆见':'祖宗级娇贵，建议供起来';
+  el('meter').innerHTML='<span class="stars">'+st+'</span><span class="lbl">娇气指数 '+full+'/5</span><span class="lbl" style="color:var(--mut)">'+verdict+'</span><span class="why">由 '+n+' 项禁忌与温和程度折算（分 '+sc.toFixed(1)+'/10），仅供娱乐。</span>';
+  zhCopy+='⚠️ 红线：'+(warn.length?warn.join(' · '):'无')+'\n'+st+' 娇气指数 '+full+'/5（'+verdict+'）';
+  enCopy+='⚠️ Red lines: '+(warn.length?warn.join(' · '):'none')+'\nDelicate meter '+full+'/5';
+  el('copyZh').dataset.txt=zhCopy;
+  el('copyEn').dataset.txt=enCopy;
+}
+/* ================= 交互 ================= */
+el('slots').addEventListener('click',function(e){
+  var x=e.target.closest('[data-x]');
+  if(x){e.stopPropagation();state[+x.dataset.x]=null;refresh();return;}
+  var s=e.target.closest('.slot');
+  if(s){openCat=openCat===+s.dataset.cat?-1:+s.dataset.cat;refresh();}
+});
+el('pgrid').addEventListener('click',function(e){
+  var c=e.target.closest('.pcell');
+  if(c)pick(openCat,c.dataset.id);
+});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Enter'||e.key===' '){
+    var t=e.target.closest?e.target.closest('.slot,.pcell'):null;
+    if(t){e.preventDefault();t.click();}
+  }
+});
+function toast(msg){var t=el('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove('show');},1600);}
+function copyText(txt){
+  function fb(){
+    var ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');toast('已复制 ✓');}catch(e){toast('复制失败，请手动选择');}
+    document.body.removeChild(ta);
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(function(){toast('已复制 ✓');},fb);}
+  else fb();
+}
+el('copyZh').onclick=function(){copyText(this.dataset.txt||'');};
+el('copyEn').onclick=function(){copyText(this.dataset.txt||'');};
+el('clear').onclick=function(){state=[null,null,null,null,null];openCat=-1;refresh();};
+el('demo').onclick=function(){state=['w30g','bno','dline','i110','pPg'];openCat=-1;refresh();toast('示例：一件真丝混纺衬衫');
+  window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});};
+
+/* ================= Tab 切换 ================= */
+function switchTab(m){
+  el('tab-t').classList.toggle('on',m==='t');
+  el('tab-q').classList.toggle('on',m==='q');
+  el('view-t').style.display=m==='t'?'block':'none';
+  el('view-quiz').style.display=m==='q'?'block':'none';
+  if(m==='q'&&!qCur)nextQ();
+}
+/* ================= 小测 ================= */
+var qCur=null,qStreak=0,qBest=0,qN=0,qLock=false;
+function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function nextQ(){
+  qLock=false;qN++;
+  var pool=SYM.slice();
+  qCur=pool[Math.floor(Math.random()*pool.length)];
+  var others=pool.filter(function(s){return s.id!==qCur.id;});
+  /* 优先同类别干扰项，更有迷惑性 */
+  var same=shuffle(others.filter(function(s){return s.cat===qCur.cat;})).slice(0,2);
+  var rest=shuffle(others.filter(function(s){return same.indexOf(s)<0;})).slice(0,3-same.length);
+  var opts=shuffle(same.concat(rest).concat([qCur]).slice(0,4));
+  el('qbig').innerHTML=svg(qCur.b);
+  el('qmeta').textContent='连对 '+qStreak+' · 最佳 '+qBest+' · 第 '+qN+' 题';
+  var h='';
+  opts.forEach(function(o){h+='<button class="opt" data-id="'+o.id+'">'+o.zh+'</button>';});
+  el('qopts').innerHTML=h;
+  el('qfb').innerHTML='这是哪个符号？点下面的选项。';
+  el('qnext').style.display='none';
+}
+el('qopts').addEventListener('click',function(e){
+  var b=e.target.closest('.opt');
+  if(!b||qLock)return;qLock=true;
+  var ok=b.dataset.id===qCur.id;
+  var btns=el('qopts').querySelectorAll('.opt');
+  btns.forEach?btns.forEach(function(x){x.disabled=true;}):null;
+  for(var i=0;i<btns.length;i++){if(btns[i].dataset.id===qCur.id)btns[i].classList.add('right');}
+  if(!ok){b.classList.add('wrong');qStreak=0;}else{qStreak++;}
+  if(qStreak>qBest)qBest=qStreak;
+  el('qfb').innerHTML=(ok?'✅ <b>答对了！</b>':'❌ 正确答案：<b>'+qCur.zh+'</b>（'+CATS[qCur.cat].name+'）')+'<br>'+qCur.zh+'：'+qCur.card;
+  el('qmeta').textContent='连对 '+qStreak+' · 最佳 '+qBest+' · 第 '+qN+' 题';
+  el('qnext').style.display='block';
+});
+el('qnext').onclick=nextQ;
+
+/* ================= 启动 ================= */
+refresh();
+</script>
+</body>
+</html>
