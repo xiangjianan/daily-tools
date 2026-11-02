@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>房贷放大镜 LoanLens · 等额本息/本金对比 + 提前还款 what-if</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%230d1117'/%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%2358d5c9' stroke-width='2'/%3E%3Cpath d='M11 21v-9M11 21h9' stroke='%23f2b544' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0d1117; --bg2:#131a23; --line:#243040; --tx:#e6edf3; --dim:#8b98a9;
+  --teal:#58d5c9; --amber:#f2b544; --red:#f2705f; --green:#7dc98f;
+  --radius:12px;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg); color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  line-height:1.55; padding:0 16px calc(28px + env(safe-area-inset-bottom));
+}
+.wrap{max-width:880px; margin:0 auto}
+header{padding:30px 0 6px; display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap}
+header .logo{flex:0 0 44px; height:44px}
+h1{font-size:1.45rem; letter-spacing:.5px}
+h1 .en{color:var(--teal); font-weight:600}
+.sub{color:var(--dim); font-size:.9rem; margin-top:2px}
+.privacy{
+  margin-left:auto; font-size:.75rem; color:var(--teal); border:1px solid var(--line);
+  border-radius:99px; padding:3px 12px; background:rgba(88,213,201,.06); white-space:nowrap;
+}
+.panel{
+  background:var(--bg2); border:1px solid var(--line); border-radius:var(--radius);
+  padding:18px; margin-top:16px;
+}
+.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px}
+label{display:block; font-size:.82rem; color:var(--dim); margin-bottom:5px}
+label b{color:var(--tx); font-weight:600}
+input[type=number]{
+  width:100%; background:var(--bg); color:var(--tx); border:1px solid var(--line);
+  border-radius:8px; padding:9px 12px; font-size:1.05rem; font-variant-numeric:tabular-nums;
+}
+input[type=number]:focus{outline:none; border-color:var(--teal)}
+input[type=range]{width:100%; accent-color:var(--teal); margin-top:8px}
+.unit{color:var(--dim); font-size:.8rem; margin-top:4px}
+.err{color:var(--red); font-size:.85rem; margin-top:10px; display:none}
+.err.show{display:block}
+.cards{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:4px}
+@media (max-width:560px){ .cards{grid-template-columns:1fr} }
+.card{border:1px solid var(--line); border-radius:var(--radius); padding:15px; background:var(--bg)}
+.card h3{font-size:.95rem; margin-bottom:10px; display:flex; align-items:center; gap:8px}
+.dot{width:10px; height:10px; border-radius:50%; display:inline-block}
+.dot.a{background:var(--teal)} .dot.b{background:var(--amber)}
+.big{font-size:1.7rem; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:.3px}
+.big small{font-size:.85rem; color:var(--dim); font-weight:400}
+.kv{display:flex; justify-content:space-between; font-size:.88rem; margin-top:7px; color:var(--dim)}
+.kv b{color:var(--tx); font-variant-numeric:tabular-nums}
+.diffline{
+  margin-top:14px; text-align:center; font-size:.9rem; color:var(--dim);
+  border-top:1px dashed var(--line); padding-top:12px;
+}
+.diffline b{color:var(--amber); font-size:1.15rem}
+h2{font-size:1.05rem; margin-bottom:4px}
+.hint{color:var(--dim); font-size:.8rem; margin-bottom:12px}
+svg.chart{width:100%; height:auto; display:block; margin-top:6px}
+.strip{display:flex; gap:1px; height:64px; margin-top:12px; border-radius:6px; overflow:hidden}
+.strip div{flex:1; display:flex; flex-direction:column-reverse; min-width:0}
+.strip .si{background:var(--amber); opacity:.85}
+.strip .sp{background:var(--teal); opacity:.9}
+.stripwrap{position:relative}
+.strip-cap{display:flex; justify-content:space-between; font-size:.75rem; color:var(--dim); margin-top:6px}
+.legend{display:flex; gap:16px; font-size:.8rem; color:var(--dim); margin-top:10px; flex-wrap:wrap}
+.legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px}
+.cross{
+  font-size:.85rem; color:var(--dim); margin-top:10px;
+  border-left:3px solid var(--teal); padding-left:10px;
+}
+.cross b{color:var(--teal)}
+.pregrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; align-items:end}
+.chips{display:flex; gap:8px}
+.chip{
+  border:1px solid var(--line); background:var(--bg); color:var(--dim);
+  border-radius:99px; padding:6px 14px; font-size:.85rem; cursor:pointer; user-select:none;
+}
+.chip.on{border-color:var(--teal); color:var(--teal); background:rgba(88,213,201,.08)}
+.presult{margin-top:14px; border-top:1px dashed var(--line); padding-top:12px; font-size:.92rem; display:none}
+.presult.show{display:block}
+.presult .hero{font-size:1.15rem; margin-bottom:8px}
+.presult .hero b{color:var(--green)}
+.presult .hero em{color:var(--amber); font-style:normal}
+.presult .kv{font-size:.88rem}
+.note{color:var(--dim); font-size:.75rem; margin-top:8px}
+button.act{
+  background:var(--teal); color:#08221f; border:none; border-radius:8px;
+  padding:9px 18px; font-size:.9rem; font-weight:600; cursor:pointer;
+}
+button.act:hover{filter:brightness(1.1)}
+.toast{
+  position:fixed; left:50%; bottom:34px; transform:translateX(-50%) translateY(20px);
+  background:#1c2733; color:var(--tx); border:1px solid var(--teal);
+  padding:9px 20px; border-radius:99px; font-size:.88rem; opacity:0;
+  transition:all .28s ease; pointer-events:none; max-width:86vw; z-index:9;
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+footer{color:var(--dim); font-size:.75rem; margin-top:26px; text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <svg class="logo" viewBox="0 0 44 44" aria-hidden="true">
+    <circle cx="22" cy="22" r="19" fill="none" stroke="#58d5c9" stroke-width="2.5"/>
+    <path d="M14 29v-13M14 29h13" stroke="#f2b544" stroke-width="3.5" stroke-linecap="round"/>
+  </svg>
+  <div>
+    <h1>房贷放大镜 <span class="en">LoanLens</span></h1>
+    <div class="sub">等额本息 vs 等额本金 · 提前还款 what-if · 本息交叉点一眼看穿</div>
+  </div>
+  <span class="privacy">🔒 纯本地计算 · 不上传任何数据</span>
+</header>
+
+<section class="panel">
+  <div class="grid">
+    <div>
+      <label>贷款总额（万元）</label>
+      <input type="number" id="amt" value="100" min="0" step="1">
+      <input type="range" id="amtR" min="5" max="1000" step="5" value="100">
+    </div>
+    <div>
+      <label>年利率（%）</label>
+      <input type="number" id="rate" value="3.6" min="0" step="0.05">
+      <input type="range" id="rateR" min="1" max="8" step="0.05" value="3.6">
+    </div>
+    <div>
+      <label>贷款年限（年）</label>
+      <input type="number" id="years" value="30" min="0" step="1">
+      <input type="range" id="yearsR" min="1" max="30" step="1" value="30">
+    </div>
+  </div>
+  <div class="err" id="err"></div>
+</section>
+
+<section class="panel">
+  <h2>两种还款方式对比</h2>
+  <div class="hint">左：等额本息（月供固定）· 右：等额本金（月供递减，本金还得更快）</div>
+  <div class="cards">
+    <div class="card">
+      <h3><span class="dot a"></span>等额本息</h3>
+      <div class="big"><span id="aPmt">—</span><small> 元/月</small></div>
+      <div class="kv"><span>利息总额</span><b id="aInt">—</b></div>
+      <div class="kv"><span>还款总额</span><b id="aTot">—</b></div>
+      <div class="kv"><span>首月利息占比</span><b id="aFirst">—</b></div>
+    </div>
+    <div class="card">
+      <h3><span class="dot b"></span>等额本金</h3>
+      <div class="big"><span id="bPmt">—</span><small> 元/月</small></div>
+      <div class="kv"><span>利息总额</span><b id="bInt">—</b></div>
+      <div class="kv"><span>还款总额</span><b id="bTot">—</b></div>
+      <div class="kv"><span>末月月供</span><b id="bLast">—</b></div>
+    </div>
+  </div>
+  <div class="diffline">总利息差：等额本息比等额本金多付 <b id="diff">—</b> 元</div>
+</section>
+
+<section class="panel">
+  <h2>余额曲线与本息交叉点</h2>
+  <div class="hint">两条余额曲线开始分离的位置，就是「多还的利息」开始积累的地方；▲ 标记每月还款中本金首次超过利息的月份。</div>
+  <svg class="chart" id="chart" viewBox="0 0 720 300" role="img" aria-label="贷款余额曲线图"></svg>
+  <div class="legend">
+    <span><i style="background:var(--teal)"></i>等额本息余额</span>
+    <span><i style="background:var(--amber)"></i>等额本金余额</span>
+    <span><i style="background:var(--red); border-radius:50%"></i>▲ 本金首次超过利息</span>
+  </div>
+  <div class="cross" id="crossTxt">—</div>
+</section>
+
+<section class="panel">
+  <h2>每月还款构成（等额本息）</h2>
+  <div class="hint">每根柱 = 一段时间窗的还款：下段青色是本金，上段黄色是利息。越往后黄色越薄——这就是「先还息后还本」的直观形状。</div>
+  <div class="stripwrap"><div class="strip" id="strip"></div></div>
+  <div class="strip-cap"><span>第 1 月</span><span id="stripEnd">—</span></div>
+</section>
+
+<section class="panel">
+  <h2>提前还款 what-if</h2>
+  <div class="hint">假设第 N 个月末一次性多还一笔，看看能省多少利息、缩短多少期——算给你看，不用求银行。</div>
+  <div class="pregrid">
+    <div>
+      <label>针对哪种方式</label>
+      <div class="chips">
+        <span class="chip on" id="chipA">等额本息</span>
+        <span class="chip" id="chipB">等额本金</span>
+      </div>
+    </div>
+    <div>
+      <label>第几个月末还</label>
+      <input type="number" id="pMonth" value="24" min="0" step="1">
+    </div>
+    <div>
+      <label>一次性多还（万元）</label>
+      <input type="number" id="pAmt" value="10" min="0" step="1">
+    </div>
+    <div>
+      <label>提前还完后</label>
+      <div class="chips">
+        <span class="chip on" id="chipShort">缩短年限</span>
+        <span class="chip" id="chipReduce">减少月供</span>
+      </div>
+    </div>
+  </div>
+  <div class="presult" id="pOut"></div>
+  <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap">
+    <button class="act" id="copyBtn">📋 复制测算摘要</button>
+  </div>
+</section>
+
+<footer>
+  结果为按标准公式的估算值，不含实际结算的计息日差、罚息政策等，签合同前以银行试算为准。<br>
+  LoanLens · 所有计算在你的浏览器本地完成 · <span id="yy"></span>
+</footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ===== 纯函数区（无 DOM 依赖，可独立测试） ===== */
+var MAX_AMT_WAN = 100000;   // 万元上限
+var MAX_YEARS = 50;
+
+function round2(x){ return Math.round(x*100)/100; }
+
+function monthlyRate(annualPct){ return annualPct/100/12; }
+
+// 等额本息：固定月供逐月摊还
+function schedAnnuity(P0, i, n){
+  var pmt = P0*i/(1-Math.pow(1+i,-n));
+  var bal = P0, rows = [];
+  for(var m=1; m<=n; m++){
+    var it = bal*i;
+    var pr = pmt - it;
+    if(m===n){ pr = bal; it = pmt - pr; }
+    bal = Math.max(bal-pr, 0);
+    rows.push({m:m, it:it, pr:pr, pmt:it+pr, bal:bal});
+  }
+  return {rows:rows, pmt:pmt, totalInt:rows.reduce(function(s,r){return s+r.it;},0)};
+}
+
+// 等额本金：每月固定本金 + 剩余本金利息
+function schedLinear(P0, i, n){
+  var pr0 = P0/n, bal = P0, rows = [];
+  for(var m=1; m<=n; m++){
+    var it = bal*i;
+    var pr = pr0;
+    if(m===n){ pr = bal; }
+    bal = Math.max(bal-pr, 0);
+    rows.push({m:m, it:it, pr:pr, pmt:it+pr, bal:bal});
+  }
+  return {rows:rows, pmt0:rows[0].pmt, pmtEnd:rows[rows.length-1].pmt,
+          totalInt:rows.reduce(function(s,r){return s+r.it;},0)};
+}
+
+// 本金首次超过利息的月份（无则返回 -1）
+function crossoverMonth(rows){
+  for(var k=0;k<rows.length;k++){
+    if(rows[k].pr > rows[k].it) return rows[k].m;
+  }
+  return -1;
+}
+
+// 「缩短年限」逐月仿真：月供/月本金保持不变，末期小额结清（银行口径）
+function simSamePayment(B, i, pmt, maxM){
+  var bal=B, newInt=0, m=0, lastPay=0;
+  while(bal>0.005 && m<maxM){
+    m++;
+    var it=bal*i;
+    var pay=Math.min(pmt, bal+it);
+    lastPay=pay;
+    newInt+=it;
+    bal=Math.max(bal+it-pay, 0);
+  }
+  return {m:m, newInt:newInt};
+}
+function simSamePrincipal(B, i, pr0, maxM){
+  var bal=B, newInt=0, m=0;
+  while(bal>0.005 && m<maxM){
+    m++;
+    newInt+=bal*i;
+    bal=Math.max(bal-Math.min(pr0,bal), 0);
+  }
+  return {m:m, newInt:newInt};
+}
+
+// 提前还款：第 k 月末一次性多还 extra（元），mode: 'shorten'|'reduce'
+// 返回 {ok, saved, monthsSaved, newPmt, newEndM, paidOff, msg}
+function prepay(kind, P0, i, n, k, extra, mode){
+  if(!(k>=1 && k<=n) || !(extra>0)) return {ok:false, msg:'需要 1~总期数 的月份和正的还款额'};
+  var base = (kind==='annuity') ? schedAnnuity(P0,i,n) : schedLinear(P0,i,n);
+  var balK = base.rows[k-1].bal;
+  var B = balK - extra;
+  var oldRestInt = 0;
+  for(var m=k; m<n; m++) oldRestInt += base.rows[m].it; // 第 k+1 月起的旧利息
+  if(B <= 0.005){
+    // 一笔直接结清
+    var lastPay = base.rows[k-1].pmt + extra;
+    return {ok:true, saved:oldRestInt, monthsSaved:n-k, newPmt:0, newEndM:k,
+            paidOff:true, msg:'这一笔直接把贷款结清了 🎉'};
+  }
+  var newRows = [], newPmt = 0, n2 = n-k, newInt = 0;
+  if(kind==='annuity'){
+    if(mode==='shorten'){
+      var sim = simSamePayment(B, i, base.pmt, n-k);
+      n2 = sim.m; newInt = sim.newInt; newPmt = base.pmt;
+    }else{
+      newRows = schedAnnuity(B,i,n2).rows;
+      newInt = newRows.reduce(function(s,r){return s+r.it;},0);
+      newPmt = newRows[0].pmt;
+    }
+  }else{
+    var pr0 = P0/n;
+    if(mode==='shorten'){
+      var sim2 = simSamePrincipal(B, i, pr0, n-k);
+      n2 = sim2.m; newInt = sim2.newInt;
+      newPmt = B*i + Math.min(pr0, B);
+    }else{
+      newRows = schedLinear(B,i,n2).rows;
+      newInt = newRows.reduce(function(s,r){return s+r.it;},0);
+      newPmt = newRows[0].pmt;
+    }
+  }
+  return {ok:true, saved:oldRestInt-newInt, monthsSaved:(n-k)-n2,
+          newPmt:newPmt, newEndM:k+n2, paidOff:false};
+}
+
+// 万元输入解析：空/非法返回 NaN
+function parseWan(v){ var x = parseFloat(v); return isFinite(x)? x : NaN; }
+
+function fmtInt(x){ return Math.round(x).toLocaleString('zh-CN'); }
+function fmtMoney(x){ return fmtInt(x) + ' 元'; }
+
+function summaryText(s){
+  var L = [];
+  L.push('【LoanLens 房贷测算摘要】');
+  L.push('贷款 '+s.amtWan+' 万元 · 年利率 '+s.rate+'% · '+s.years+' 年（'+s.n+' 期）');
+  L.push('等额本息：月供 '+fmtInt(s.a.pmt)+' 元，总利息 '+fmtInt(s.a.totalInt)+' 元');
+  L.push('等额本金：首月 '+fmtInt(s.b.pmt0)+' 元 → 末月 '+fmtInt(s.b.pmtEnd)+' 元，总利息 '+fmtInt(s.b.totalInt)+' 元');
+  L.push('总利息差：本息比本金多 '+fmtInt(s.a.totalInt-s.b.totalInt)+' 元');
+  L.push('本息交叉点：第 '+s.crossA+' 期（'+s.crossB+'）');
+  if(s.pp && s.pp.ok){
+    L.push('提前还款：第 '+s.ppK+' 期还 '+s.ppWan+' 万（'+(s.ppKind==='annuity'?'等额本息':'等额本金')+' · '+(s.ppMode==='shorten'?'缩短年限':'减少月供')+'）');
+    L.push(s.pp.paidOff ? s.pp.msg : '→ 省利息 '+fmtInt(s.pp.saved)+' 元，缩短 '+s.pp.monthsSaved+' 期');
+  }
+  L.push('—— 由 LoanLens 本地计算生成');
+  return L.join('\n');
+}
+
+/* ===== DOM & 渲染区 ===== */
+function $(id){ return document.getElementById(id); }
+
+var state = { a:null, b:null, crossA:-1, crossB:-1, pp:null, ppK:24, ppWan:10,
+              ppKind:'annuity', ppMode:'shorten', amtWan:100, rate:3.6, years:30, n:360, P0:0 };
+
+function showErr(msg){
+  var e = $('err');
+  if(msg){ e.textContent = msg; e.classList.add('show'); }
+  else e.classList.remove('show');
+}
+
+function linkRange(numId, rngId, onChange){
+  var num = $(numId), rng = $(rngId);
+  num.addEventListener('input', function(){ rng.value = num.value; onChange(); });
+  rng.addEventListener('input', function(){ num.value = rng.value; onChange(); });
+}
+
+function compute(){
+  var amtWan = parseWan($('amt').value);
+  var rate = parseWan($('rate').value);
+  var years = parseWan($('years').value);
+  if(isNaN(amtWan) || isNaN(rate) || isNaN(years)){
+    showErr('请把三项都填成数字：贷款总额、年利率、年限（清空了就先补上 🙂）');
+    return;
+  }
+  if(amtWan<=0 || amtWan>MAX_AMT_WAN){ showErr('贷款总额要在 0 ~ '+MAX_AMT_WAN.toLocaleString('zh-CN')+' 万元之间'); return; }
+  if(rate<=0 || rate>24){ showErr('年利率要在 0 ~ 24% 之间（超出这个范围大概不是房贷了）'); return; }
+  if(years<=0 || years>MAX_YEARS){ showErr('贷款年限要在 1 ~ '+MAX_YEARS+' 年之间'); return; }
+  showErr('');
+
+  var P0 = amtWan*10000;
+  var i = monthlyRate(rate);
+  var n = Math.round(years*12);
+  state.P0 = P0; state.n = n;
+  state.amtWan = amtWan; state.rate = rate; state.years = years;
+  state.a = schedAnnuity(P0,i,n);
+  state.b = schedLinear(P0,i,n);
+  state.crossA = crossoverMonth(state.a.rows);
+  state.crossB = crossoverMonth(state.b.rows);
+  render();
+  renderPrepay();
+}
+
+function render(){
+  var a = state.a, b = state.b;
+  $('aPmt').textContent = fmtInt(a.pmt);
+  $('aInt').textContent = fmtMoney(a.totalInt);
+  $('aTot').textContent = fmtMoney(state.P0 + a.totalInt);
+  $('aFirst').textContent = round2(a.rows[0].it/a.rows[0].pmt*100) + '%';
+  $('bPmt').textContent = fmtInt(b.pmt0);
+  $('bInt').textContent = fmtMoney(b.totalInt);
+  $('bTot').textContent = fmtMoney(state.P0 + b.totalInt);
+  $('bLast').textContent = fmtInt(b.pmtEnd) + ' 元';
+  $('diff').textContent = fmtInt(a.totalInt - b.totalInt);
+  drawChart();
+  drawStrip();
+  var t = '等额本息在第 <b>'+state.crossA+'</b> 期（约第 '+Math.ceil(state.crossA/12)+' 年）迎来交叉——';
+  t += '那之前你每月还的钱大部分其实在付利息；等额本金从第 <b>'+state.crossB+'</b> 期就已本金为主。';
+  $('crossTxt').innerHTML = t;
+  $('stripEnd').textContent = '第 '+state.n+' 月';
+}
+
+function drawChart(){
+  var W=720, H=300, padL=10, padR=14, padT=18, padB=26;
+  var iw = W-padL-padR, ih = H-padT-padB;
+  var n = state.n;
+  function X(m){ return padL + iw*m/n; }
+  function Y(bal){ return padT + ih*(1 - bal/state.P0); }
+  var s = '<g font-size="11" fill="#8b98a9">';
+  // 横向网格 0/25/50/75/100%
+  for(var g=0; g<=4; g++){
+    var yy = padT + ih*g/4;
+    s += '<line x1="'+padL+'" y1="'+yy+'" x2="'+(W-padR)+'" y2="'+yy+'" stroke="#1d2632" stroke-width="1"/>';
+    s += '<text x="'+(W-padR+2)+'" y="'+(yy+4)+'">'+Math.round(100-g*25)+'%</text>';
+  }
+  // 年份刻度（每 ~5 年一根）
+  var stepY = Math.max(1, Math.round(state.years/6));
+  for(var y=stepY; y<=state.years; y+=stepY){
+    var xx = X(y*12);
+    s += '<text x="'+xx+'" y="'+(H-8)+'" text-anchor="middle">'+y+'年</text>';
+    s += '<line x1="'+xx+'" y1="'+(H-padB)+'" x2="'+xx+'" y2="'+(padT)+'" stroke="#1d2632" stroke-width="1"/>';
+  }
+  s += '</g>';
+  function poly(rows){
+    var pts=[];
+    for(var k=0;k<rows.length;k++){
+      var r = rows[k];
+      if(k===0 || k===rows.length-1 || k%Math.max(1,Math.floor(n/120))===0)
+        pts.push(X(r.m).toFixed(1)+','+Y(r.bal).toFixed(1));
+    }
+    return pts.join(' ');
+  }
+  s += '<polyline points="'+poly(state.a.rows)+'" fill="none" stroke="#58d5c9" stroke-width="2.5"/>';
+  s += '<polyline points="'+poly(state.b.rows)+'" fill="none" stroke="#f2b544" stroke-width="2.5"/>';
+  // 交叉点标记
+  var ra = state.a.rows[state.crossA-1];
+  var rb = state.b.rows[state.crossB-1];
+  if(ra){
+    s += '<path d="M'+X(ra.m)+' '+(Y(ra.bal)-14)+' l5 9 h-10 z" fill="#f2705f"/>';
+    s += '<text x="'+X(ra.m)+'" y="'+(Y(ra.bal)-18)+'" fill="#f2705f" font-size="11" text-anchor="middle">第'+state.crossA+'期</text>';
+  }
+  if(rb){
+    s += '<path d="M'+X(rb.m)+' '+(Y(rb.bal)-14)+' l5 9 h-10 z" fill="#f2705f"/>';
+    s += '<text x="'+X(rb.m)+'" y="'+(Y(rb.bal)-18)+'" fill="#f2705f" font-size="11" text-anchor="middle">第'+state.crossB+'期</text>';
+  }
+  $('chart').innerHTML = s;
+}
+
+function drawStrip(){
+  var rows = state.a.rows;
+  var buckets = Math.min(120, rows.length);
+  var per = rows.length/buckets;
+  var html = '';
+  var maxPay = state.a.rows[0].pmt;
+  for(var b=0;b<buckets;b++){
+    var i0 = Math.floor(b*per), i1 = Math.floor((b+1)*per);
+    var it=0, pr=0;
+    for(var k=i0;k<i1;k++){ it+=rows[k].it; pr+=rows[k].pr; }
+    var cnt = Math.max(1,i1-i0);
+    var hi = Math.min(64, Math.round(it/cnt/maxPay*64));
+    var hp = Math.min(64-hi, Math.round(pr/cnt/maxPay*64));
+    html += '<div title="利息 '+fmtInt(it/cnt)+' 元 / 本金 '+fmtInt(pr/cnt)+' 元">' +
+            '<span class="si" style="height:'+hi+'px"></span>' +
+            '<span class="sp" style="height:'+hp+'px"></span></div>';
+  }
+  $('strip').innerHTML = html;
+}
+
+function setChip(onId, offId){
+  $(onId).classList.add('on'); $(offId).classList.remove('on');
+}
+
+function renderPrepay(){
+  var out = $('pOut');
+  var k = Math.floor(parseWan($('pMonth').value));
+  var w = parseWan($('pAmt').value);
+  if(isNaN(k) || isNaN(w)){ out.classList.remove('show'); return; }
+  var res = prepay(state.ppKind, state.P0, monthlyRate(state.rate), state.n, k, w*10000, state.ppMode);
+  state.pp = res; state.ppK = k; state.ppWan = w;
+  if(!res.ok){ out.classList.remove('show'); return; }
+  out.classList.add('show');
+  var kindName = state.ppKind==='annuity' ? '等额本息' : '等额本金';
+  var modeName = state.ppMode==='shorten' ? '缩短年限' : '减少月供';
+  if(res.paidOff){
+    out.innerHTML = '<div class="hero">第 '+k+' 期还 '+w+' 万，'+res.msg+'</div>' +
+      '<div class="kv"><span>省下的利息</span><b>'+fmtMoney(res.saved)+'</b></div>' +
+      '<div class="kv"><span>该期实还</span><b>'+fmtMoney(state[state.ppKind==='annuity'?'a':'b'].rows[k-1].pmt + w*10000)+'</b></div>';
+    return;
+  }
+  var lines;
+  if(state.ppMode==='reduce'){
+    lines = '<div class="hero">能省利息 <b>'+fmtMoney(res.saved)+'</b>，期数不变，月供降到 <em>'+fmtMoney(res.newPmt)+'</em></div>';
+    lines += '<div class="kv"><span>原月供</span><b>'+fmtMoney(state[state.ppKind==='annuity'?'a':'b'].rows[k].pmt)+'</b></div>';
+  }else{
+    lines = '<div class="hero">能省利息 <b>'+fmtMoney(res.saved)+'</b>，提前 <em>'+res.monthsSaved+' 期</em> 结清（第 '+res.newEndM+' 期 vs 原第 '+state.n+' 期）</div>';
+    lines += '<div class="kv"><span>月供不变</span><b>'+fmtMoney(res.newPmt)+'</b></div>';
+  }
+  lines += '<div class="kv"><span>每还 1 万元</span><b>约省 '+fmtInt(res.saved/w)+'</b> 元利息</div>';
+  lines += '<div class="note">口径：'+kindName+' · '+modeName+' · 第 '+k+' 期末一次性多还 '+w+' 万元</div>';
+  out.innerHTML = lines;
+}
+
+var toastTimer = null;
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 1800);
+}
+
+function copySummary(){
+  var s = {
+    amtWan:state.amtWan, rate:state.rate, years:state.years, n:state.n,
+    a:state.a, b:state.b, crossA:state.crossA,
+    crossB: state.crossB===-1 ? '无（始终本金为主）' : '第 '+state.crossB+' 期',
+    pp:state.pp, ppK:state.ppK, ppWan:state.ppWan, ppKind:state.ppKind, ppMode:state.ppMode
+  };
+  var text = summaryText(s);
+  function fallback(){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast('摘要已复制 ✓'); }
+    catch(e){ toast('复制失败，请手动选择文本'); }
+    document.body.removeChild(ta);
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ toast('摘要已复制 ✓'); }, fallback);
+  } else fallback();
+}
+
+function init(){
+  $('yy').textContent = new Date().getFullYear();
+  linkRange('amt','amtR', compute);
+  linkRange('rate','rateR', compute);
+  linkRange('years','yearsR', compute);
+  $('pMonth').addEventListener('input', renderPrepay);
+  $('pAmt').addEventListener('input', renderPrepay);
+  $('chipA').addEventListener('click', function(){ state.ppKind='annuity'; setChip('chipA','chipB'); renderPrepay(); });
+  $('chipB').addEventListener('click', function(){ state.ppKind='linear'; setChip('chipB','chipA'); renderPrepay(); });
+  $('chipShort').addEventListener('click', function(){ state.ppMode='shorten'; setChip('chipShort','chipReduce'); renderPrepay(); });
+  $('chipReduce').addEventListener('click', function(){ state.ppMode='reduce'; setChip('chipReduce','chipShort'); renderPrepay(); });
+  $('copyBtn').addEventListener('click', copySummary);
+  compute();
+}
+init();
+</script>
+</body>
+</html>
