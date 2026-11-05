@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>STAIRSCOPE · 楼梯剖面仪</title>
+<meta name="description" content="输入层高即出楼梯踏步全套方案：Blondel 舒适公式筛选、剖面图实时绘制、施工报告一键复制，全程本地零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪜</text></svg>">
+<style>
+:root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--line:#21262d;--acc:#58a6ff;--good:#3fb950;--warn:#d29922;--bad:#f85149;--card:#161b22}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+padding:max(20px,env(safe-area-inset-top)) 14px max(36px,env(safe-area-inset-bottom))}
+main{max-width:720px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.5px}
+h1 i{font-style:normal;color:var(--mut);font-weight:400;font-size:14px;margin-left:6px}
+.sub{color:var(--mut);font-size:13px;margin:4px 0 18px}
+label{display:block;font-size:12.5px;color:var(--mut);margin:0 0 4px}
+input[type=text]{width:100%;background:var(--card);border:1px solid var(--line);border-radius:8px;color:var(--fg);
+font-size:20px;padding:10px 12px;outline:none;font-variant-numeric:tabular-nums}
+input[type=text]:focus{border-color:var(--acc)}
+.hint{font-size:12px;color:var(--mut);margin-top:4px}
+.err{display:none;margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(248,81,73,.12);
+border:1px solid rgba(248,81,73,.5);color:var(--bad);font-size:13px}
+.err.show{display:block}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(0,1fr));gap:8px;margin:14px 0 6px}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;
+text-align:center;transition:border-color .15s,background .15s;-webkit-tap-highlight-color:transparent}
+.pcard:active{background:#1c2333}
+.pcard.sel{border-color:var(--acc);background:rgba(88,166,255,.08)}
+.pcard .n{font-size:17px;font-weight:600}
+.pcard .n b{color:var(--acc)}
+.pcard .rg{font-size:12.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+.pcard .badge{display:inline-block;margin-top:5px;font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid}
+.badge.good{color:var(--good);border-color:var(--good)}
+.badge.warn{color:var(--warn);border-color:var(--warn)}
+.badge.bad{color:var(--bad);border-color:var(--bad)}
+.reco{font-size:10.5px;color:var(--acc);letter-spacing:1px}
+.slider{display:flex;align-items:center;gap:10px;margin:12px 0 4px}
+.slider input[type=range]{flex:1;accent-color:var(--acc)}
+.slider output{font-variant-numeric:tabular-nums;font-size:14px;min-width:56px;text-align:right}
+.statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;margin-top:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.stat .k{font-size:11.5px;color:var(--mut)}
+.stat .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.stat .v small{font-size:12px;color:var(--mut);font-weight:400}
+.stat .v.good{color:var(--good)}.stat .v.warn{color:var(--warn)}.stat .v.bad{color:var(--bad)}
+.svgwrap{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px}
+svg{display:block;width:100%;height:auto}
+.actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+button{background:var(--acc);color:#04121f;border:none;border-radius:8px;font-size:14px;font-weight:600;
+padding:10px 16px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button.ghost{background:var(--card);color:var(--fg);border:1px solid var(--line)}
+.note{font-size:12px;color:var(--mut);margin-top:12px;line-height:1.7}
+.formula{margin-top:16px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--mut)}
+.formula b{color:var(--fg)}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#1f6feb;color:#fff;
+padding:9px 18px;border-radius:99px;font-size:13.5px;opacity:0;pointer-events:none;transition:all .25s;z-index:9}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+footer{margin-top:26px;color:var(--mut);font-size:12px}
+footer a{color:var(--acc);text-decoration:none}
+@media(max-width:480px){.pcard{padding:8px 6px}.pcard .n{font-size:15px}}
+</style>
+</head>
+<body>
+<main>
+<h1>🪜 STAIRSCOPE<i>楼梯剖面仪</i></h1>
+<p class="sub">输入层高，即出踏步方案与剖面图——Blondel 舒适公式把关，全程本地零上传</p>
+
+<label for="hin">楼层净高（层高）</label>
+<input type="text" id="hin" inputmode="decimal" placeholder="如 2.8 米 或 2800 毫米" autocomplete="off">
+<p class="hint">支持米（&lt;10 视为米）与毫米两种写法，2.7–3.2 m 常见住宅层高</p>
+<div class="err" id="err"></div>
+
+<div class="cards" id="cards"></div>
+
+<div class="slider">
+  <label for="gslider" style="margin:0">踏步进深 G</label>
+  <input type="range" id="gslider" min="240" max="330" step="5" value="280">
+  <output id="gout">280 mm</output>
+</div>
+
+<div class="statgrid" id="stats"></div>
+
+<div class="svgwrap"><svg id="prof" viewBox="0 0 660 400" role="img" aria-label="楼梯剖面图"></svg></div>
+
+<div class="actions">
+  <button id="copybtn">📋 复制施工报告</button>
+  <button id="samplebtn" class="ghost">🎲 载入示例（2.8 m）</button>
+</div>
+
+<div class="formula">
+  <b>Blondel 舒适公式</b>：2R + G ≈ 600–650 mm（目标 630）。R = 踏步高（踢面），G = 踏步深（踏面）。
+  常用参考带：R 150–180 mm 舒适、≤190 mm 可接受；G ≥ 240 mm；坡度 ≤ 32° 轻松、≤ 38° 可接受。
+  依据 17 世纪法国建筑师 François Blondel 提出的步态经验公式，至今仍是楼梯设计的通用验算方法。
+</div>
+
+<p class="note" id="warnnote"></p>
+
+<footer>STAIRSCOPE #55 · <a href="https://github.com/xiangjianan/daily-tools/tree/main/stairscope-20261106">源码</a> · 数据不出浏览器</footer>
+</main>
+<div id="toast"></div>
+<script>
+"use strict";
+/* ===== 常量 ===== */
+var R_GOOD_MIN = 150, R_OK_MAX = 190, R_GOOD_MAX = 180;
+var G_MIN = 240, G_MAX = 330;
+var B_LO = 600, B_HI = 650, B_TARGET = 630, B_ABS_LO = 560, B_ABS_HI = 660;
+var SLOPE_GOOD = 32, SLOPE_OK = 38;
+var HUMAN_MM = 1700;
+var SAMPLE = "2.8";
+
+/* ===== 纯函数：解析与方案计算 ===== */
+function parseHeight(raw) {
+  var s = String(raw == null ? "" : raw).trim().replace(/[,，\s]/g, "");
+  if (!s) return { ok: false, msg: "请先输入层高，比如 2.8（米）或 2800（毫米）" };
+  var m = s.match(/^(\d+(?:\.\d+)?)\s*(米|m|mm|毫米)?$/i);
+  if (!m) return { ok: false, msg: "看不太懂「" + raw + "」：请输入数字，如 2.8 米或 2800 毫米" };
+  var v = parseFloat(m[1]);
+  var unit = (m[2] || "").toLowerCase();
+  if (unit === "mm" || unit === "毫米") { /* 已是毫米 */ }
+  else if (v < 10) { v = v * 1000; } // 米 → 毫米
+  if (!isFinite(v) || v <= 0) return { ok: false, msg: "层高要大于 0 才能上楼" };
+  if (v < 500) return { ok: false, msg: v + " mm 太矮了：半层都不够，请确认是不是想输 " + (v * 10) + " mm" };
+  if (v > 12000) return { ok: false, msg: "层高超过 12 米建议直接找结构工程师，这个小尺子管不了 🙂" };
+  return { ok: true, h: Math.round(v) };
+}
+
+// 给定层高 H 与级数 N，选理想进深并评分
+function planFor(h, n, gOverride) {
+  var r = h / n;
+  var gIdeal = B_TARGET - 2 * r;
+  gIdeal = Math.max(G_MIN, Math.min(G_MAX, gIdeal));
+  var g = gOverride ? gOverride : Math.round(gIdeal / 5) * 5;
+  if (g < G_MIN) g = G_MIN;
+  if (g > G_MAX) g = G_MAX;
+  var b = 2 * r + g;
+  var slope = Math.atan2(r, g) * 180 / Math.PI;
+  var treads = n - 1;
+  var run = treads * g;
+  return { n: n, r: r, g: g, b: b, slope: slope, treads: treads, run: run };
+}
+
+function scorePlan(p) {
+  var s = Math.abs(p.b - B_TARGET);
+  if (p.b < B_ABS_LO || p.b > B_ABS_HI) s += 500;
+  if (p.r > R_OK_MAX) s += 500;
+  if (p.slope > SLOPE_OK) s += 300;
+  return s;
+}
+
+function candidates(h) {
+  var nMin = Math.max(2, Math.ceil(h / R_OK_MAX));
+  var nMax = Math.floor(h / R_GOOD_MIN);
+  var out = [];
+  for (var n = nMin; n <= nMax; n++) out.push(planFor(h, n, null));
+  return out;
+}
+
+function verdicts(p) {
+  var vR = p.r <= R_GOOD_MAX ? ["good", "舒适"] : (p.r <= R_OK_MAX ? ["warn", "偏高"] : ["bad", "太陡"]);
+  var vB = (p.b >= B_LO && p.b <= B_HI) ? ["good", "舒适"] :
+           (p.b >= B_ABS_LO && p.b <= B_ABS_HI ? ["warn", "可接受"] : ["bad", "别扭"]);
+  var vS = p.slope <= SLOPE_GOOD ? ["good", "轻松"] :
+           (p.slope <= SLOPE_OK ? ["warn", "偏陡"] : ["bad", "很陡"]);
+  return { r: vR, b: vB, s: vS };
+}
+
+function fmtMm(v) { return Math.round(v * 10) / 10 + ""; }
+
+/* ===== 状态 ===== */
+var state = { h: 0, plans: [], sel: 0, g: 280 };
+
+/* ===== DOM ===== */
+function $(id) { return document.getElementById(id); }
+function showErr(msg) { var e = $("err"); if (!msg) { e.className = "err"; e.textContent = ""; return; } e.className = "err show"; e.textContent = msg; }
+function toast(msg) { var t = $("toast"); t.textContent = msg; t.className = "show"; setTimeout(function () { t.className = ""; }, 1800); }
+
+/* ===== 渲染：方案卡 ===== */
+function renderCards() {
+  var box = $("cards");
+  if (!state.plans.length) { box.innerHTML = ""; return; }
+  var best = 0, bestS = Infinity;
+  state.plans.forEach(function (p, i) { var s = scorePlan(p); if (s < bestS) { bestS = s; best = i; } });
+  var html = state.plans.map(function (p, i) {
+    var v = verdicts(p);
+    var cls = i === state.sel ? "pcard sel" : "pcard";
+    return '<div class="' + cls + '" data-i="' + i + '" role="button" tabindex="0">' +
+      (i === best ? '<div class="reco">★ 推荐</div>' : "") +
+      '<div class="n"><b>' + p.n + '</b> 级</div>' +
+      '<div class="rg">R ' + fmtMm(p.r) + ' × G ' + p.g + '</div>' +
+      '<div class="rg">' + Math.round(p.slope) + '° · 2R+G ' + fmtMm(p.b) + '</div>' +
+      '<span class="badge ' + v.b[0] + '">' + v.b[1] + '</span>' +
+      '</div>';
+  }).join("");
+  box.innerHTML = html;
+  Array.prototype.forEach.call(box.querySelectorAll(".pcard"), function (el) {
+    el.addEventListener("click", function () { selectPlan(parseInt(el.getAttribute("data-i"), 10)); });
+    el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); selectPlan(parseInt(el.getAttribute("data-i"), 10)); } });
+  });
+}
+
+function selectPlan(i) {
+  if (i < 0 || i >= state.plans.length) return;
+  state.sel = i;
+  var p = state.plans[i];
+  state.g = p.g;
+  $("gslider").value = p.g;
+  $("gout").textContent = p.g + " mm";
+  renderCards();
+  renderStats();
+  renderSvg();
+}
+
+/* ===== 渲染：指标卡 ===== */
+function renderStats() {
+  var box = $("stats");
+  var p = state.plans[state.sel];
+  if (!p) { box.innerHTML = ""; return; }
+  var v = verdicts(p);
+  var opening = p.run + 900; // 洞口长度 ≈ 投影 + 顶层休息平台最小 900
+  box.innerHTML =
+    stat("踏步高 R", fmtMm(p.r) + " <small>mm</small>", v.r[0], "每级抬脚 " + fmtMm(p.r) + " mm，" + v.r[1]) +
+    stat("踏步深 G", p.g + " <small>mm</small>", v.b[0], "脚掌放下还剩 " + (p.g - 250 >= 0 ? "+" : "") + fmtMm(p.g - 250) + " mm 余量") +
+    stat("坡度角", Math.round(p.slope * 10) / 10 + "<small>°</small>", v.s[0], v.s[1] + "（≤" + SLOPE_GOOD + "° 轻松）") +
+    stat("梯段投影长", Math.round(p.run) + " <small>mm</small>", "", "占 " + fmtMm(p.run / 1000) + " m 地面长度") +
+    stat("洞口长度参考", Math.round(opening) + " <small>mm</small>", "", "投影 + 900 mm 平台，仅参考") +
+    stat("台阶总数", p.n + "<small> 级</small>", "", "踏面 " + p.treads + " 块，顶层楼面即最后一级");
+  function stat(k, v2, cls, tip) {
+    return '<div class="stat"><div class="k">' + k + '</div><div class="v ' + cls + '">' + v2 + '</div><div class="k">' + tip + '</div></div>';
+  }
+}
+
+/* ===== 渲染：剖面 SVG ===== */
+function renderSvg() {
+  var svg = $("prof");
+  var p = state.plans[state.sel];
+  if (!p) { svg.innerHTML = ""; return; }
+  var W = 660, Hpx = 400, padL = 46, padR = 30, padB = 46, padT = 26;
+  var availW = W - padL - padR, availH = Hpx - padT - padB;
+  var scale = Math.min(availH / (state.h + 120), availW / (p.run + 700));
+  var x0 = padL + 90, yBase = Hpx - padB;
+  var sx = function (mm) { return mm * scale; };
+  var parts = [];
+  var i, x, y;
+  // 地面线
+  var groundW = Math.max(sx(p.run) + 220, 240);
+  parts.push(line(x0 - 90, yBase, x0 + groundW, yBase, "#30363d", 2));
+  // 楼板（顶层）
+  var topY = yBase - sx(state.h);
+  parts.push(line(x0 + sx(p.run) - 20, topY, x0 + groundW, topY, "#30363d", 2));
+  parts.push(text(x0 + groundW - 6, topY - 8, "上层楼面 " + fmtMm(state.h / 1000) + " m", "end", 11, "#8b949e"));
+  // 楼梯锯齿线（踏面 n-1，最后一踏是上层楼面）
+  var d = "M " + (x0 - 40) + " " + yBase + " L " + x0 + " " + yBase;
+  x = x0; y = yBase;
+  for (i = 0; i < p.n - 1; i++) {
+    y -= sx(p.r); d += " L " + x + " " + y;      // 踢面（竖直向上）
+    x += sx(p.g); d += " L " + x + " " + y;      // 踏面（水平向前）
+  }
+  y -= sx(p.r); d += " L " + x + " " + y;        // 最后一级踢面到上层楼面
+  parts.push('<path d="' + d + '" fill="none" stroke="#58a6ff" stroke-width="3" stroke-linejoin="round"/>');
+  // 坡度参考虚线（斜边）
+  parts.push(line(x0, yBase - sx(p.r) * 0.2, x0 + sx(p.run) * 0.92, yBase - sx(state.h) + sx(p.r) * 0.9, "#58a6ff", 1, "4 5", .35));
+  // 坡度角弧 + 文字
+  var arcR = 52, ang = p.slope * Math.PI / 180;
+  var ax = x0 + arcR, ay = yBase;
+  var aex = x0 + arcR * Math.cos(ang), aey = yBase - arcR * Math.sin(ang);
+  parts.push('<path d="M ' + ax + ' ' + ay + ' A ' + arcR + ' ' + arcR + ' 0 0 0 ' + aex.toFixed(1) + ' ' + aey.toFixed(1) + '" fill="none" stroke="#d29922" stroke-width="1.5"/>');
+  parts.push(text(x0 + arcR + 14, yBase - 12, Math.round(p.slope * 10) / 10 + "°", "start", 13, "#d29922"));
+  // 人形比例尺 170cm
+  var hx = x0 - 52, hh = sx(HUMAN_MM);
+  var hy = yBase - hh;
+  parts.push('<circle cx="' + hx + '" cy="' + (hy + hh * 0.055) + '" r="' + (hh * 0.055) + '" fill="#e6edf3" opacity=".85"/>');
+  parts.push(line(hx, hy + hh * 0.11, hx, hy + hh * 0.52, "#e6edf3", 2.5, "", .85)); // 躯干
+  parts.push(line(hx - hh * 0.075, hy + hh * 0.22, hx + hh * 0.075, hy + hh * 0.2, "#e6edf3", 2.5, "", .85)); // 手臂
+  parts.push(line(hx, hy + hh * 0.52, hx - hh * 0.05, yBase, "#e6edf3", 2.5, "", .85));
+  parts.push(line(hx, hy + hh * 0.52, hx + hh * 0.05, yBase, "#e6edf3", 2.5, "", .85));
+  parts.push(text(hx, yBase + 15, "1.7 m", "middle", 10.5, "#8b949e"));
+  // R 标注（第一级踢面）
+  var rx = x0 - 12;
+  parts.push(line(rx, yBase, rx, yBase - sx(p.r), "#3fb950", 1.5));
+  parts.push(line(rx - 4, yBase, rx + 4, yBase, "#3fb950", 1.5));
+  parts.push(line(rx - 4, yBase - sx(p.r), rx + 4, yBase - sx(p.r), "#3fb950", 1.5));
+  parts.push(text(rx - 7, yBase - sx(p.r) / 2, "R " + fmtMm(p.r), "end", 12, "#3fb950"));
+  // G 标注（第一个踏面）
+  var gy = yBase - sx(p.r) + 14;
+  parts.push(line(x0, gy, x0 + sx(p.g), gy, "#3fb950", 1.5));
+  parts.push(text(x0 + sx(p.g) / 2, gy - 5, "G " + p.g, "middle", 12, "#3fb950"));
+  // 投影总长标注
+  var dy = yBase + 30;
+  parts.push(line(x0, dy, x0 + sx(p.run), dy, "#8b949e", 1.2, "5 4"));
+  parts.push(text(x0 + sx(p.run) / 2, dy + 15, "投影 " + fmtMm(p.run / 1000) + " m · " + p.treads + " 踏面", "middle", 11.5, "#8b949e"));
+  // 图名
+  parts.push(text(padL - 20, padT + 4, p.n + " 级方案 · R " + fmtMm(p.r) + " × G " + p.g + " · 2R+G " + fmtMm(p.b) + " mm", "start", 12.5, "#e6edf3"));
+  svg.innerHTML = parts.join("");
+
+  function line(x1, y1, x2, y2, c, w, dash, op) {
+    return '<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '" stroke="' + c + '" stroke-width="' + w + '"' +
+      (dash ? ' stroke-dasharray="' + dash + '"' : '') + (op ? ' opacity="' + op + '"' : '') + '/>';
+  }
+  function text(tx, ty, str, anchor, size, color) {
+    return '<text x="' + tx.toFixed(1) + '" y="' + ty.toFixed(1) + '" text-anchor="' + anchor + '" font-size="' + size + '" fill="' + color + '" font-family="inherit">' + str + '</text>';
+  }
+}
+
+/* ===== 报告 ===== */
+function buildReport() {
+  var p = state.plans[state.sel];
+  if (!p) return "";
+  var v = verdicts(p);
+  var opening = p.run + 900;
+  return [
+    "🪜 STAIRSCOPE 楼梯方案报告",
+    "层高 " + fmtMm(state.h) + " mm（" + fmtMm(state.h / 1000) + " m）",
+    "",
+    "推荐方案：" + p.n + " 级踏步（踏面 " + p.treads + " 块，顶层楼面即最后一级）",
+    "· 踏步高 R = " + fmtMm(p.r) + " mm（" + v.r[1] + "，参考带 150–180，上限 190）",
+    "· 踏步深 G = " + p.g + " mm",
+    "· 舒适校验 2R+G = " + fmtMm(p.b) + " mm（" + v.b[1] + "，目标 600–650）",
+    "· 坡度角 " + (Math.round(p.slope * 10) / 10) + "°（" + v.s[1] + "）",
+    "· 梯段投影长 " + Math.round(p.run) + " mm ≈ " + fmtMm(p.run / 1000) + " m",
+    "· 复式洞口长度参考 ≈ " + Math.round(opening) + " mm（投影 + 900 mm 平台）",
+    "",
+    "备选方案：" + state.plans.filter(function (_, i) { return i !== state.sel; }).map(function (q) { return q.n + " 级（R" + fmtMm(q.r) + "×G" + q.g + "，" + Math.round(q.slope) + "°）"; }).join("；"),
+    "",
+    "— Blondel 公式 2R+G≈630 mm 验算 · 生成于 " + new Date().toLocaleDateString("zh-CN") + " · stairscope"
+  ].join("\n");
+}
+
+/* ===== 事件 ===== */
+function recompute(keepSel) {
+  var pr = parseHeight($("hin").value);
+  showErr(pr.ok ? "" : pr.msg);
+  if (!pr.ok) { state.plans = []; renderCards(); renderStats(); renderSvg(); $("warnnote").textContent = ""; return; }
+  state.h = pr.h;
+  state.plans = candidates(state.h);
+  // 推荐方案 = 评分最高
+  var best = 0, bestS = Infinity;
+  state.plans.forEach(function (p, i) { var s = scorePlan(p); if (s < bestS) { bestS = s; best = i; } });
+  if (!keepSel || state.sel >= state.plans.length) { state.sel = best; state.g = state.plans[best].g; }
+  $("gslider").value = state.g;
+  $("gout").textContent = state.g + " mm";
+  renderCards(); renderStats(); renderSvg();
+  $("warnnote").textContent = state.plans.length === 0
+    ? "这个层高在常规踏步带（R 150–190 mm）里凑不出整数级——可以接受 190 mm 以上的陡梯或做错层，此处如实不硬凑。"
+    : "R 与 2R+G 徽章独立评级；★ 推荐为综合评分最优。家装前请结合洞口梁高与净空复核，本工具只算几何。";
+}
+
+$("hin").addEventListener("input", function () { recompute(false); });
+$("gslider").addEventListener("input", function () {
+  state.g = parseInt($("gslider").value, 10);
+  $("gout").textContent = state.g + " mm";
+  var p = state.plans[state.sel];
+  if (p) { p.g = state.g; p.b = 2 * p.r + state.g; p.slope = Math.atan2(p.r, state.g) * 180 / Math.PI; p.run = p.treads * state.g; }
+  renderCards(); renderStats(); renderSvg();
+});
+$("copybtn").addEventListener("click", function () {
+  var rep = buildReport();
+  if (!rep) { toast("先输入一个层高吧"); return; }
+  function fallback() {
+    var ta = document.createElement("textarea"); ta.value = rep; document.body.appendChild(ta);
+    ta.select(); try { document.execCommand("copy"); toast("报告已复制 ✓"); } catch (e) { toast("复制失败，请手动选择文本"); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(rep).then(function () { toast("报告已复制 ✓"); }, fallback);
+  } else fallback();
+});
+$("samplebtn").addEventListener("click", function () { $("hin").value = SAMPLE; recompute(false); toast("已载入示例：层高 2.8 m"); });
+
+/* ===== 初始化 ===== */
+$("hin").value = SAMPLE;
+recompute(false);
+</script>
+</body>
+</html>
