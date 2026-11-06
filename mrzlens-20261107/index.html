@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MRZLENS · 证件机读区解码台</title>
+<meta name="description" content="粘贴护照/身份证照片底部的两三行机读码（MRZ），本地逐字段解码、7-3-1 校验天平逐位对账、有效期体检。数据不出浏览器。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101418'/%3E%3Cpath d='M6 10h20M6 16h14M6 22h18' stroke='%2343d9a3' stroke-width='2.6' stroke-linecap='round'/%3E%3Ccircle cx='25' cy='16' r='2.6' fill='%23ffb454'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0e1216;--panel:#151a20;--panel2:#1a2027;--line:#232b34;--line2:#2e3844;
+  --tx:#e8edf3;--tx2:#9aa7b4;--tx3:#64707d;
+  --ok:#43d9a3;--okbg:rgba(67,217,163,.12);
+  --bad:#ff6b6b;--badbg:rgba(255,107,107,.12);
+  --warn:#ffb454;--warnbg:rgba(255,180,84,.12);
+  --blue:#6cb2ff;--green:#43d9a3;--amber:#ffb454;--purple:#c39bff;--pink:#ff8bb3;
+  --mono:ui-monospace,'SF Mono','Cascadia Code',Consolas,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--tx);font:15px/1.65 -apple-system,'PingFang SC','Noto Sans SC','Microsoft YaHei',sans-serif;
+  padding:max(12px,env(safe-area-inset-top)) 12px max(16px,env(safe-area-inset-bottom))}
+.wrap{max-width:880px;margin:0 auto}
+header{padding:18px 2px 14px}
+h1{font-size:22px;letter-spacing:.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h1 .tag{font:600 11px/1 var(--mono);color:var(--tx3);border:1px solid var(--line2);border-radius:99px;padding:5px 9px;letter-spacing:1px}
+.sub{color:var(--tx2);font-size:13.5px;margin-top:6px}
+.sub b{color:var(--ok);font-weight:600}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:12px}
+.lbl{font-size:12px;color:var(--tx3);letter-spacing:.5px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lbl .fmtchip{font:600 11px/1 var(--mono);color:var(--blue);background:rgba(108,178,255,.1);border:1px solid rgba(108,178,255,.3);border-radius:99px;padding:4px 9px;white-space:nowrap}
+textarea{width:100%;min-height:96px;background:var(--panel2);border:1px solid var(--line2);border-radius:10px;color:var(--tx);
+  font:14px/1.7 var(--mono);padding:12px;resize:vertical;text-transform:uppercase;letter-spacing:1px;outline:none}
+textarea:focus{border-color:var(--ok)}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button{appearance:none;border:1px solid var(--line2);background:var(--panel2);color:var(--tx2);border-radius:9px;
+  padding:9px 13px;font-size:13px;cursor:pointer;min-height:38px;transition:all .15s}
+button:hover{color:var(--tx);border-color:var(--tx3)}
+button:active{transform:scale(.97)}
+button.primary{background:var(--okbg);border-color:rgba(67,217,163,.4);color:var(--ok);font-weight:600}
+button.warnb{color:var(--warn);border-color:rgba(255,180,84,.35)}
+/* 判定条 */
+.verdict{display:none;margin-top:12px;border-radius:12px;padding:13px 15px;font-size:14.5px;font-weight:600;align-items:center;gap:10px}
+.verdict.show{display:flex}
+.verdict.ok{background:var(--okbg);color:var(--ok);border:1px solid rgba(67,217,163,.35)}
+.verdict.bad{background:var(--badbg);color:var(--bad);border:1px solid rgba(255,107,107,.35)}
+.verdict .vd-sub{font-weight:400;color:var(--tx2);font-size:12.5px;margin-left:auto;text-align:right}
+/* 错误提示 */
+.errbox{display:none;margin-top:12px;border-radius:10px;padding:11px 14px;background:var(--warnbg);border:1px solid rgba(255,180,84,.3);color:var(--warn);font-size:13px}
+.errbox.show{display:block}
+/* MRZ 覆盖地图 */
+.mrzgrid{overflow-x:auto;padding:4px 2px 8px;-webkit-overflow-scrolling:touch}
+.mline{display:flex;gap:1px;margin-top:3px;min-width:max-content}
+.chc{width:15px;height:26px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+  font:600 12px/1 var(--mono);border-radius:3px;cursor:pointer;position:relative;user-select:none;-webkit-user-select:none;color:var(--tx2)}
+.chc.c-doc{background:rgba(108,178,255,.16);color:var(--blue)}
+.chc.c-dob{background:rgba(67,217,163,.14);color:var(--green)}
+.chc.c-exp{background:rgba(255,180,84,.14);color:var(--amber)}
+.chc.c-per{background:rgba(195,155,255,.15);color:var(--purple)}
+.chc.c-comp::after{content:'';position:absolute;bottom:1px;width:8px;height:2px;border-radius:2px;background:var(--pink)}
+.chc.chk{outline:1.5px solid var(--tx3);outline-offset:-1.5px}
+.chc.picked{transform:scale(1.18);box-shadow:0 0 0 1.5px var(--tx)}
+.chc.hl{background:var(--tx);color:#111}
+.legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--tx2)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.legend .pinkdot i{background:var(--pink)}
+/* 字段卡 */
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));gap:9px;margin-top:4px}
+.fcard{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;min-width:0}
+.fcard .fl{font-size:11px;color:var(--tx3);letter-spacing:.4px}
+.fcard .fv{font-size:15px;font-weight:600;margin-top:3px;overflow-wrap:break-word;word-break:break-all}
+.fcard .fv.latin{font-family:var(--mono);letter-spacing:.5px}
+.fcard .fs{font-size:11.5px;margin-top:3px;color:var(--tx2)}
+.fcard .fs.ok{color:var(--ok)}.fcard .fs.bad{color:var(--bad)}.fcard .fs.warn{color:var(--warn)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:99px;margin-right:5px;vertical-align:1px}
+.dot.g{background:var(--ok)}.dot.r{background:var(--bad)}
+/* 校验审计 */
+.audit{margin-top:4px}
+.arow{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px;background:var(--panel2);cursor:pointer;transition:border-color .15s}
+.arow:hover,.arow.hl{border-color:var(--tx3)}
+.arow .ahead{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;flex-wrap:wrap}
+.arow .ahead .st{font-size:12px;font-weight:400}
+.arow .ahead .st.ok{color:var(--ok)}.arow .ahead .st.bad{color:var(--bad)}
+.arow .aformula{margin-top:8px;display:flex;flex-wrap:wrap;gap:2px;font-family:var(--mono)}
+.wcell{display:inline-flex;flex-direction:column;align-items:center;width:17px;padding:1px 0;border-radius:3px}
+.wcell i{font-style:normal;font-size:8.5px;color:var(--tx3);line-height:1}
+.wcell b{font-size:11.5px;font-weight:600;color:var(--tx2);line-height:1.35}
+.wcell.src-doc b{color:var(--blue)}.wcell.src-dob b{color:var(--green)}
+.wcell.src-exp b{color:var(--amber)}.wcell.src-per b{color:var(--purple)}
+.wcell.chkcell{outline:1px solid var(--tx3);outline-offset:-1px}
+.wcell.chkcell b{color:var(--tx)}
+.asum{margin-top:7px;font:12px/1.6 var(--mono);color:var(--tx3)}
+.asum b{color:var(--tx2);font-weight:600}
+.ocrhint{display:none;margin-top:10px;font-size:12.5px;color:var(--warn);background:var(--warnbg);border-radius:9px;padding:9px 12px}
+.ocrhint.show{display:block}
+.foot{margin-top:14px;color:var(--tx3);font-size:12px;line-height:1.8;padding:6px 4px 0}
+.foot a{color:var(--tx2)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+  background:#222c36;border:1px solid var(--line2);color:var(--tx);padding:10px 18px;border-radius:99px;font-size:13px;
+  opacity:0;pointer-events:none;transition:all .25s;z-index:9}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.empty{color:var(--tx3);font-size:13px;padding:8px 2px}
+@media (max-width:560px){ h1{font-size:19px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>MRZLENS 证件机读区解码台 <span class="tag">TD1 / TD2 / TD3</span></h1>
+    <div class="sub">粘贴护照或证件照片底部的两三行机读码（<b>MRZ</b>）：逐字段解码、7-3-1 校验天平逐位对账、有效期体检。全程在浏览器本地完成，<b>证件数据不出这台设备</b>。</div>
+  </header>
+
+  <div class="card">
+    <div class="lbl"><span>机读码原文（每行一条，含 &lt; 填充符）</span><span class="fmtchip" id="fmtchip">等待输入…</span></div>
+    <textarea id="in" spellcheck="false" autocapitalize="characters" autocomplete="off" placeholder="P&lt;CHNZHANG&lt;&lt;SAN&lt;&lt;&lt;…&#10;E1234567&lt;8CHN9001014M3001019&lt;&lt;&lt;&lt;…&#10;&#10;支持护照（TD3，2 行 44 字符）、签证（TD2，2 行 36）、身份证/居留卡（TD1，3 行 30）"></textarea>
+    <div class="btns">
+      <button class="primary" id="bSample">✈️ 示例 · 护照</button>
+      <button class="warnb" id="bSoon">⏳ 示例 · 临近过期</button>
+      <button id="bTamper">🧪 示例 · 校验位被篡改</button>
+      <button id="bTd1">🪪 示例 · TD1 身份证</button>
+      <button id="bTd2">📄 示例 · TD2 签证</button>
+      <button id="bCopy">📋 复制报告</button>
+      <button id="bClear">清空</button>
+    </div>
+    <div class="errbox" id="errbox"></div>
+    <div class="verdict" id="verdict"></div>
+  </div>
+
+  <div class="card" id="gridcard" style="display:none">
+    <div class="lbl"><span>校验覆盖地图 —— 每个字符进了哪道校验（点击任意字符，反查它参与哪几道校验）</span></div>
+    <div class="mrzgrid" id="mrzgrid"></div>
+    <div class="legend">
+      <span style="color:var(--blue)"><i style="background:rgba(108,178,255,.5)"></i>证件号</span>
+      <span style="color:var(--green)"><i style="background:rgba(67,217,163,.45)"></i>出生日期</span>
+      <span style="color:var(--amber)"><i style="background:rgba(255,180,84,.45)"></i>有效期</span>
+      <span style="color:var(--purple)"><i style="background:rgba(195,155,255,.5)"></i>个人编号/可选项</span>
+      <span class="pinkdot"><i></i>底部色点 = 参与综合校验</span>
+      <span style="color:var(--tx2)"><i style="background:transparent;outline:1px solid var(--tx3)"></i>描边 = 校验位本体</span>
+    </div>
+  </div>
+
+  <div class="card" id="fieldcard" style="display:none">
+    <div class="lbl"><span>解码字段</span></div>
+    <div class="fgrid" id="fgrid"></div>
+  </div>
+
+  <div class="card" id="auditcard" style="display:none">
+    <div class="lbl"><span>7-3-1 校验天平 —— 每位字符值 × 权重，求和 mod 10 应等于校验位</span></div>
+    <div class="audit" id="audit"></div>
+    <div class="ocrhint" id="ocrhint"></div>
+  </div>
+
+  <div class="empty" id="emptyhint">👆 还没有输入。可以直接粘贴机读码，或点一个示例开始。粘贴的任何内容都只在本页内存里解析，刷新即消失。</div>
+
+  <div class="foot">
+    校验位算法：字符值（数字=本身，A=10…Z=35，&lt;=0）× 权重 7/3/1 循环，求和取模 10；综合校验按 ICAO 9303 规定的字段区间连续加权。出生日期世纪位为启发式推断（≤ 当前年份记 20xx，否则 19xx）。<br>
+    本工具只验证 MRZ <b>内部自洽性</b>（校验位/日期/字段结构），无法验证证件真伪；不联网、不上传、无统计。参考实现 <a href="https://github.com/cheminfo/mrz" target="_blank" rel="noopener">cheminfo/mrz</a>（ICAO 9303 测试真值对拍通过）。
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== 核心引擎（与权威真值对拍通过后原样嵌入） ===================== */
+function cval(c) {
+  if (c >= '0' && c <= '9') return c.charCodeAt(0) - 48;
+  if (c >= 'A' && c <= 'Z') return c.charCodeAt(0) - 55;
+  return 0;
+}
+function checkDigit(s) {
+  var sum = 0;
+  for (var i = 0; i < s.length; i++) sum += cval(s[i]) * [7, 3, 1][i % 3];
+  return String(sum % 10);
+}
+function checkDigitField(s) {
+  return /[^<]/.test(s) ? checkDigit(s) : '<';
+}
+function detectFormat(lines) {
+  if (lines.length === 3 && lines[0].length >= 28 && lines[0].length <= 32) return 'TD1';
+  if (lines.length === 2) {
+    var l0 = lines[0].length, l1 = lines[1].length;
+    if (Math.abs(l0 - 44) <= 2 && Math.abs(l1 - 44) <= 2) return 'TD3';
+    if (Math.abs(l0 - 36) <= 2 && Math.abs(l1 - 36) <= 2) return 'TD2';
+    if (l0 >= 42 && l1 >= 42) return 'TD3';
+    if (l0 >= 34 && l1 >= 34) return 'TD2';
+  }
+  return null;
+}
+function padLine(s, n) {
+  s = s.replace(/[^A-Z0-9<]/g, '').slice(0, n);
+  while (s.length < n) s += '<';
+  return s;
+}
+function splitName(s) {
+  var parts = s.split('<<');
+  var clean = function (t) { return t.replace(/</g, ' ').trim(); };
+  return { surname: clean(parts[0] || ''), given: parts.length > 1 ? clean(parts.slice(1).join(' ')) : '' };
+}
+function dobFull(yy, now) {
+  now = now || new Date();
+  var cur2 = now.getFullYear() % 100;
+  return (yy <= cur2 ? 2000 : 1900) + yy;
+}
+var FMT_META = {
+  TD1: { label: 'TD1 · 3 行证件', lineLen: 30 },
+  TD2: { label: 'TD2 · 2 行证件', lineLen: 36 },
+  TD3: { label: 'TD3 · 2 行护照', lineLen: 44 }
+};
+function parseDocExtended(line0) {
+  var raw = line0.slice(5, 30);
+  if (raw[9] === '<' && /[0-9A-Z]/.test(raw.slice(10))) {
+    var m = raw.match(/^([A-Z0-9]+)<([A-Z0-9]+?)(\d)<+$/);
+    if (m) return { doc: m[1] + m[2], ext: true, end: 15 + m[2].length + 1 };
+  }
+  return { doc: raw.slice(0, 9).replace(/<+$/, ''), ext: false, end: 14 };
+}
+function checkDate(d6, isDob, now) {
+  var yy = parseInt(d6.slice(0, 2), 10), mm = parseInt(d6.slice(2, 4), 10), dd = parseInt(d6.slice(4, 6), 10);
+  if (!/^\d{6}$/.test(d6)) return { valid: false, msg: '日期位不是 6 位数字' };
+  if (mm < 1 || mm > 12) return { valid: false, msg: '月份 ' + mm + ' 不合法' };
+  if (dd < 1 || dd > 31) return { valid: false, msg: '日 ' + dd + ' 不合法' };
+  var full;
+  if (isDob) {
+    full = new Date(dobFull(yy, now), mm - 1, dd);
+    var age = Math.floor((now - full) / (365.2425 * 86400000));
+    return { valid: true, full: full, y: dobFull(yy, now), m: mm, d: dd, age: age,
+      msg: dobFull(yy, now) + ' 年 ' + mm + ' 月 ' + dd + ' 日 · 约 ' + age + ' 周岁' };
+  }
+  full = new Date(2000 + yy, mm - 1, dd);
+  var days = Math.ceil((full - now) / 86400000);
+  var label, tone;
+  if (days < 0) { label = '已过期 ' + (-days) + ' 天'; tone = 'bad'; }
+  else if (days <= 90) { label = '⚠ 距失效仅 ' + days + ' 天'; tone = 'bad'; }
+  else if (days <= 180) { label = '约 ' + days + ' 天后失效'; tone = 'warn'; }
+  else { label = '有效 · 剩约 ' + days + ' 天'; tone = 'ok'; }
+  return { valid: true, full: full, days: days, label: label, tone: tone };
+}
+var COUNTRY_ZH = ('AFG阿富汗 ALA奥兰 ALB阿尔巴尼亚 DZA阿尔及利亚 AND安道尔 AGO安哥拉 AIA安圭拉 ARG阿根廷 ' +
+  'ARM亚美尼亚 ABW阿鲁巴 AUS澳大利亚 AUT奥地利 AZE阿塞拜疆 BHS巴哈马 BHR巴林 BGD孟加拉 BRB巴巴多斯 ' +
+  'BLR白俄罗斯 BEL比利时 BLZ伯利兹 BEN贝宁 BMU百慕大 BTN不丹 BOL玻利维亚 BIH波黑 BWA博茨瓦纳 BRA巴西 ' +
+  'BRN文莱 BGR保加利亚 BFA布基纳法索 BDI布隆迪 KHM柬埔寨 CMR喀麦隆 CAN加拿大 CPV佛得角 CYM开曼 CHF中非 ' +
+  'TCD乍得 CHL智利 CHN中国 COL哥伦比亚 COM科摩罗 COG刚果布 COD刚果金 CRI哥斯达黎加 CIV科特迪瓦 HRV克罗地亚 ' +
+  'CUB古巴 CYP塞浦路斯 CZE捷克 DNK丹麦 DJI吉布提 DMA多米尼克 DOM多米尼加 ECU厄瓜多尔 EGY埃及 SLV萨尔瓦多 ' +
+  'GNQ赤道几内亚 ERI厄立特里亚 EST爱沙尼亚 ETH埃塞俄比亚 FJI斐济 FIN芬兰 FRA法国 GAB加蓬 GMB冈比亚 GEO格鲁吉亚 ' +
+  'DEU德国 GHA加纳 GIB直布罗陀 GRC希腊 GRL格陵兰 GRD格林纳达 GUM关岛 GTM危地马拉 GIN几内亚 GNB几内亚比绍 ' +
+  'GUY圭亚那 HTI海地 HND洪都拉斯 HKG中国香港 HUN匈牙利 ISL冰岛 IND印度 IDN印尼 IRN伊朗 IRQ伊拉克 IRL爱尔兰 ' +
+  'ISR以色列 ITA意大利 JAM牙买加 JPN日本 JEY泽西 JOR约旦 KAZ哈萨克斯坦 KEN肯尼亚 KIR基里巴斯 PRK朝鲜 ' +
+  'KOR韩国 KWT科威特 KGZ吉尔吉斯 LAO老挝 LVA拉脱维亚 LBN黎巴嫩 LSO莱索托 LBR利比里亚 LIE列支敦士登 ' +
+  'LTU立陶宛 LUX卢森堡 MAC中国澳门 MDG马达加斯加 MWI马拉维 MYS马来西亚 MDV马尔代夫 MLI马里 MLT马耳他 MHL马绍尔 ' +
+  'MRT毛里塔尼亚 MUS毛里求斯 MEX墨西哥 FSM密克罗尼西亚 MDA摩尔多瓦 MCO摩纳哥 MNG蒙古 MNE黑山 MSR蒙特塞拉特 ' +
+  'MAR摩洛哥 MOZ莫桑比克 MMR缅甸 NAM纳米比亚 NRU瑙鲁 NPL尼泊尔 NLD荷兰 NZL新西兰 NIC尼日尔 NER尼日尔 NGA尼日利亚 ' +
+  'NIU纽埃 NFK诺福克 MKD北马其顿 NOR挪威 OMN阿曼 PAK巴基斯坦 PLW帕劳 PAN巴拿马 PNG巴新 PRY巴拉圭 PER秘鲁 ' +
+  'PHL菲律宾 PCN皮特凯恩 POL波兰 PRT葡萄牙 QAT卡塔尔 ROU罗马尼亚 RUS俄罗斯 RWA卢旺达 SHC圣赫勒拿 KNA圣基茨 ' +
+  'LCA圣卢西亚 VCT圣文森特 WSM萨摩亚 SMR圣马力诺 STP圣多美 SAU沙特 SEN塞内加尔 SRB塞尔维亚 SYC塞舌尔 SLE塞拉利昂 ' +
+  'SGP新加坡 SXM荷属圣马丁 SVK斯洛伐克 SVN斯洛文尼亚 SLB所罗门 SOM索马里 ZAF南非 SSD南苏丹 ESP西班牙 LKA斯里兰卡 ' +
+  'SDN苏丹 SUR苏里南 SWE瑞典 CHE瑞士 SYR叙利亚 TWN中国台湾 TJK塔吉克 TZA坦桑尼亚 THA泰国 TLS东帝汶 TGO多哥 ' +
+  'TON汤加 TTO特多 TUN突尼斯 TUR土耳其 TKM土库曼 TUV图瓦卢 UGA乌干达 UKR乌克兰 ARE阿联酋 GBR英国 USA美国 ' +
+  'URY乌拉圭 UZB乌兹别克 VUT瓦努阿图 VEN委内瑞拉 VNM越南 VGB英属维尔京 VIR美属维尔京 WLF瓦利斯 YEM也门 ZMB赞比亚 ' +
+  'ZWE津巴布韦 PSE巴勒斯坦').split(/\s+/);
+var COUNTRY_MAP = { D: '德国' };
+COUNTRY_ZH.forEach(function (e) {
+  var code = e.slice(0, 3), zh = e.slice(3);
+  if (!(code in COUNTRY_MAP)) COUNTRY_MAP[code] = zh;
+});
+function countryName(code) {
+  if (!code) return '—';
+  return COUNTRY_MAP[code] || (code + '（代码表未收录）');
+}
+var SEX_ZH = { M: '男', F: '女', '<': '未标注' };
+var OCR_CHARS = { O: '0', I: '1', S: '5', B: '8', Z: '2', G: '6' };
+function ocrSuspects(lines) {
+  var out = [];
+  lines.forEach(function (ln, li) {
+    for (var i = 0; i < ln.length; i++) {
+      var ch = ln[i];
+      if (OCR_CHARS[ch]) out.push({ line: li, col: i, ch: ch, suggest: OCR_CHARS[ch] });
+    }
+  });
+  return out;
+}
+function parseMRZ(text, now) {
+  now = now || new Date();
+  var rawLines = String(text).toUpperCase().split(/[\r\n]+/).map(function (s) { return s.trim(); })
+    .filter(function (s) { return s.length > 0; });
+  var errors = [], illegal = 0;
+  rawLines.forEach(function (ln, li) {
+    for (var i = 0; i < ln.length; i++) if (!/[A-Z0-9<]/.test(ln[i])) illegal++;
+  });
+  if (illegal) {
+    rawLines = rawLines.map(function (ln) { return ln.replace(/[^A-Z0-9<]/g, ''); });
+    errors.push({ level: 'warn', msg: '已自动忽略 ' + illegal + ' 个非法字符（机读码只允许大写字母、数字和 <）' });
+  }
+  if (rawLines.length === 0) return { ok: false, reason: 'empty' };
+  var fmt = detectFormat(rawLines);
+  if (!fmt) {
+    return { ok: false, reason: 'format', lines: rawLines,
+      msg: '识别不出格式：TD1 = 3 行 × 30 字符、TD2 = 2 行 × 36、TD3 = 2 行 × 44。当前 ' + rawLines.length + ' 行，行长 ' + rawLines.map(function (l) { return l.length; }).join(' / ') + '。' };
+  }
+  var len = FMT_META[fmt].lineLen;
+  var norm = rawLines.map(function (l) { return padLine(l, len); });
+  if (rawLines.some(function (l) { return l.length !== len; })) {
+    errors.push({ level: 'warn', msg: '行长不规范（标准 ' + len + ' 字符），已按 < 补齐解析，请核对原文是否拍全/抄全。' });
+  }
+  var L = norm, fields = {}, checks = [];
+  function addCheck(name, segments, actualPos, isOptional, explicitSource, hue) {
+    var src = explicitSource || segments.map(function (sg) { return L[sg.line].slice(sg.a, sg.b); }).join('');
+    var expected = isOptional ? checkDigitField(src) : checkDigit(src);
+    var actual = L[actualPos.line][actualPos.a];
+    checks.push({ name: name, segments: segments, source: src, expected: expected,
+      actual: actual, ok: expected === actual, hue: hue || 'doc', pos: actualPos });
+  }
+  var names;
+  if (fmt === 'TD1') {
+    names = splitName(L[2]);
+    var dx = parseDocExtended(L[0]);
+    fields = {
+      docCode: L[0].slice(0, 2).replace(/<+$/, ''), issuer: L[0].slice(2, 5).replace(/</g, ''),
+      docNr: dx.doc, docExt: dx.ext, optional1: L[0].slice(15, 30).replace(/<+$/, ''),
+      dob: L[1].slice(0, 6), sex: L[1].slice(7, 8), expiry: L[1].slice(8, 14),
+      nationality: L[1].slice(15, 18).replace(/</g, ''), optional2: L[1].slice(18, 29).replace(/<+$/, ''),
+      surname: names.surname, given: names.given, personal: ''
+    };
+    addCheck('证件号', [{ line: 0, a: 5, b: dx.ext ? dx.end : 14 }],
+      { line: 0, a: dx.ext ? dx.end - 1 : 14 }, false, dx.ext ? dx.doc : null, 'doc');
+    addCheck('出生日期', [{ line: 1, a: 0, b: 6 }], { line: 1, a: 6 }, false, null, 'dob');
+    addCheck('有效期', [{ line: 1, a: 8, b: 14 }], { line: 1, a: 14 }, false, null, 'exp');
+    addCheck('综合校验', [{ line: 0, a: 5, b: 30 }, { line: 1, a: 0, b: 7 }, { line: 1, a: 8, b: 15 }, { line: 1, a: 18, b: 29 }],
+      { line: 1, a: 29 }, false, null, 'comp');
+  } else if (fmt === 'TD2') {
+    names = splitName(L[0].slice(5));
+    fields = {
+      docCode: L[0].slice(0, 2).replace(/<+$/, ''), issuer: L[0].slice(2, 5).replace(/</g, ''),
+      docNr: L[1].slice(0, 9).replace(/<+$/, ''), docExt: false,
+      optional: L[1].slice(28, 35).replace(/<+$/, ''),
+      dob: L[1].slice(13, 19), sex: L[1].slice(20, 21), expiry: L[1].slice(21, 27),
+      nationality: L[1].slice(10, 13).replace(/</g, ''),
+      surname: names.surname, given: names.given, personal: ''
+    };
+    addCheck('证件号', [{ line: 1, a: 0, b: 9 }], { line: 1, a: 9 }, false, null, 'doc');
+    addCheck('出生日期', [{ line: 1, a: 13, b: 19 }], { line: 1, a: 19 }, false, null, 'dob');
+    addCheck('有效期', [{ line: 1, a: 21, b: 27 }], { line: 1, a: 27 }, false, null, 'exp');
+    addCheck('综合校验', [{ line: 1, a: 0, b: 10 }, { line: 1, a: 13, b: 20 }, { line: 1, a: 21, b: 35 }],
+      { line: 1, a: 35 }, false, null, 'comp');
+  } else {
+    names = splitName(L[0].slice(5));
+    var perEmpty = !/[^<]/.test(L[1].slice(28, 42));
+    fields = {
+      docCode: L[0].slice(0, 2).replace(/<+$/, ''), issuer: L[0].slice(2, 5).replace(/</g, ''),
+      docNr: L[1].slice(0, 9).replace(/<+$/, ''), docExt: false,
+      personal: L[1].slice(28, 42).replace(/<+$/, ''),
+      dob: L[1].slice(13, 19), sex: L[1].slice(20, 21), expiry: L[1].slice(21, 27),
+      nationality: L[1].slice(10, 13).replace(/</g, ''),
+      surname: names.surname, given: names.given
+    };
+    addCheck('证件号', [{ line: 1, a: 0, b: 9 }], { line: 1, a: 9 }, false, null, 'doc');
+    addCheck('出生日期', [{ line: 1, a: 13, b: 19 }], { line: 1, a: 19 }, false, null, 'dob');
+    addCheck('有效期', [{ line: 1, a: 21, b: 27 }], { line: 1, a: 27 }, false, null, 'exp');
+    addCheck('个人编号', [{ line: 1, a: 28, b: 42 }], { line: 1, a: 42 }, perEmpty, null, 'per');
+    addCheck('综合校验', [{ line: 1, a: 0, b: 10 }, { line: 1, a: 13, b: 20 }, { line: 1, a: 21, b: 43 }],
+      { line: 1, a: 43 }, false, null, 'comp');
+  }
+  return {
+    ok: true, fmt: fmt, lines: norm, fields: fields, checks: checks, errors: errors,
+    dobInfo: checkDate(fields.dob, true, now), expInfo: checkDate(fields.expiry, false, now),
+    allOk: checks.every(function (c) { return c.ok; })
+  };
+}
+/* ===== 示例生成（运行时现算校验位，有效期相对今天，样例永远新鲜且过自家检测器） ===== */
+function makeTD3(p) {
+  var l1 = padLine(p.code + '<' + p.issuer + p.surname + '<<' + p.given, 44);
+  function d(t) { return ('' + t).replace(/-/g, '').slice(2); }
+  var doc9 = padLine(p.doc, 9), dob6 = d(p.dob), exp6 = d(p.exp), per = padLine(p.personal || '', 14);
+  var l2 = doc9 + checkDigit(doc9) + p.nat + dob6 + checkDigit(dob6) + p.sex + exp6 + checkDigit(exp6) + per + checkDigitField(per) + '0';
+  l2 = l2.slice(0, 43) + checkDigit(l2.slice(0, 10) + l2.slice(13, 20) + l2.slice(21, 43));
+  return l1 + '\n' + l2;
+}
+function daysFromNow(n) {
+  var d = new Date(Date.now() + n * 86400000);
+  function p(x) { return ('0' + x).slice(-2); }
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+var TD1_SAMPLE = 'IDCHEA1234567<6<<<<<<<<<<<<<<<\n7510256M2009018CHE<<<<<<<<<<<8\nSMITH<<JOHN<ALBERT<<<<<<<<<<<<';
+var TD2_SAMPLE = 'I<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<\nD231458907UTO7408122F1204159<<<<<<<6';
+
+/* ===================== UI 层 ===================== */
+var $ = function (id) { return document.getElementById(id); };
+var state = { result: null, raw: '', picked: null };
+
+function toast(msg) {
+  var t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t.__h);
+  t.__h = setTimeout(function () { t.classList.remove('show'); }, 1800);
+}
+
+function onInput() {
+  var txt = $('in').value;
+  state.raw = txt;
+  var trimmed = txt.trim();
+  if (!trimmed) { state.result = null; renderAll(); return; }
+  state.result = parseMRZ(txt);
+  renderAll();
+}
+
+/* 字符 → 参与的校验序号列表（覆盖地图与审计行双向联动的基础） */
+function incidence(res) {
+  var map = {};
+  res.checks.forEach(function (c, ci) {
+    c.segments.forEach(function (sg) {
+      for (var i = sg.a; i < sg.b; i++) {
+        var k = sg.line + ':' + i;
+        (map[k] = map[k] || []).push(ci);
+      }
+    });
+    var k2 = c.pos.line + ':' + c.pos.a;
+    (map[k2] = map[k2] || []).push(ci);
+  });
+  return map;
+}
+
+function charClass(res, li, idx, inc) {
+  var cls = 'chc';
+  var list = inc[li + ':' + idx] || [];
+  var hueOrder = { doc: 'c-doc', dob: 'c-dob', exp: 'c-exp', per: 'c-per' };
+  for (var h in hueOrder) {
+    if (list.some(function (ci) { return res.checks[ci].hue === h && res.checks[ci].name !== '综合校验'; })) { cls += ' ' + hueOrder[h]; break; }
+  }
+  if (list.some(function (ci) { return res.checks[ci].name === '综合校验'; })) cls += ' c-comp';
+  if (list.some(function (ci) { return res.checks[ci].pos.line === li && res.checks[ci].pos.a === idx; })) cls += ' chk';
+  if (state.picked === li + ':' + idx) cls += ' picked';
+  return cls;
+}
+
+function renderGrid(res) {
+  var inc = incidence(res);
+  var box = $('mrzgrid');
+  box.innerHTML = '';
+  res.lines.forEach(function (line, li) {
+    var row = document.createElement('div');
+    row.className = 'mline';
+    for (var i = 0; i < line.length; i++) {
+      var sp = document.createElement('span');
+      sp.className = charClass(res, li, i, inc);
+      sp.dataset.pos = li + ':' + i;
+      sp.textContent = line[i];
+      row.appendChild(sp);
+    }
+    box.appendChild(row);
+  });
+}
+
+function renderFields(res) {
+  var f = res.fields, g = $('fgrid');
+  g.innerHTML = '';
+  function card(label, value, sub, tone, latin) {
+    var d = document.createElement('div');
+    d.className = 'fcard';
+    var v = value === '' || value == null ? '—' : value;
+    d.innerHTML = '<div class="fl">' + label + '</div><div class="fv' + (latin ? ' latin' : '') + '">' + esc(v) + '</div>' +
+      (sub ? '<div class="fs ' + (tone || '') + '">' + sub + '</div>' : '');
+    g.appendChild(d);
+  }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  card('证件类型', f.docCode || '—', res.fmt + ' 机读区', '', true);
+  card('签发国家/地区', countryName(f.issuer), '代码 ' + (f.issuer || '—'), '', true);
+  card('姓（Surname）', f.surname, '', '', true);
+  card('名（Given names）', f.given, '', '', true);
+  var dchk = res.checks[0], okDoc = dchk && dchk.ok;
+  card('证件号码', f.docNr + (f.docExt ? ' ⤷扩展' : ''), '<span class="dot ' + (okDoc ? 'g' : 'r') + '"></span>' + (f.docExt ? '长号码已延伸进可选项' : '校验位 ' + (okDoc ? '吻合' : '不符')), okDoc ? 'ok' : 'bad', true);
+  card('国籍', countryName(f.nationality), '代码 ' + (f.nationality || '—'), '', true);
+  card('出生日期', res.dobInfo.valid ? f.dob : f.dob, res.dobInfo.valid ? esc(res.dobInfo.msg) : '⚠ ' + esc(res.dobInfo.msg || '格式异常'), res.dobInfo.valid ? '' : 'bad', true);
+  card('性别', SEX_ZH[f.sex] || f.sex, '', '', true);
+  var e = res.expInfo;
+  card('有效期至', f.expiry, e.valid ? esc(e.label) : '⚠ 格式异常', e.tone || (e.valid ? '' : 'bad'), true);
+  if (res.fmt === 'TD3') card('个人编号', f.personal || '（空）', '', '', true);
+  if (res.fmt === 'TD1') {
+    card('可选项 1', f.optional1 || '（空）', '', '', true);
+    card('可选项 2', f.optional2 || '（空）', '', '', true);
+  }
+  if (res.fmt === 'TD2') card('可选项', f.optional || '（空）', '', '', true);
+}
+
+function renderAudit(res) {
+  var box = $('audit');
+  box.innerHTML = '';
+  res.checks.forEach(function (c, ci) {
+    var row = document.createElement('div');
+    row.className = 'arow';
+    row.dataset.ci = ci;
+    var cells = '';
+    for (var i = 0; i < c.source.length; i++) {
+      var hueCls = 'src-' + (c.name === '综合校验' ? hueOfSegment(res, ci, i) : c.hue);
+      var isChk = i === c.source.length - 1 && c.name !== '综合校验';
+      cells += '<span class="wcell ' + hueCls + (isChk ? ' chkcell' : '') + '" title="值 ' + cval(c.source[i]) + ' × 权重 ' + [7, 3, 1][i % 3] + '"><i>' + [7, 3, 1][i % 3] + '</i><b>' + esc2(c.source[i]) + '</b></span>';
+    }
+    var sum = 0;
+    for (var j = 0; j < c.source.length; j++) sum += cval(c.source[j]) * [7, 3, 1][j % 3];
+    row.innerHTML = '<div class="ahead">' + esc2(c.name) +
+      '<span class="st ' + (c.ok ? 'ok' : 'bad') + '">' + (c.ok ? '✓ 吻合' : '✗ 不符') + '</span>' +
+      (c.name === '个人编号' && c.actual === '<' ? '<span class="st" style="color:var(--tx3)">字段为空，校验位按约定为 &lt;</span>' : '') +
+      '</div><div class="aformula">' + cells + '</div>' +
+      '<div class="asum">加权和 = <b>' + sum + '</b> → ' + sum + ' mod 10 = <b>' + c.expected + '</b>' +
+      '｜机读码上写的是 <b style="color:' + (c.ok ? 'var(--ok)' : 'var(--bad)') + '">' + esc2(c.actual) + '</b>' +
+      (c.ok ? '' : '（应为 ' + c.expected + '）') + '</div>';
+    box.appendChild(row);
+  });
+  if (!res.allOk) {
+    var sus = ocrSuspects(res.lines);
+    if (sus.length) {
+      var m = {};
+      sus.forEach(function (s) { m[s.ch] = s.suggest; });
+      var pairs = Object.keys(m).map(function (k) { return k + '↔' + m[k]; }).join('、');
+      $('ocrhint').innerHTML = '🔍 校验不符时常见原因是拍照/抄写混淆，这些位置出现过易混字符：<b>' + esc2(pairs) + '</b>。可对照原照片核对。';
+      $('ocrhint').classList.add('show');
+    } else $('ocrhint').classList.remove('show');
+  } else $('ocrhint').classList.remove('show');
+}
+function hueOfSegment(res, ci, posInSrc) {
+  // 综合校验行内每字符按其来源字段的色相着色
+  var c = res.checks[ci], acc = 0;
+  for (var si = 0; si < c.segments.length; si++) {
+    var sg = c.segments[si], len = sg.b - sg.a;
+    if (posInSrc < acc + len) return segmentHue(res, ci, si);
+    acc += len;
+  }
+  return 'doc';
+}
+function segmentHue(res, ci, si) {
+  var c = res.checks[ci];
+  var sg = c.segments[si];
+  var others = res.checks.filter(function (o, oi) { return oi !== ci && o.name !== '综合校验'; });
+  for (var k = 0; k < others.length; k++) {
+    var hit = others[k].segments.some(function (o2) { return o2.line === sg.line && o2.a === sg.a && o2.b === sg.b; });
+    if (hit) return others[k].hue;
+  }
+  return 'per';
+}
+function esc2(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function renderAll() {
+  var res = state.result;
+  ['gridcard', 'fieldcard', 'auditcard'].forEach(function (id) { $(id).style.display = res && res.ok ? 'block' : 'none'; });
+  $('verdict').className = 'verdict';
+  $('errbox').className = 'errbox';
+  $('emptyhint').style.display = (!state.raw.trim()) ? 'block' : 'none';
+  if (!res) { $('fmtchip').textContent = '等待输入…'; return; }
+  if (!res.ok) {
+    if (res.reason === 'format') {
+      $('fmtchip').textContent = '格式未识别';
+      $('errbox').textContent = res.msg;
+      $('errbox').classList.add('show');
+    } else {
+      $('fmtchip').textContent = '等待输入…';
+    }
+    return;
+  }
+  var bad = res.checks.filter(function (c) { return !c.ok; }).length;
+  var v = $('verdict');
+  v.className = 'verdict show ' + (res.allOk ? 'ok' : 'bad');
+  v.innerHTML = (res.allOk ? '✓ 自洽性体检通过 · ' + res.checks.length + '/' + res.checks.length + ' 道校验吻合'
+    : '✗ 发现 ' + bad + ' 处校验不一致（共 ' + res.checks.length + ' 道）') +
+    '<span class="vd-sub">' + FMT_META[res.fmt].label + '｜' + esc2(res.expInfo.valid ? res.expInfo.label : '有效期待核') + '</span>';
+  var warns = res.errors.map(function (e) { return '⚠ ' + esc2(e.msg); }).join('<br>');
+  $('errbox').innerHTML = warns;
+  $('errbox').className = 'errbox' + (warns ? ' show' : '');
+  $('fmtchip').textContent = FMT_META[res.fmt].label;
+  renderGrid(res);
+  renderFields(res);
+  renderAudit(res);
+}
+/* 交互：覆盖地图 ↔ 审计行 双向联动 */
+$('mrzgrid').addEventListener('click', function (e) {
+  var t = e.target.closest('.chc');
+  if (!t) return;
+  var key = t.dataset.pos;
+  state.picked = state.picked === key ? null : key;
+  var res = state.result;
+  if (!res || !res.ok) return;
+  var inc = incidence(res);
+  var list = inc[key] || [];
+  document.querySelectorAll('.chc.picked').forEach(function (el) { el.classList.remove('picked'); });
+  if (state.picked === key) t.classList.add('picked');
+  document.querySelectorAll('.arow').forEach(function (r) {
+    r.classList.toggle('hl', list.indexOf(+r.dataset.ci) >= 0);
+  });
+});
+$('audit').addEventListener('click', function (e) {
+  var row = e.target.closest('.arow');
+  if (!row) return;
+  var ci = +row.dataset.ci;
+  var res = state.result;
+  if (!res || !res.ok) return;
+  var pos = res.checks[ci].pos || { line: 0, a: -1 };
+  var key = pos.line + ':' + pos.a;
+  var target = document.querySelector('.chc[data-pos="' + key + '"]');
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    target.classList.add('picked');
+    setTimeout(function () { target.classList.remove('picked'); }, 900);
+  }
+});
+
+/* 示例按钮（运行时生成，样例永远过自家检测器） */
+$('bSample').onclick = function () { load(MRZ_FIXTURE.valid); };
+$('bSoon').onclick = function () { load(MRZ_FIXTURE.soon); };
+$('bTamper').onclick = function () { load(MRZ_FIXTURE.tampered); };
+$('bTd1').onclick = function () { load(TD1_SAMPLE); };
+$('bTd2').onclick = function () { load(TD2_SAMPLE); };
+$('bClear').onclick = function () { $('in').value = ''; onInput(); };
+function load(txt) {
+  $('in').value = txt;
+  onInput();
+  toast('已载入示例（校验位为真实算法现算）');
+}
+var MRZ_FIXTURE = {
+  get valid() {
+    return makeTD3({ code: 'P', issuer: 'CHN', surname: 'ZHANG', given: 'XIAOMING', doc: 'EA1234567', nat: 'CHN', dob: '1990-06-15', sex: 'M', exp: daysFromNow(500), personal: '' });
+  },
+  get soon() {
+    return makeTD3({ code: 'P', issuer: 'CHN', surname: 'LI', given: 'NA', doc: 'PE8823456', nat: 'CHN', dob: '1988-03-02', sex: 'F', exp: daysFromNow(40), personal: '' });
+  },
+  get tampered() {
+    var m = makeTD3({ code: 'P', issuer: 'CHN', surname: 'WANG', given: 'WU', doc: 'EA7654321', nat: 'CHN', dob: '1995-12-30', sex: 'M', exp: daysFromNow(300), personal: '' });
+    // 把第 2 行证件号末位数字改掉（1→9），模拟抄错 → 证件号校验位 + 综合校验位双双报红
+    var lines = m.split('\n');
+    var d8 = lines[1][8];
+    lines[1] = lines[1].slice(0, 8) + (d8 === '9' ? '0' : '9') + lines[1].slice(9);
+    return lines.join('\n');
+  }
+};
+
+/* 复制报告 */
+$('bCopy').onclick = function () {
+  var res = state.result;
+  if (!res || !res.ok) { toast('先输入有效的机读码'); return; }
+  var f = res.fields;
+  var L = [];
+  L.push('# MRZ 解码报告');
+  L.push('- 时间：' + new Date().toLocaleString());
+  L.push('- 格式：' + res.fmt + '（' + FMT_META[res.fmt].label + '）');
+  L.push('- 结论：' + (res.allOk ? '自洽性体检通过' : '存在 ' + res.checks.filter(function (c) { return !c.ok; }).length + ' 处校验不一致'));
+  L.push('');
+  L.push('## 字段');
+  L.push('- 证件类型：' + (f.docCode || '—'));
+  L.push('- 签发国家/地区：' + countryName(f.issuer) + '（' + f.issuer + '）');
+  L.push('- 姓名：' + (f.surname || '—') + ' / ' + (f.given || '—'));
+  L.push('- 证件号码：' + f.docNr + (f.docExt ? '（扩展号码）' : ''));
+  L.push('- 国籍：' + countryName(f.nationality) + '（' + f.nationality + '）');
+  L.push('- 出生日期：' + f.dob + '（' + res.dobInfo.msg + '）');
+  L.push('- 性别：' + (SEX_ZH[f.sex] || f.sex));
+  L.push('- 有效期：' + f.expiry + '（' + res.expInfo.label + '）');
+  if (f.personal) L.push('- 个人编号：' + f.personal);
+  L.push('');
+  L.push('## 校验（7-3-1）');
+  res.checks.forEach(function (c) {
+    L.push('- ' + c.name + '：机读码 ' + c.actual + '，算法应为 ' + c.expected + ' → ' + (c.ok ? '吻合' : '不符'));
+  });
+  L.push('');
+  L.push('> 由 MRZLENS 本地生成，仅验证机读区内部自洽性，不代表证件真伪。');
+  var txt = L.join('\n');
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast('报告已复制 ✓'); } catch (e) { toast('复制失败，请手动选择'); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(function () { toast('报告已复制 ✓'); }, fallback);
+  } else fallback();
+};
+
+var deb;
+$('in').addEventListener('input', function () {
+  clearTimeout(deb);
+  deb = setTimeout(onInput, 150);
+});
+</script>
+</body>
+</html>
