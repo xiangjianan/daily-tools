@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PixelVault · 像素暗房</title>
+<meta name="description" content="把一句话藏进图片像素最末一位：LSB 隐写暗房，拖图即藏、拖回即取，全程本地零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼️</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2129;--fg:#e6edf3;--mut:#8b949e;
+  --line:#21262d;--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;
+  --radius:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:var(--bg);color:var(--fg);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 14px max(36px,env(safe-area-inset-bottom));
+}
+main{max-width:760px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.4px;display:flex;align-items:center;gap:8px}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 20px}
+.sub b{color:var(--fg);font-weight:600}
+
+/* tabs */
+.tabs{display:flex;gap:8px;margin-bottom:14px}
+.tab{
+  flex:1;padding:10px 0;text-align:center;border:1px solid var(--line);border-radius:999px;
+  background:var(--panel);color:var(--mut);font-size:14.5px;font-weight:600;cursor:pointer;
+  user-select:none;-webkit-user-select:none;transition:.15s;
+}
+.tab.on{background:var(--acc);border-color:var(--acc);color:#0d1117}
+.tab:not(.on):hover{color:var(--fg)}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.card h2{font-size:15px;margin-bottom:10px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.card h2 .hint{font-weight:400;font-size:12.5px;color:var(--mut)}
+.badge{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mut)}
+.badge.ok{color:var(--ok);border-color:var(--ok)}
+.badge.warn{color:var(--warn);border-color:var(--warn)}
+.badge.bad{color:var(--bad);border-color:var(--bad)}
+
+/* dropzone */
+.drop{
+  border:1.5px dashed #30363d;border-radius:var(--radius);padding:26px 14px;text-align:center;
+  color:var(--mut);cursor:pointer;transition:.15s;font-size:13.5px;line-height:1.7;
+}
+.drop:hover,.drop.hot{border-color:var(--acc);color:var(--fg);background:var(--panel2)}
+.drop .big{font-size:26px;display:block;margin-bottom:4px}
+.drop .k{color:var(--acc)}
+
+/* controls */
+textarea{
+  width:100%;min-height:96px;resize:vertical;background:var(--bg);color:var(--fg);
+  border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:14px/1.6 inherit-font,sans-serif;
+}
+textarea:focus{outline:none;border-color:var(--acc)}
+.rowline{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+button{
+  border:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer;
+  background:var(--panel2);color:var(--fg);border:1px solid var(--line);transition:.15s;
+  -webkit-tap-highlight-color:transparent;
+}
+button:hover{border-color:var(--acc)}
+button.pri{background:var(--acc);border-color:var(--acc);color:#0d1117}
+button.pri:disabled,button:disabled{opacity:.45;cursor:not-allowed}
+button.small{padding:6px 12px;font-size:12.5px}
+
+/* capacity meter */
+.meter{margin-top:10px;font-size:12.5px;color:var(--mut)}
+.meter .bar{height:8px;border-radius:999px;background:var(--bg);border:1px solid var(--line);overflow:hidden;margin-top:5px}
+.meter .fill{height:100%;width:0%;background:var(--ok);transition:.25s;border-radius:999px}
+.meter.warn .fill{background:var(--warn)}
+.meter.bad .fill{background:var(--bad)}
+
+/* preview */
+.shot{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.shot img,.shot canvas{
+  max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;
+}
+.thumbbox{flex:0 0 auto;max-width:280px}
+.thumbbox .cap{font-size:12px;color:var(--mut);margin-top:6px;text-align:center}
+.grow{flex:1 1 240px;min-width:0}
+
+.msgout{
+  background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+  font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word;margin-top:8px;
+}
+.errbox{
+  background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.4);border-radius:10px;
+  padding:10px 12px;font-size:13.5px;color:#ffb3ad;margin-top:8px;line-height:1.7;
+}
+.hidden{display:none!important}
+
+/* amplify switch */
+.switch{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mut);cursor:pointer;user-select:none;margin-top:10px}
+.switch input{accent-color:var(--acc);width:16px;height:16px}
+.ampwrap{margin-top:10px}
+.ampwrap .cap{font-size:12px;color:var(--mut);margin:6px 2px 0}
+
+details{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:0 16px;margin-bottom:14px}
+details summary{padding:12px 0;cursor:pointer;font-size:13.5px;color:var(--mut);font-weight:600;list-style:none}
+details summary::before{content:"▸ ";color:var(--acc)}
+details[open] summary::before{content:"▾ "}
+details .inner{padding:0 0 14px;font-size:13px;color:var(--mut);line-height:1.8}
+details .inner code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:12px;color:var(--acc)}
+footer{margin-top:8px;color:var(--mut);font-size:12px;line-height:1.8}
+footer b{color:var(--fg)}
+@media (max-width:520px){
+  .card{padding:13px}
+  .thumbbox{max-width:100%}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>🖼️ PIXELVAULT <span style="color:var(--mut);font-size:15px;font-weight:400">像素暗房</span></h1>
+<p class="sub">把一句话藏进图片像素的<b>最末一位</b>：肉眼零差异，拖回来自动取出。全程在你的浏览器里完成，<b>零上传</b>。</p>
+
+<div class="tabs">
+  <div class="tab on" id="tabHide" role="button">🔒 藏信入图</div>
+  <div class="tab" id="tabShow" role="button">🔍 取出密信</div>
+</div>
+
+<!-- ============ 藏信 ============ -->
+<section id="paneHide">
+  <div class="card">
+    <h2>① 选一张底片 <span class="hint">点击 / 拖入 / Ctrl+V 粘贴截图</span></h2>
+    <div class="drop" id="dropHide">
+      <span class="big">🎞️</span>
+      把图片拖到这里，或<span class="k">点击选择</span>（支持直接粘贴截图）
+    </div>
+    <input type="file" id="fileHide" accept="image/*" class="hidden">
+    <div id="hideMeta" style="margin-top:10px"></div>
+    <div class="rowline">
+      <button class="small" id="btnSample">🎲 用示例图片试试</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>② 写下要藏的话</h2>
+    <textarea id="msgIn" maxlength="20000" placeholder="比如：周五老地方，带伞。"></textarea>
+    <div class="meter" id="meter">
+      <span id="meterText">容量：先选一张底片</span>
+      <div class="bar"><div class="fill" id="meterFill"></div></div>
+    </div>
+    <div class="rowline">
+      <button class="pri" id="btnHide" disabled>🔒 藏入暗房</button>
+      <button id="btnHideSampleMsg" class="small">填一句示例</button>
+    </div>
+    <div id="hideErr"></div>
+  </div>
+
+  <div class="card hidden" id="resultCard">
+    <h2>③ 显影完成 <span class="badge ok" id="resBadge">已藏入</span></h2>
+    <div class="shot">
+      <div class="thumbbox">
+        <img id="resImg" alt="带暗房消息的图片预览">
+        <div class="cap">↑ 保存 / 转发这张 PNG</div>
+      </div>
+      <div class="grow">
+        <div id="resStats" style="font-size:13px;color:var(--mut);line-height:1.8"></div>
+        <div class="rowline">
+          <button class="pri" id="btnDownload">⬇ 下载 PNG</button>
+          <button class="small" id="btnCopyMsg">复制暗房消息</button>
+        </div>
+        <label class="switch"><input type="checkbox" id="ampToggle">🔬 开启「LSB 放大镜」：把最末一位放大 255 倍看看</label>
+        <div class="ampwrap hidden" id="ampWrap">
+          <canvas id="ampHide"></canvas>
+          <div class="cap">放大镜下，藏了消息的区域会浮现雪花噪点 —— 平滑图里原本没有这种噪点。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 取信 ============ -->
+<section id="paneShow" class="hidden">
+  <div class="card">
+    <h2>拖回一张带暗房消息的图片</h2>
+    <div class="drop" id="dropShow">
+      <span class="big">🔍</span>
+      拖入 / 点击选择 / 粘贴 那张 PNG
+    </div>
+    <input type="file" id="fileShow" accept="image/*" class="hidden">
+    <div id="showErr"></div>
+    <div id="showResult"></div>
+  </div>
+</section>
+
+<details>
+  <summary>原理与边界（30 秒读完）</summary>
+  <div class="inner">
+    每个像素有 R/G/B 三个通道、各 8 位。暗房只动每个通道的<b style="color:var(--fg)">最末一位</b>（LSB）：
+    0↔1 的改变让该通道亮度变化 ≤ 1/255，肉眼完全不可分辨。<br>
+    编码格式：<code>PVLT</code> 魔数(4B) + 长度(4B) + UTF-8 内容，从左上角第一颗像素起按 R→G→B 顺序逐位写入。<br>
+    三个死因，缺一不可：<b style="color:var(--bad)">另存为 JPG</b>（有损压缩会重写所有像素）、<b style="color:var(--bad)">截图</b>（重新采样）、<b style="color:var(--bad)">缩放/压缩转发</b>。
+    所以暗房消息只活在<b style="color:var(--fg)">原封不动的 PNG</b> 里 —— 微信/Telegram 发图时请选「原图/文件」。<br>
+    为了位稳定，藏入时若图片带透明通道会自动铺白底。
+  </div>
+</details>
+
+<footer>
+  由 <b>Hermes</b> 每日 cron 构建发布 · <a style="color:var(--acc);text-decoration:none" href="../">← 每日小工具目录</a><br>
+  隐私声明：图片与密信只在浏览器内存中处理，没有任何上传。
+</footer>
+</main>
+
+<script>
+'use strict';
+/*==CORE==*/
+// ---------- 纯编解码核心（无 DOM，可独立测试） ----------
+var PV_MAGIC = [0x50, 0x56, 0x4C, 0x54]; // "PVLT"
+var PV_HEADER_BYTES = 8; // 4 magic + 4 length (big-endian u32)
+
+function pvCapacityBytes(pixelCount) {
+  var bits = pixelCount * 3;
+  if (bits < PV_HEADER_BYTES * 8) return 0;
+  return Math.floor((bits - PV_HEADER_BYTES * 8) / 8);
+}
+
+function pvEncodeMessage(text) {
+  var bytes = new TextEncoder().encode(text);
+  var head = PV_MAGIC.slice();
+  var n = bytes.length;
+  head.push((n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255);
+  var out = new Uint8Array(head.length + bytes.length);
+  out.set(head, 0); out.set(bytes, head.length);
+  return out;
+}
+
+// 把字节流按 R,G,B 轮流写进像素最低位；返回写入的字节数（超容量则抛错）
+function pvEmbed(pixels, pixelCount, payload) {
+  var cap = pvCapacityBytes(pixelCount);
+  if (payload.length > cap) throw new Error('OVERFLOW');
+  var bitIdx = 0;
+  for (var i = 0; i < payload.length; i++) {
+    var byte = payload[i];
+    for (var k = 7; k >= 0; k--) {
+      var px = (bitIdx / 3) | 0;
+      var ch = bitIdx - px * 3;
+      var idx = (px << 2) + ch;
+      pixels[idx] = (pixels[idx] & 0xFE) | ((byte >> k) & 1);
+      bitIdx++;
+    }
+  }
+  return payload.length;
+}
+
+function pvExtract(pixels, pixelCount) {
+  var totalBits = pixelCount * 3;
+  if (totalBits < PV_HEADER_BYTES * 8) return { ok: false, reason: 'TOO_SMALL' };
+  function readByte(bitStart) {
+    var v = 0;
+    for (var k = 0; k < 8; k++) {
+      var bitPos = bitStart + k;
+      var px = (bitPos / 3) | 0;
+      var ch = bitPos - px * 3;
+      v = (v << 1) | (pixels[(px << 2) + ch] & 1);
+    }
+    return v;
+  }
+  var magicHit = 0;
+  for (var m = 0; m < 4; m++) {
+    if (readByte(m * 8) === PV_MAGIC[m]) magicHit++;
+  }
+  var len = (readByte(32) << 24 | readByte(40) << 16 | readByte(48) << 8 | readByte(56)) >>> 0;
+  var cap = pvCapacityBytes(pixelCount);
+  if (magicHit < 4) {
+    return { ok: false, reason: 'NO_MAGIC', magicHit: magicHit, plausible: magicHit >= 2 };
+  }
+  if (len === 0) return { ok: false, reason: 'EMPTY', magicHit: magicHit };
+  if (len > cap - PV_HEADER_BYTES + PV_HEADER_BYTES || (len + PV_HEADER_BYTES) * 8 > totalBits) {
+    return { ok: false, reason: 'BAD_LENGTH', magicHit: magicHit, len: len };
+  }
+  var out = new Uint8Array(len);
+  for (var i = 0; i < len; i++) out[i] = readByte(64 + i * 8);
+  try {
+    var text = new TextDecoder('utf-8', { fatal: true }).decode(out);
+    return { ok: true, text: text, bytes: len };
+  } catch (e) {
+    return { ok: false, reason: 'BAD_UTF8', magicHit: magicHit };
+  }
+}
+
+// LSB 放大镜：每个通道的最低位放大成 0/255
+function pvAmplify(src, w, h) {
+  var out = new ImageData(w, h);
+  var s = src.data, d = out.data;
+  for (var i = 0; i < s.length; i += 4) {
+    d[i] = (s[i] & 1) * 255;
+    d[i + 1] = (s[i + 1] & 1) * 255;
+    d[i + 2] = (s[i + 2] & 1) * 255;
+    d[i + 3] = 255;
+  }
+  return out;
+}
+/*==ENDCORE==*/
+
+// ---------- 页面状态 ----------
+var $ = function (id) { return document.getElementById(id); };
+var hideImg = null;        // ImageBitmap/HTMLImageElement 藏信用
+var hideMetaInfo = null;   // {w,h,pixels,jpeg}
+var stegoBlobUrl = null;
+var stegoCanvas = null;
+
+function fileSize(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(2) + ' MB';
+}
+
+function setErr(el, html) { el.innerHTML = html ? '<div class="errbox">' + html + '</div>' : ''; }
+
+// ---- 图片读取（藏/取共用）：铺白底 → canvas → ImageData ----
+function loadToCanvas(file, cb) {
+  var url = URL.createObjectURL(file);
+  var img = new Image();
+  img.onload = function () {
+    try {
+      var w = img.naturalWidth, h = img.naturalHeight;
+      if (!w || !h) { URL.revokeObjectURL(url); return cb(null, '读不出图片尺寸'); }
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      var ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      cb({ canvas: c, ctx: ctx, w: w, h: h, jpeg: /jpeg|jpg/i.test(file.type || '') });
+    } catch (e) {
+      URL.revokeObjectURL(url);
+      cb(null, '图片解码失败：' + e.message);
+    }
+  };
+  img.onerror = function () { URL.revokeObjectURL(url); cb(null, '这不是一张能读的图片'); };
+  img.src = url;
+}
+
+// ---- 拖放区通用绑定 ----
+function bindDrop(dropEl, fileEl, onFile) {
+  dropEl.addEventListener('click', function () { fileEl.click(); });
+  fileEl.addEventListener('change', function () {
+    if (fileEl.files && fileEl.files[0]) onFile(fileEl.files[0]);
+    fileEl.value = '';
+  });
+  ['dragover', 'dragenter'].forEach(function (ev) {
+    dropEl.addEventListener(ev, function (e) { e.preventDefault(); dropEl.classList.add('hot'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    dropEl.addEventListener(ev, function (e) { e.preventDefault(); dropEl.classList.remove('hot'); });
+  });
+  dropEl.addEventListener('drop', function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) onFile(f);
+  });
+}
+document.addEventListener('paste', function (e) {
+  var items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') === 0) {
+      var f = items[i].getAsFile();
+      if (f) {
+        if (!$('paneHide').classList.contains('hidden')) onHideFile(f);
+        else onShowFile(f);
+      }
+      e.preventDefault();
+      return;
+    }
+  }
+});
+
+// ---- Tab 切换 ----
+function switchTab(hide) {
+  $('tabHide').classList.toggle('on', hide);
+  $('tabShow').classList.toggle('on', !hide);
+  $('paneHide').classList.toggle('hidden', !hide);
+  $('paneShow').classList.toggle('hidden', hide);
+}
+$('tabHide').addEventListener('click', function () { switchTab(true); });
+$('tabShow').addEventListener('click', function () { switchTab(false); });
+
+// ================= 藏信流程 =================
+function onHideFile(file) {
+  if (!/^image\//.test(file.type || '')) { setErr($('hideErr'), '这不是图片文件（收到 ' + (file.type || '未知类型') + '）'); return; }
+  setErr($('hideErr'), '');
+  loadToCanvas(file, function (info, err) {
+    if (!info) { setErr($('hideErr'), err); return; }
+    hideImg = info;
+    var px = info.w * info.h;
+    var cap = pvCapacityBytes(px);
+    hideMetaInfo = { w: info.w, h: info.h, cap: cap, jpeg: info.jpeg, bytes: file.size };
+    var meta = '📏 ' + info.w + ' × ' + info.h + ' px · 可藏 <b style="color:var(--ok)">' + fileSize(cap) + '</b>';
+    if (info.jpeg) meta += ' · <span style="color:var(--warn)">⚠ JPG 底片：藏完务必下载 PNG，再存 JPG 会毁掉消息</span>';
+    $('hideMeta').innerHTML = '<div style="font-size:13px;color:var(--mut)">' + meta + '</div>';
+    $('btnHide').disabled = false;
+    updateMeter();
+  });
+}
+
+function updateMeter() {
+  var meter = $('meter');
+  if (!hideMetaInfo) { $('meterText').textContent = '容量：先选一张底片'; $('meterFill').style.width = '0%'; return; }
+  var used = new TextEncoder().encode($('msgIn').value).length;
+  var cap = hideMetaInfo.cap;
+  var pct = cap ? Math.min(100, used / cap * 100) : 100;
+  meter.classList.toggle('bad', used > cap);
+  meter.classList.toggle('warn', used <= cap && pct > 80);
+  $('meterFill').style.width = (used > cap ? 100 : pct) + '%';
+  if (used > cap) {
+    $('meterText').innerHTML = '超出容量：<b style="color:var(--bad)">' + fileSize(used) + ' / ' + fileSize(cap) + '</b>，删掉 ' + fileSize(used - cap) + ' 或换张大图';
+    $('btnHide').disabled = true;
+  } else {
+    $('meterText').innerHTML = '已写 ' + fileSize(used) + ' / 可藏 ' + fileSize(cap) + '（' + (cap ? (pct < 1 && used > 0 ? '<0.1' : pct.toFixed(1)) : '0') + '%）';
+    $('btnHide').disabled = used === 0;
+  }
+}
+$('msgIn').addEventListener('input', updateMeter);
+
+// 示例图片：程序化画一张 640×400 的黄昏
+$('btnSample').addEventListener('click', function () {
+  var c = document.createElement('canvas');
+  c.width = 640; c.height = 400;
+  var ctx = c.getContext('2d', { willReadFrequently: true });
+  var sky = ctx.createLinearGradient(0, 0, 0, 400);
+  sky.addColorStop(0, '#1b2a4a'); sky.addColorStop(.55, '#7a4a6f'); sky.addColorStop(.8, '#e08a5a'); sky.addColorStop(1, '#f2c46b');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, 640, 400);
+  ctx.fillStyle = 'rgba(255,235,190,.9)';
+  ctx.beginPath(); ctx.arc(470, 250, 38, 0, 7); ctx.fill();
+  ctx.fillStyle = '#2b2233';
+  ctx.beginPath(); ctx.moveTo(0, 330); ctx.lineTo(150, 240); ctx.lineTo(300, 320); ctx.lineTo(430, 260); ctx.lineTo(640, 340); ctx.lineTo(640, 400); ctx.lineTo(0, 400); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#171320';
+  ctx.fillRect(0, 355, 640, 45);
+  for (var i = 0; i < 40; i++) {
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.25 + Math.random() * 0.5) + ')';
+    ctx.fillRect(Math.random() * 640, Math.random() * 180, 1.6, 1.6);
+  }
+  hideImg = { canvas: c, ctx: ctx, w: 640, h: 400, jpeg: false };
+  hideMetaInfo = { w: 640, h: 400, cap: pvCapacityBytes(640 * 400), jpeg: false, bytes: 0 };
+  $('hideMeta').innerHTML = '<div style="font-size:13px;color:var(--mut)">📏 640 × 400 px · 示例黄昏底片 · 可藏 <b style="color:var(--ok)">' + fileSize(hideMetaInfo.cap) + '</b></div>';
+  $('btnHide').disabled = false;
+  updateMeter();
+});
+
+$('btnHideSampleMsg').addEventListener('click', function () {
+  $('msgIn').value = '暗房里没有秘密，只有还没显影的底片。—— PixelVault 测试信 ✉️';
+  updateMeter();
+});
+
+$('btnHide').addEventListener('click', function () {
+  var text = $('msgIn').value;
+  if (!text.trim()) { setErr($('hideErr'), '先写点要藏的话'); return; }
+  if (!hideImg) return;
+  setErr($('hideErr'), '');
+  try {
+    var img = hideImg.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, hideImg.w, hideImg.h);
+    var payload = pvEncodeMessage(text);
+    pvEmbed(img.data, hideImg.w * hideImg.h, payload);
+    stegoCanvas = document.createElement('canvas');
+    stegoCanvas.width = hideImg.w; stegoCanvas.height = hideImg.h;
+    stegoCanvas.getContext('2d').putImageData(img, 0, 0);
+    var meta = hideMetaInfo;
+    var origNote = meta.bytes ? '原片 ' + fileSize(meta.bytes) + ' → ' : '';
+    stegoCanvas.toBlob(function (blob) {
+      if (!blob) { setErr($('hideErr'), 'PNG 导出失败（图片可能过大）'); return; }
+      if (stegoBlobUrl) URL.revokeObjectURL(stegoBlobUrl);
+      stegoBlobUrl = URL.createObjectURL(blob);
+      $('resImg').src = stegoBlobUrl;
+      $('resStats').innerHTML =
+        '消息 <b style="color:var(--fg)">' + text.length + '</b> 字（' + fileSize(payload.length) + ' 编码）藏入 ' +
+        meta.w + '×' + meta.h + ' 像素的末位通道<br>' +
+        origNote + '成品 <b style="color:var(--ok)">' + fileSize(blob.size) + '</b> PNG · 每通道亮度扰动 ≤ 1/255，肉眼不可见';
+      $('resultCard').classList.remove('hidden');
+      $('ampWrap').classList.add('hidden');
+      $('ampToggle').checked = false;
+      $('resultCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 'image/png');
+  } catch (e) {
+    setErr($('hideErr'), e.message === 'OVERFLOW' ? '超出这张图的容量' : '藏入失败：' + e.message);
+  }
+});
+
+$('btnDownload').addEventListener('click', function () {
+  if (!stegoBlobUrl) return;
+  var a = document.createElement('a');
+  a.href = stegoBlobUrl;
+  a.download = 'pixelvault-secret-' + Date.now() + '.png';
+  document.body.appendChild(a); a.click(); a.remove();
+});
+
+$('btnCopyMsg').addEventListener('click', function () {
+  copyText($('msgIn').value, $('btnCopyMsg'));
+});
+
+function copyText(t, btn) {
+  function done() {
+    if (!btn) return;
+    var old = btn.textContent;
+    btn.textContent = '✓ 已复制';
+    setTimeout(function () { btn.textContent = old; }, 1200);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(t).then(done, function () { fallbackCopy(t, done); });
+  } else fallbackCopy(t, done);
+}
+function fallbackCopy(t, done) {
+  var ta = document.createElement('textarea');
+  ta.value = t; ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) {}
+  ta.remove();
+}
+
+// LSB 放大镜（藏信结果）
+$('ampToggle').addEventListener('change', function () {
+  var on = $('ampToggle').checked;
+  $('ampWrap').classList.toggle('hidden', !on);
+  if (!on || !stegoCanvas) return;
+  var maxW = 1400;
+  var scale = Math.min(1, maxW / stegoCanvas.width);
+  var w = Math.max(1, Math.round(stegoCanvas.width * scale));
+  var h = Math.max(1, Math.round(stegoCanvas.height * scale));
+  var tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  tmp.getContext('2d').drawImage(stegoCanvas, 0, 0, w, h);
+  var data = tmp.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h);
+  var amp = $('ampHide');
+  amp.width = w; amp.height = h;
+  amp.getContext('2d').putImageData(pvAmplify(data, w, h), 0, 0);
+});
+
+// ================= 取信流程 =================
+function onShowFile(file) {
+  if (!/^image\//.test(file.type || '')) { setErr($('showErr'), '这不是图片文件'); return; }
+  setErr($('showErr'), '');
+  $('showResult').innerHTML = '';
+  loadToCanvas(file, function (info, err) {
+    if (!info) { setErr($('showErr'), err); return; }
+    var data = info.ctx.getImageData(0, 0, info.w, info.h);
+    var res = pvExtract(data.data, info.w * info.h);
+    var html = '<div class="card" style="background:var(--panel2);margin-top:10px"><h2>' + info.w + ' × ' + info.h + ' px ';
+    if (res.ok) {
+      html += '<span class="badge ok">✓ 暗房消息取出</span></h2>' +
+        '<div class="msgout" id="outMsg"></div>' +
+        '<div class="rowline"><button class="pri" id="btnCopyOut">📋 复制密信</button>' +
+        '<span style="font-size:12.5px;color:var(--mut)">' + res.bytes + ' 字节 · ' + res.text.length + ' 字</span></div>';
+    } else {
+      var why = {
+        NO_MAGIC: res.plausible
+          ? '这<b>像</b>一张暗房图，但魔数被部分破坏（' + res.magicHit + '/4 位吻合）——多半经历了截图、缩放或压缩转发'
+          : '这张图里没有暗房消息。若确信有，多半已被 JPG 压缩、截图或缩放抹掉',
+        EMPTY: '魔数对上了，但里面是一封空信',
+        BAD_LENGTH: '魔数对上了，长度字段却是 ' + (res.len || '?') + ' 字节 —— 消息已损坏',
+        BAD_UTF8: '取出的字节不是合法文本 —— 消息已损坏',
+        TOO_SMALL: '图片太小，装不下暗房头部'
+      }[res.reason] || '取出失败';
+      if (info.jpeg && res.reason === 'NO_MAGIC') {
+        why += '<br><span style="color:var(--warn)">ⓘ 这是 JPG —— 有损压缩会重写每个像素的末位，暗房消息必死</span>';
+      }
+      html += '<span class="badge bad">✗ 未取出</span></h2><div class="errbox">' + why + '</div>';
+    }
+    html += '</div>';
+    $('showResult').innerHTML = html;
+    if (res.ok) {
+      $('outMsg').textContent = res.text;
+      $('btnCopyOut').addEventListener('click', function () { copyText(res.text, $('btnCopyOut')); });
+    }
+  });
+}
+
+bindDrop($('dropHide'), $('fileHide'), onHideFile);
+bindDrop($('dropShow'), $('fileShow'), onShowFile);
+
+// 调试钩子（无副作用）
+window.PV = { pvCapacityBytes: pvCapacityBytes, pvEncodeMessage: pvEncodeMessage, pvEmbed: pvEmbed, pvExtract: pvExtract, pvAmplify: pvAmplify };
+</script>
+</body>
+</html>
