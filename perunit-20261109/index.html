@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>划算秤 PerUnit — 单价归一比价器</title>
+<meta name="description" content="把不同规格的价格归一成每100g/100ml/每件/每米的单价，一眼看出哪个划算。纯本地计算，数据不上传。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f141c'/%3E%3Cpath d='M16 6v3M8 22h16M16 9l-7 9h14z' stroke='%234ade80' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='9' cy='18' r='2.6' fill='%234ade80'/%3E%3Ccircle cx='23' cy='18' r='2.6' fill='%23fbbf24'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0d1219; --bg2:#121926; --card:#161f2e; --card2:#1a2436;
+  --line:#243147; --line2:#2e3d58;
+  --tx:#e6edf6; --tx2:#94a5bd; --tx3:#5d6e88;
+  --ok:#4ade80; --okd:#123b26; --warn:#fbbf24; --warnd:#3d2f0e;
+  --err:#f87171; --accent:#7dd3fc;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg);color:var(--tx);
+  font-family:system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  line-height:1.55;padding-bottom:calc(48px + env(safe-area-inset-bottom));
+}
+.wrap{max-width:680px;margin:0 auto;padding:0 16px}
+header{padding:26px 0 14px}
+h1{font-size:1.5rem;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:10px}
+h1 svg{flex:0 0 auto}
+.sub{color:var(--tx2);font-size:.9rem;margin-top:4px}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:14px;
+  padding:16px;margin-top:14px;
+}
+.card h2{font-size:.82rem;font-weight:600;color:var(--tx2);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+textarea{
+  width:100%;min-height:132px;resize:vertical;
+  background:var(--bg2);color:var(--tx);
+  border:1px solid var(--line2);border-radius:10px;
+  padding:12px;font:inherit;font-size:.95rem;
+}
+textarea:focus{outline:none;border-color:var(--accent)}
+.hint{font-size:.8rem;color:var(--tx3);margin-top:8px}
+.hint code{font-family:var(--mono);color:var(--tx2);background:var(--bg2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:.75rem}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{
+  background:var(--bg2);border:1px solid var(--line2);color:var(--tx2);
+  border-radius:999px;padding:4px 12px;font-size:.8rem;cursor:pointer;
+  transition:all .15s;user-select:none;-webkit-tap-highlight-color:transparent;
+}
+.chip:hover,.chip:active{border-color:var(--accent);color:var(--accent)}
+.btnrow{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+button.act{
+  border:1px solid var(--line2);background:var(--card2);color:var(--tx);
+  border-radius:9px;padding:8px 16px;font:inherit;font-size:.88rem;cursor:pointer;
+  transition:all .15s;-webkit-tap-highlight-color:transparent;
+}
+button.act:hover{border-color:var(--accent);color:var(--accent)}
+button.act.primary{background:var(--okd);border-color:var(--ok);color:var(--ok)}
+button.act.primary:hover{filter:brightness(1.2)}
+.empty{color:var(--tx3);font-size:.9rem;text-align:center;padding:22px 10px}
+.family{margin-top:18px}
+.family:first-child{margin-top:0}
+.fhead{
+  font-size:.78rem;color:var(--tx2);letter-spacing:1px;
+  display:flex;align-items:center;gap:8px;margin-bottom:8px;
+}
+.fhead .fline{flex:1;height:1px;background:var(--line)}
+.item{
+  display:grid;grid-template-columns:34px 1fr auto;gap:4px 12px;align-items:center;
+  background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+  padding:10px 14px;margin-bottom:8px;position:relative;overflow:hidden;
+}
+.item.best{border-color:var(--ok);background:linear-gradient(180deg,var(--okd),var(--bg2) 70%)}
+.item.bad{border-color:#5a3320;background:#2a1c10}
+.rank{font-family:var(--mono);font-size:1.05rem;color:var(--tx3);text-align:center;font-weight:700}
+.item.best .rank{color:var(--ok)}
+.iname{font-size:.95rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ispec{font-size:.76rem;color:var(--tx3)}
+.uprice{font-family:var(--mono);font-size:1.18rem;font-weight:700;text-align:right;white-space:nowrap}
+.uprice small{font-size:.72rem;color:var(--tx2);font-weight:400;margin-left:2px}
+.item.best .uprice{color:var(--ok)}
+.item.bad .uprice{color:var(--warn)}
+.bar{grid-column:2/4;height:7px;border-radius:4px;background:var(--card2);overflow:hidden;margin-top:3px}
+.bar i{display:block;height:100%;border-radius:4px;background:var(--accent);transition:width .3s}
+.item.best .bar i{background:var(--ok)}
+.item.bad .bar i{background:var(--warn)}
+.tags{grid-column:2/4;display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.tag{font-size:.7rem;border-radius:5px;padding:1px 8px;background:var(--card2);color:var(--tx2);border:1px solid var(--line)}
+.tag.prem{color:var(--warn);border-color:#4a3a12}
+.tag.save{color:var(--ok);border-color:#1d4a30}
+.tag.err{color:var(--err);border-color:#5a2626}
+.crown{position:absolute;top:-1px;right:10px;font-size:.68rem;color:var(--okd);background:var(--ok);padding:2px 9px;border-radius:0 0 6px 6px;font-weight:700;letter-spacing:1px}
+.verdict{
+  margin-top:14px;background:var(--okd);border:1px solid var(--ok);border-radius:10px;
+  padding:12px 16px;font-size:.9rem;
+}
+.verdict b{color:var(--ok)}
+.warnbox{
+  margin-top:12px;background:var(--warnd);border:1px solid #6b5316;border-radius:10px;
+  padding:10px 16px;font-size:.82rem;color:var(--warn);
+}
+footer{margin-top:26px;color:var(--tx3);font-size:.75rem;text-align:center;line-height:1.8}
+footer a{color:var(--tx3)}
+.toast{
+  position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));
+  transform:translateX(-50%) translateY(20px);
+  background:var(--card2);border:1px solid var(--line2);color:var(--tx);
+  border-radius:9px;padding:9px 18px;font-size:.85rem;opacity:0;pointer-events:none;
+  transition:all .25s;z-index:9;max-width:86vw;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (max-width:520px){
+  .item{grid-template-columns:26px 1fr auto;padding:9px 11px}
+  .uprice{font-size:1.05rem}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>
+    <svg width="30" height="30" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#161f2e"/><path d="M16 6v3M8 22h16M16 9l-7 9h14z" stroke="#4ade80" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="18" r="2.6" fill="#4ade80"/><circle cx="23" cy="18" r="2.6" fill="#fbbf24"/></svg>
+    划算秤 <span style="color:var(--tx3);font-weight:400;font-size:.8em">PerUnit</span>
+  </h1>
+  <div class="sub">500ml vs 1.5L vs 250ml×6 —— 谁划算？把它归一成「每 100g / 100ml / 每件 / 每米」就一目了然。</div>
+</header>
+
+<div class="card">
+  <h2>比价清单 <span style="letter-spacing:0;text-transform:none">每行一条</span></h2>
+  <textarea id="ta" spellcheck="false" placeholder="名称 价格 规格，例如：
+怡宝 3.5元 1.5L
+农夫山泉 2 550ml
+儿童奶 42 200ml*6
+鸡蛋 25.9 30枚"></textarea>
+  <div class="hint">写法：<code>名称 价格 数量+单位</code>，价格在前、规格在行尾；支持 <code>ml/L</code>、<code>g/kg/斤/两</code>、<code>枚/片/张/个</code>、<code>m/cm</code>，多包装写 <code>250ml*6</code>、<code>500g×2</code>。名称可省略。</div>
+  <div class="chips" id="chips"></div>
+  <div class="btnrow">
+    <button class="act primary" id="btnCopy">复制比价报告</button>
+    <button class="act" id="btnClear">清空</button>
+  </div>
+</div>
+
+<div class="card" id="outCard">
+  <h2>比价结果</h2>
+  <div id="out"><div class="empty">输入左边清单，这里立刻称出谁划算 ⚖️</div></div>
+  <div id="verdict"></div>
+  <div id="warnbox"></div>
+</div>
+
+<footer>
+  一切计算都在你的浏览器里完成，不联网、不上传。<br>
+  <a href="https://github.com/xiangjianan/daily-tools/tree/main/perunit-20261109">源码 · daily-tools #58</a>
+</footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/*==CORE==*/
+// ---- 单位词典（单一出口：所有单位→基准量 + 家族）----
+var UNITS = {
+  // 质量 → g
+  'g':1,'克':1,'kg':1000,'千克':1000,'公斤':1000,'斤':500,'两':50,'lb':453.592,'磅':453.592,'毫克':0.001,'mg':0.001,
+  // 容积 → ml
+  'ml':1,'毫升':1,'l':1000,'L':1000,'升':1000,'cl':10,
+  // 长度 → cm
+  'cm':1,'毫米':0.1,'mm':0.1,'m':100,'米':100,'km':100000,'公里':100000,
+  // 计数 → 件
+  '个':1,'件':1,'片':1,'张':1,'包':1,'只':1,'支':1,'枚':1,'条':1,'块':1,'双':1,'卷':1,'瓶':1,'盒':1,'袋':1,'罐':1,'颗':1,'粒':1,'本':1,'册':1,'次':1,'份':1
+};
+var FAMILY = {g:'质量',克:'质量',kg:'质量',千克:'质量',公斤:'质量','斤':'质量',两:'质量',lb:'质量',磅:'质量',毫克:'质量',mg:'质量',
+  ml:'容积',毫升:'容积',l:'容积',L:'容积',升:'容积',cl:'容积',
+  cm:'长度',毫米:'长度',mm:'长度',m:'长度',米:'长度',km:'长度',公里:'长度'};
+var FAM_BASE = {质量:'g',容积:'ml',长度:'cm'};
+var FAM_SHOW = {质量:'每 100 g',容积:'每 100 ml',长度:'每 米',计数:'每 件'};
+var FAM_MULT = {质量:100,容积:100,长度:100,计数:1}; // 基准量→展示量倍数
+var PRICE_RE = /(\d+(?:\.\d+)?)/;
+var QTY_RE = /(\d+(?:\.\d+)?)\s*(个|件|片|张|包|只|支|枚|条|块|双|卷|瓶|盒|袋|罐|颗|粒|本|册|次|份|克|公斤|千克|斤|两|磅|毫克|毫升|升|毫米|米|公里|cm|mm|km|mg|ml|cl|kg|lb|m|g|L|l)\s*(?:[*xX×]\s*(\d+))?/gi;
+
+// 解析一行：返回 {ok, name, price, qty, unit, family, baseQty, reason}
+function parseLine(raw){
+  var line = raw.trim().replace(/[，]/g,',');
+  if(!line) return {ok:false, reason:'empty'};
+  var pm = line.match(PRICE_RE);
+  if(!pm) return {ok:false, reason:'没找到价格'};
+  var price = parseFloat(pm[1]);
+  if(!(price>0)) return {ok:false, reason:'价格要大于 0'};
+  // 数量 = 行内最后一个「数字+单位(可带*N)」匹配
+  var m, last=null;
+  QTY_RE.lastIndex=0;
+  while((m = QTY_RE.exec(line))!==null){ last = m; }
+  if(!last) return {ok:false, reason:'没找到规格（数量+单位）'};
+  var qty = parseFloat(last[1]);
+  var unit = last[2];
+  var mult = last[3] ? parseInt(last[3],10) : 1;
+  if(!(qty>0)) return {ok:false, reason:'数量要大于 0'};
+  if(!(mult>0)) return {ok:false, reason:'包装倍数要大于 0'};
+  var uKey = /[a-z]/i.test(unit) ? unit.toLowerCase() : unit; // 拉丁单位大小写归一（ML→ml）
+  var base = UNITS[uKey] !== undefined ? UNITS[uKey] : null;
+  if(base===null) return {ok:false, reason:'不认识的单位 '+unit};
+  var family = FAMILY[uKey] || '计数';
+  var baseQty = qty*base*mult;
+  // 名称 = 价格之前的前缀（去掉分隔符）
+  var name = line.slice(0, pm.index).replace(/[:：|、\-—,\.\s]+$/,'').trim();
+  if(!name) name = '未命名 '+(unit);
+  var showQty = qty + unit + (mult>1 ? '×'+mult : '');
+  return {ok:true, name:name, price:price, qty:qty, unit:unit, mult:mult,
+          family:family, baseQty:baseQty, showQty:showQty};
+}
+
+// 归一单价：每展示单位的价格（质量/容积=每100基准、长度=每米、计数=每件）
+function unitPrice(r){
+  // baseQty 已是基准单位量；展示量 = baseQty × FAM_MULT（g→按100g计）
+  return r.price / r.baseQty * FAM_MULT[r.family];
+}
+function fmtMoney(v){
+  if(!isFinite(v)) return '—';
+  if(v>=100) return v.toFixed(1);
+  if(v>=1) return v.toFixed(2);
+  return v.toFixed(3);
+}
+function fmtQty(q){ // 基准量人性化
+  if(q>=1000 && q%1000===0) return (q/1000)+'';
+  return (Math.round(q*100)/100)+'';
+}
+/*==ENDCORE==*/
+
+// ---- state & dom ----
+var $ = function(id){ return document.getElementById(id); };
+var state = {rows:[], report:''};
+
+var SAMPLES = [
+  {label:'🥤 饮料', text:'怡宝 3.5 1.5L\n农夫山泉 2 550ml\n百岁山 4 570ml'},
+  {label:'🥛 牛奶（多包装）', text:'纯牛奶 42 250ml*12\n儿童奶 49.9 200ml*6\n鲜奶 15.8 950ml'},
+  {label:'🥚 生鲜计数', text:'普通鸡蛋 25.9 30枚\n土鸡蛋 36.8 40枚\n鹌鹑蛋 12.9 60枚'},
+  {label:'🧻 纸品（克重）', text:'卷纸A 19.9 140g*10卷\n卷纸B 29.9 180g*12卷\n抽纸 12.9 110g*3包'}
+];
+
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t.__tm);
+  t.__tm = setTimeout(function(){ t.classList.remove('show'); }, 1800);
+}
+
+function esc(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+  });
+}
+
+function buildChips(){
+  var box = $('chips');
+  box.innerHTML = '';
+  SAMPLES.forEach(function(s){
+    var b = document.createElement('button');
+    b.className = 'chip';
+    b.type = 'button';
+    b.textContent = s.label;
+    b.addEventListener('click', function(){
+      $('ta').value = s.text;
+      render();
+    });
+    box.appendChild(b);
+  });
+}
+
+function render(){
+  var ta = $('ta');
+  var lines = ta.value.split('\n');
+  var rows = [], errs = [];
+  lines.forEach(function(ln, i){
+    if(!ln.trim()) return;
+    var r = parseLine(ln);
+    r.line = i+1;
+    rows.push(r);
+  });
+  state.rows = rows;
+  var out = $('out');
+  var okRows = rows.filter(function(r){ return r.ok; });
+
+  if(rows.length===0){
+    out.innerHTML = '<div class="empty">输入左边清单，这里立刻称出谁划算 ⚖️</div>';
+    $('verdict').innerHTML = '';
+    $('warnbox').innerHTML = '';
+    state.report = '';
+    return;
+  }
+
+  // 按家族分组
+  var fams = [];
+  var famMap = {};
+  okRows.forEach(function(r){
+    if(!famMap[r.family]){ famMap[r.family] = []; fams.push(r.family); }
+    famMap[r.family].push(r);
+  });
+
+  var html = '';
+  var globalBest = null; // 全局最便宜（用于总结）
+  fams.forEach(function(fam){
+    var list = famMap[fam];
+    list.forEach(function(r){ r.up = unitPrice(r); });
+    list.sort(function(a,b){ return a.up - b.up; });
+    var min = list[0].up;
+    var max = list[list.length-1].up;
+    list.forEach(function(r,i){
+      if(i===0 && (globalBest===null || r.up < globalBest.up)) globalBest = r;
+    });
+    html += '<div class="family"><div class="fhead">'+esc(fam)+' · '+esc(FAM_SHOW[fam])+'<span class="fline"></span>'+list.length+' 件</div>';
+    list.forEach(function(r, i){
+      var isBest = i===0 || r.up <= min*1.005;
+      var isBad  = r.up >= max*0.999 && max>min && !isBest;
+      var prem = min>0 ? (r.up/min - 1)*100 : 0;
+      var barW = max>min ? 16 + 84*(r.up-min)/(max-min) : 100;
+      var cls = 'item' + (isBest?' best':'') + (isBad?' bad':'');
+      html += '<div class="'+cls+'">';
+      if(isBest) html += '<span class="crown">划算</span>';
+      html += '<div class="rank">'+(i+1)+'</div>';
+      html += '<div><div class="iname">'+esc(r.name)+'</div><div class="ispec">¥'+r.price+' / '+esc(r.showQty)+'</div></div>';
+      html += '<div class="uprice">¥'+fmtMoney(r.up)+'<small>'+esc(FAM_SHOW[fam].replace('每 ','/'))+'</small></div>';
+      html += '<div class="bar"><i style="width:'+barW.toFixed(0)+'%"></i></div>';
+      html += '<div class="tags">';
+      if(isBest){
+        html += '<span class="tag save">本场最低</span>';
+      } else {
+        html += '<span class="tag prem">贵 '+prem.toFixed(prem>=10?0:1)+'%</span>';
+      }
+      html += '</div></div>';
+    });
+    html += '</div>';
+  });
+  out.innerHTML = html;
+
+  // 错误行汇总
+  var badRows = rows.filter(function(r){ return !r.ok; });
+  var wb = $('warnbox');
+  if(badRows.length){
+    wb.innerHTML = '⚠️ 有 '+badRows.length+' 行没读懂：<br>' +
+      badRows.map(function(r){ return '第 '+r.line+' 行：'+esc(r.reason); }).join('<br>') +
+      '<br>格式：名称 价格 数量+单位（如 <b>可乐 3.5 500ml</b>）';
+  } else {
+    wb.innerHTML = '';
+  }
+
+  // 总结
+  var vd = $('verdict');
+  if(globalBest && okRows.length>1){
+    var sameFam = famMap[globalBest.family];
+    var worst = sameFam[sameFam.length-1];
+    if(worst && worst.up > globalBest.up){
+      var unitName = globalBest.family==='计数' ? '件' : (globalBest.family==='长度'?'米':(globalBest.family==='质量'?'100g':'100ml'));
+      var diff = (worst.up-globalBest.up);
+      vd.innerHTML = '🏆 <b>'+esc(globalBest.name)+'</b> 最划算（'+esc(FAM_SHOW[globalBest.family])+' ¥'+fmtMoney(globalBest.up)+'），比 '+esc(worst.name)+' 每'+esc(unitName)+'便宜 ¥'+fmtMoney(diff)+'。';
+    } else {
+      vd.innerHTML = '🤝 这几样单价打平，都不亏。';
+    }
+  } else if(okRows.length===1){
+    vd.innerHTML = '只填了一样？再加一行才能开称 ⚖️';
+  } else {
+    vd.innerHTML = '';
+  }
+
+  buildReport(fams, famMap);
+}
+
+function buildReport(fams, famMap){
+  var L = [];
+  L.push('⚖️ 划算秤 PerUnit 比价报告');
+  L.push(new Date().toLocaleString('zh-CN'));
+  fams.forEach(function(fam){
+    var list = famMap[fam];
+    list.sort(function(a,b){ return a.up - b.up; });
+    var min = list[0].up;
+    L.push('');
+    L.push('【'+fam+' · '+FAM_SHOW[fam]+'】');
+    list.forEach(function(r,i){
+      var isBest = i===0 || r.up <= min*1.005;
+      var prem = (r.up/min - 1)*100;
+      L.push((isBest?'★':'  ')+' '+(i+1)+'. '+r.name+'  ¥'+fmtMoney(r.up)+'/'+FAM_SHOW[fam].replace('每 ','')+
+        '  （¥'+r.price+' / '+r.showQty+'）'+
+        (isBest? ' ← 最划算' : '  贵 '+prem.toFixed(prem>=10?0:1)+'%'));
+    });
+  });
+  state.report = L.join('\n');
+}
+
+$('ta').addEventListener('input', render);
+$('btnClear').addEventListener('click', function(){
+  $('ta').value = '';
+  render();
+});
+$('btnCopy').addEventListener('click', function(){
+  if(!state.report){ toast('先输入清单再复制'); return; }
+  var done = function(){ toast('比价报告已复制 ✓'); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(state.report).then(done, function(){ fallbackCopy(); });
+  } else { fallbackCopy(); }
+  function fallbackCopy(){
+    var ta = document.createElement('textarea');
+    ta.value = state.report;
+    ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta);
+    ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){ toast('复制失败，请手动选择'); }
+    document.body.removeChild(ta);
+  }
+});
+
+buildChips();
+render();
+</script>
+</body>
+</html>
