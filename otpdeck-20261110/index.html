@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>otpdeck · 本地一次性验证码生成器</title>
+<meta name="description" content="把 otpauth:// 密钥粘进来，纯浏览器本地计算 TOTP 动态码。密钥永不上传。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Ccircle cx='16' cy='13' r='7' fill='none' stroke='%23e8b34b' stroke-width='2.4'/%3E%3Ctext x='16' y='17' font-size='9' font-family='monospace' fill='%23e8b34b' text-anchor='middle'%3E*%3C/text%3E%3Crect x='14.6' y='19' width='2.8' height='8' rx='1.2' fill='%23e8b34b'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0d1117; --panel:#141a22; --panel2:#1a212b; --line:#232c38;
+  --tx:#dce3ec; --tx2:#8b98a9; --tx3:#5b6779;
+  --acc:#e8b34b; --acc2:#f5cf7d; --ok:#4cc38a; --err:#e5744b;
+  --mono:ui-monospace,'SF Mono','Cascadia Code',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg);color:var(--tx);
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Noto Sans SC',sans-serif;
+  min-height:100vh;
+  padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 40px);
+}
+.wrap{max-width:860px;margin:0 auto}
+header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+header svg{flex:none}
+h1{font-size:21px;font-weight:700;letter-spacing:.2px}
+h1 em{font-style:normal;color:var(--acc)}
+.sub{color:var(--tx2);font-size:13.5px;margin-bottom:22px}
+.sub b{color:var(--acc2);font-weight:600}
+.priv{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:12px;color:var(--ok);background:rgba(76,195,138,.09);
+  border:1px solid rgba(76,195,138,.25);border-radius:999px;padding:2px 10px;margin-left:auto;
+  white-space:nowrap;
+}
+@media(max-width:560px){.priv{display:none}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+.card h2{font-size:13px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card h2 .hint{font-weight:400;letter-spacing:0;text-transform:none;color:var(--tx3);margin-left:auto;font-size:12px}
+textarea{
+  width:100%;min-height:96px;resize:vertical;
+  background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+  color:var(--tx);font:13px/1.55 var(--mono);padding:12px 14px;outline:none;
+}
+textarea:focus{border-color:var(--acc)}
+textarea::placeholder{color:var(--tx3)}
+.rowbtn{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center}
+button{
+  font:600 13.5px/1 inherit;color:var(--tx);cursor:pointer;
+  background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+  padding:9px 16px;transition:border-color .15s,background .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+button:hover{border-color:var(--acc);background:#202936}
+button.primary{background:var(--acc);border-color:var(--acc);color:#171309}
+button.primary:hover{background:var(--acc2)}
+.note{font-size:12.5px;color:var(--tx3);margin-top:8px}
+.note.err{color:var(--err)}
+.note.ok{color:var(--ok)}
+/* deck */
+.deck{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(250px,100%),1fr));gap:12px}
+.tcard{
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  padding:14px 16px 12px;cursor:pointer;position:relative;overflow:hidden;
+  transition:border-color .15s,transform .12s;
+}
+.tcard:hover{border-color:var(--acc)}
+.tcard:active{transform:scale(.985)}
+.tcard.flash{animation:flash .5s}
+@keyframes flash{0%{border-color:var(--ok);box-shadow:0 0 0 2px rgba(76,195,138,.35)}100%{}}
+.thead{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;min-width:0}
+.tissuer{font-weight:700;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.taccount{color:var(--tx3);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tbody{display:flex;align-items:center;gap:14px}
+.code{
+  font:700 34px/1.1 var(--mono);letter-spacing:2.5px;color:var(--acc2);
+  font-variant-numeric:tabular-nums;white-space:nowrap;user-select:all;
+}
+.code.stale{color:var(--tx2)}
+.ring{flex:none;position:relative;width:44px;height:44px}
+.ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.ring .rtrack{stroke:var(--line);fill:none}
+.ring .rfill{stroke:var(--acc);fill:none;stroke-linecap:round;transition:stroke-dashoffset .9s linear}
+.ring.low .rfill{stroke:var(--err)}
+.ring .rsec{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font:600 13px var(--mono);color:var(--tx2);font-variant-numeric:tabular-nums;
+}
+.ring.low .rsec{color:var(--err)}
+.tfoot{margin-top:10px;font-size:11.5px;color:var(--tx3);display:flex;gap:10px;flex-wrap:wrap}
+.tfoot .alg{color:var(--tx3)}
+.copyhint{position:absolute;top:10px;right:12px;font-size:11px;color:var(--tx3);opacity:0;transition:opacity .15s}
+.tcard:hover .copyhint{opacity:1}
+@media(hover:none){.copyhint{opacity:.7}}
+/* empty / footer */
+.empty{color:var(--tx3);font-size:13.5px;text-align:center;padding:26px 12px;border:1px dashed var(--line);border-radius:14px}
+.empty kbd{font:12px var(--mono);background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--tx2)}
+footer{margin-top:20px;color:var(--tx3);font-size:12px;line-height:1.7}
+footer a{color:var(--tx2)}
+details{margin-top:14px;font-size:12.5px;color:var(--tx3)}
+details summary{cursor:pointer;color:var(--tx2)}
+details p{margin:8px 0 0;padding-left:2px}
+.toast{
+  position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 22px);transform:translateX(-50%) translateY(8px);
+  background:#1d2634;border:1px solid var(--ok);color:var(--ok);
+  font-size:13px;padding:8px 18px;border-radius:999px;opacity:0;pointer-events:none;
+  transition:opacity .2s,transform .2s;z-index:9;max-width:88vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#141a22"/><circle cx="16" cy="13" r="7" fill="none" stroke="#e8b34b" stroke-width="2.4"/><text x="16" y="16.5" font-size="9" font-family="monospace" fill="#e8b34b" text-anchor="middle">*</text><rect x="14.6" y="19" width="2.8" height="8" rx="1.2" fill="#e8b34b"/></svg>
+    <h1>otpdeck <em>· 一次性验证码</em></h1>
+    <span class="priv"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h.5A1.5 1.5 0 0 1 14 8.5v5A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-5A1.5 1.5 0 0 1 3.5 7H4Zm2 0h4V5a2 2 0 1 0-4 0v2Z"/></svg>全程本地计算 · 零网络请求</span>
+  </header>
+  <p class="sub">把 <b>otpauth://</b> 迁移链接或 <b>base32 密钥</b>粘进来，本地算出动态码。密钥不离开这台设备——比任何云同步验证器都更私密。</p>
+
+  <div class="card">
+    <h2>密钥输入<span class="hint">每行一个账户：otpauth://… 或裸 base32 secret</span></h2>
+    <textarea id="in" placeholder="otpauth://totp/GitHub:me@example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub&#10;JBSWY3DPEHPK3PXP" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+    <div class="rowbtn">
+      <button id="go" class="primary">生成验证码</button>
+      <button id="demo">载入示例（RFC 6238 测试密钥）</button>
+      <button id="clear">清空</button>
+      <span id="msg" class="note" role="status"></span>
+    </div>
+    <details>
+      <summary>这个工具能做什么 / 不能做什么</summary>
+      <p>✅ 根据 TOTP 密钥（RFC 6238）本地计算当前 30 秒窗口的动态码，支持 SHA1/SHA256/SHA512、6/8 位、自定义周期——与 Google Authenticator / Aegis / 1Password 同一套算法。</p>
+      <p>❌ 不能当备份用：这里不存储任何密钥，刷新页面即清空；请把 otpauth 链接保存在你的密码管理器里。密钥粘进网页前请确认设备安全。</p>
+    </details>
+  </div>
+
+  <div id="deck" class="deck" hidden></div>
+  <div id="empty" class="empty">还没有账户。粘一行 <kbd>otpauth://</kbd> 链接，或点上面<b>载入示例</b>试试。</div>
+
+  <footer>
+    算法：RFC 6238（HMAC-based OTP）· 示例密钥取自 RFC 6238 附录 B 官方测试向量 ·
+    <a href="https://github.com/xiangjianan/daily-tools/tree/main/otpdeck-20261110" target="_blank" rel="noopener">源码</a>
+  </footer>
+</div>
+<div id="toast" class="toast" role="status"></div>
+<script>
+'use strict';
+/*==CORE==*/
+/* ---- RFC 4648 base32 decode (no padding required, tolerates spaces/dashes) ---- */
+var B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function b32decode(s){
+  var clean = String(s).toUpperCase().replace(/[\s\-_=]/g,'');
+  if(!clean.length) return null;
+  var bits = 0, acc = 0, out = [];
+  for(var i=0;i<clean.length;i++){
+    var v = B32.indexOf(clean[i]);
+    if(v < 0) return null;
+    acc = (acc << 5) | v; bits += 5;
+    if(bits >= 8){ out.push((acc >>> (bits-8)) & 0xff); bits -= 8; }
+  }
+  return new Uint8Array(out);
+}
+/* ---- otpauth:// URI parse; returns null or account object ---- */
+function parseLine(line){
+  var t = String(line).trim();
+  if(!t) return {skip:true};
+  if(/^otpauth:\/\//i.test(t)){
+    try{
+      var u = new URL(t.replace(/^otpauth:\/\//i,'https://'));
+      var secret = u.searchParams.get('secret');
+      if(!secret) return {error:'otpauth 链接缺 secret 参数'};
+      var path = decodeURIComponent(u.pathname.replace(/^\//,''));
+      var label = path, issuer = u.searchParams.get('issuer') || '';
+      if(label.indexOf(':') > 0){ var p = label.split(':'); if(!issuer) issuer = p[0]; label = p.slice(1).join(':'); }
+      return {
+        label: label || issuer || '未命名',
+        issuer: issuer || '',
+        secret: secret,
+        algo: (u.searchParams.get('algorithm')||'SHA1').toUpperCase(),
+        digits: parseInt(u.searchParams.get('digits'),10) || 6,
+        period: parseInt(u.searchParams.get('period'),10) || 30
+      };
+    }catch(e){ return {error:'otpauth 链接无法解析'}; }
+  }
+  var dec = b32decode(t);
+  if(dec === null) return {error:'不是合法的 base32 密钥'};
+  if(dec.length < 10) return {error:'密钥太短（至少 10 字节）'};
+  return {label:'裸密钥 ' + t.slice(0,3) + '…', issuer:'', secret:t, algo:'SHA1', digits:6, period:30};
+}
+/* ---- RFC 4231-style key import: UTF-8 for text keys ---- */
+function utf8(str){
+  var enc = new TextEncoder();
+  return enc.encode(str);
+}
+/* ---- TOTP core: HMAC via WebCrypto, dynamic truncation per RFC 4226 ---- */
+function totp(secretBytes, counter, algo, digits){
+  var algoName = {SHA1:'SHA-1', SHA256:'SHA-256', SHA512:'SHA-512'}[algo] || 'SHA-1';
+  var buf = new ArrayBuffer(8);
+  var dv = new DataView(buf);
+  dv.setUint32(0, Math.floor(counter / 0x100000000));
+  dv.setUint32(4, counter >>> 0);
+  return crypto.subtle.importKey('raw', secretBytes, {name:'HMAC', hash:{name:algoName}}, false, ['sign'])
+    .then(function(key){ return crypto.subtle.sign('HMAC', key, buf); })
+    .then(function(mac){
+      var h = new Uint8Array(mac);
+      var off = h[h.length-1] & 0x0f;
+      var code = ((h[off] & 0x7f) << 24) | (h[off+1] << 16) | (h[off+2] << 8) | h[off+3];
+      var s = (code % Math.pow(10, digits)).toString();
+      while(s.length < digits) s = '0' + s;
+      return s;
+    });
+}
+function nowCounter(period){ return Math.floor(Date.now()/1000 / period); }
+function secsLeft(period){ return period - (Math.floor(Date.now()/1000) % period); }
+/*==ENDCORE==*/
+
+/* ---- state & dom ---- */
+var $ = function(id){ return document.getElementById(id); };
+var accounts = [];   // parsed ok entries
+var timers = {tick:null};
+var lastCounter = -1;
+
+function toast(t){
+  var el = $('toast');
+  el.textContent = t;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ el.classList.remove('show'); }, 1400);
+}
+
+function ringSVG(){
+  return '<svg viewBox="0 0 44 44"><circle class="rtrack" cx="22" cy="22" r="18" stroke-width="4"/>' +
+    '<circle class="rfill" cx="22" cy="22" r="18" stroke-width="4" stroke-dasharray="113.1" stroke-dashoffset="0"/></svg>';
+}
+
+function render(){
+  var deck = $('deck');
+  deck.innerHTML = accounts.map(function(a,i){
+    return '<div class="tcard" data-i="'+i+'" role="button" tabindex="0" title="点击复制验证码">' +
+      '<span class="copyhint">点击复制</span>' +
+      '<div class="thead"><span class="tissuer">'+esc(a.issuer||a.label)+'</span>' +
+      (a.issuer && a.label && a.label !== a.issuer ? '<span class="taccount">'+esc(a.label)+'</span>' : '') + '</div>' +
+      '<div class="tbody"><span class="code" data-code="'+i+'">······</span>' +
+      '<span class="ring" data-ring="'+i+'">'+ringSVG()+'<span class="rsec">–</span></span></div>' +
+      '<div class="tfoot"><span class="alg">'+a.algo+' · '+a.digits+' 位 · '+a.period+'s</span></div>' +
+      '</div>';
+  }).join('');
+  var has = accounts.length > 0;
+  deck.hidden = !has;
+  $('empty').hidden = has;
+  lastCounter = -1;      // force immediate refresh
+  updateCodes(true);
+}
+
+function esc(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+/* refresh codes + rings; instant=true draws without waiting next second */
+function updateCodes(instant){
+  if(!accounts.length) return;
+  accounts.forEach(function(a,i){
+    var c = nowCounter(a.period);
+    var card = deck.querySelector('.tcard[data-i="'+i+'"]');
+    if(!card) return;
+    var codeEl = card.querySelector('.code');
+    var ringEl = card.querySelector('.ring');
+    var secEl = card.querySelector('.rsec');
+    var fillEl = card.querySelector('.rfill');
+    var left = secsLeft(a.period);
+    if(c !== lastCounter || codeEl.classList.contains('stale')){
+      totp(a.bytes, c, a.algo, a.digits).then(function(code){
+        if(nowCounter(a.period) !== c) return;  // window rolled during async; next tick repaints
+        codeEl.textContent = a.digits === 8 ? code.slice(0,4)+' '+code.slice(4) : code.slice(0,3)+' '+code.slice(3);
+        codeEl.classList.remove('stale');
+        a.current = code;
+      }).catch(function(){
+        codeEl.textContent = '错误';
+        codeEl.classList.add('stale');
+      });
+    }
+    if(fillEl){
+      var frac = left / a.period;
+      fillEl.style.strokeDashoffset = (113.1 * (1 - frac)).toFixed(1);
+      ringEl.classList.toggle('low', left <= 5);
+      secEl.textContent = left;
+    }
+  });
+  lastCounter = accounts.length ? nowCounter(accounts[0].period) : -1;
+}
+
+function deckFromInput(showErr){
+  var raw = $('in').value;
+  var lines = raw.split(/\n+/);
+  var oks = [], errs = [];
+  lines.forEach(function(ln, idx){
+    if(!ln.trim()) return;
+    var r = parseLine(ln);
+    if(r.skip) return;
+    if(r.error){ errs.push('第 '+(idx+1)+' 行：'+r.error); return; }
+    r.bytes = b32decode(r.secret);
+    if(!r.bytes || r.bytes.length < 10){ errs.push('第 '+(idx+1)+' 行：密钥解码后太短'); return; }
+    oks.push(r);
+  });
+  if(errs.length && !oks.length){
+    setMsg(errs[0], 'err');
+  } else if(errs.length){
+    setMsg('已生成 '+oks.length+' 个，但有 '+errs.length+' 行无法解析（'+errs[0].replace(/^第 \d+ 行：/,'')+'）', 'err');
+  } else if(oks.length){
+    setMsg('已生成 '+oks.length+' 个验证码，点击卡片即可复制', 'ok');
+  } else {
+    setMsg('');
+  }
+  accounts = oks;
+  render();
+}
+
+function setMsg(t, cls){
+  var el = $('msg');
+  el.textContent = t || '';
+  el.className = 'note' + (cls ? ' ' + cls : '');
+}
+
+function copyCode(i){
+  var a = accounts[i];
+  if(!a || !a.current) return;
+  var done = function(){
+    toast('已复制 ' + (a.issuer ? a.issuer + ' ' : '') + a.current.slice(0,3)+' '+a.current.slice(3));
+    var card = deck.querySelector('.tcard[data-i="'+i+'"]');
+    if(card){ card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash'); }
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(a.current).then(done, function(){ fallbackCopy(a.current); done(); });
+  } else { fallbackCopy(a.current); done(); }
+}
+function fallbackCopy(t){
+  var ta = document.createElement('textarea');
+  ta.value = t; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+}
+
+/* events */
+deck.addEventListener('click', function(e){
+  var card = e.target.closest('.tcard');
+  if(card) copyCode(+card.dataset.i);
+});
+deck.addEventListener('keydown', function(e){
+  if(e.key === 'Enter' || e.key === ' '){
+    var card = e.target.closest('.tcard');
+    if(card){ e.preventDefault(); copyCode(+card.dataset.i); }
+  }
+});
+$('go').addEventListener('click', function(){ deckFromInput(true); });
+$('in').addEventListener('input', function(){
+  clearTimeout(deckFromInput._t);
+  deckFromInput._t = setTimeout(function(){ deckFromInput(false); }, 400);
+});
+$('clear').addEventListener('click', function(){
+  $('in').value = ''; accounts = []; render(); setMsg('');
+});
+$('demo').addEventListener('click', function(){
+  // RFC 6238 Appendix B test key ("12345678901234567890" ASCII), valid-8d sample renamed as a demo issuer
+  $('in').value = 'otpauth://totp/Demo:you@example.com?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Demo&algorithm=SHA1&digits=6&period=30\nJBSWY3DPEHPK3PXP';
+  deckFromInput(false);
+  setMsg('示例已载入（RFC 6238 官方测试密钥，非真实账户）', 'ok');
+});
+
+/* ticker: refresh countdown every second, codes repaint when window rolls */
+timers.tick = setInterval(updateCodes, 1000);
+
+/* for smoke tests */
+window.__otpdeck = { accounts: function(){ return accounts; }, parseLine: parseLine, b32decode: b32decode, totp: totp };
+</script>
+</body>
+</html>
