@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>墨迹签名板 INKSIGN — 速度感应笔锋 · 矢量签名导出</title>
+<meta name="description" content="手写签名板：笔迹随书写速度变粗细，导出可无限缩放的矢量 SVG，全程本地处理不上传。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314171c'/%3E%3Cpath d='M6 22c4-1 5-9 8-9s2 8 5 8 3-6 7-7' stroke='%23e8b64c' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#14171c; --panel:#1b1f26; --line:#2a3039; --line2:#343b46;
+  --tx:#e8e6e1; --tx2:#9aa3ad; --tx3:#6b7480;
+  --acc:#e8b64c; --acc2:#f0cf8a;
+  --paper:#f6f1e7; --paperline:#e4dcc9;
+  --ok:#5fb878; --err:#e06c5f;
+  --r:14px;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  line-height:1.5; padding-bottom:env(safe-area-inset-bottom);
+  -webkit-tap-highlight-color:transparent;
+}
+.wrap{max-width:1060px; margin:0 auto; padding:18px 16px 28px; padding-left:max(16px,env(safe-area-inset-left)); padding-right:max(16px,env(safe-area-inset-right))}
+header{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+h1{font-size:21px; font-weight:700; letter-spacing:.5px}
+h1 .en{color:var(--acc); font-weight:600; margin-left:6px}
+.tag{font-size:12px; color:var(--tx2); border:1px solid var(--line2); border-radius:99px; padding:2px 10px}
+.sub{color:var(--tx2); font-size:13px; margin:-6px 0 14px}
+.sub b{color:var(--acc2); font-weight:600}
+
+main{display:grid; grid-template-columns:1fr 236px; gap:14px; align-items:stretch}
+.stage{
+  position:relative; border:1px solid var(--line); border-radius:var(--r);
+  background:var(--paper); overflow:hidden; min-height:380px;
+}
+#cv{display:block; width:100%; height:100%; touch-action:none; cursor:crosshair}
+.stage .hint{
+  position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:10px; pointer-events:none; color:#a89f8d; text-align:center; transition:opacity .3s;
+}
+.stage .hint.off{opacity:0}
+.stage .hint svg{opacity:.55}
+.stage .hint p{font-size:14px}
+.guide-corner{position:absolute; color:#c9c0ac; font-size:11px; letter-spacing:1px}
+
+.panel{display:flex; flex-direction:column; gap:12px}
+.card{background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:12px}
+.card h2{font-size:12px; color:var(--tx3); font-weight:600; letter-spacing:1.5px; margin-bottom:9px; text-transform:uppercase}
+.inks{display:flex; gap:8px}
+.ink{
+  width:34px; height:34px; border-radius:50%; border:2px solid var(--line2); cursor:pointer;
+  position:relative; transition:transform .15s, border-color .15s; flex:none;
+}
+.ink:hover{transform:scale(1.1)}
+.ink.on{border-color:var(--acc); transform:scale(1.12)}
+.ink.on::after{
+  content:""; position:absolute; right:-2px; top:-2px; width:10px; height:10px; border-radius:50%;
+  background:var(--acc); border:2px solid var(--panel);
+}
+.rowbtns{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+button{
+  font:inherit; font-size:13px; color:var(--tx); background:#242a33; border:1px solid var(--line2);
+  border-radius:10px; padding:8px 10px; cursor:pointer; transition:background .15s, border-color .15s;
+}
+button:hover{background:#2b323d; border-color:#414a56}
+button:active{transform:translateY(1px)}
+button.primary{background:var(--acc); border-color:var(--acc); color:#1a1508; font-weight:700}
+button.primary:hover{background:var(--acc2)}
+button:disabled{opacity:.4; cursor:not-allowed; transform:none}
+.wide{grid-column:1 / -1}
+.sliderbox{display:flex; align-items:center; gap:10px}
+input[type=range]{flex:1; accent-color:var(--acc); min-width:0}
+.wval{font-size:12px; color:var(--tx2); width:44px; text-align:right; font-variant-numeric:tabular-nums}
+.exports{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.paperrow{display:flex; gap:8px; align-items:center}
+.paperdot{
+  flex:1; height:30px; border-radius:8px; border:1px solid var(--line2); cursor:pointer; font-size:12px;
+  display:flex; align-items:center; justify-content:center; gap:5px; color:var(--tx2); transition:border-color .15s;
+}
+.paperdot.on{border-color:var(--acc); color:var(--tx)}
+.paperdot .sw{width:12px; height:12px; border-radius:4px; border:1px solid rgba(0,0,0,.2)}
+.stats{font-size:12px; color:var(--tx3); display:flex; justify-content:space-between; font-variant-numeric:tabular-nums}
+.stats b{color:var(--tx2); font-weight:600}
+details{font-size:12px; color:var(--tx2)}
+details summary{cursor:pointer; color:var(--tx3); outline:none}
+details p{margin-top:6px; line-height:1.6}
+.toast{
+  position:fixed; left:50%; bottom:28px; transform:translateX(-50%) translateY(20px);
+  background:#262c36; color:var(--tx); border:1px solid var(--line2); border-radius:10px;
+  padding:9px 16px; font-size:13px; opacity:0; pointer-events:none; transition:all .25s; z-index:50;
+  max-width:86vw;
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+.toast.err{border-color:var(--err); color:#f2b8b0}
+.toast.ok{border-color:var(--ok)}
+
+@media (max-width:760px){
+  main{grid-template-columns:minmax(0,1fr)}
+  .stage{min-height:300px; order:-1}
+  .wrap{padding-top:14px}
+  h1{font-size:18px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>墨迹签名板<span class="en">INKSIGN</span></h1>
+    <span class="tag">每日创意小工具 #60</span>
+  </header>
+  <p class="sub">笔迹随<b>书写速度</b>自然变粗细（快笔细、慢笔粗），导出<b>真矢量 SVG</b> 可无限缩放。签名全程在本机处理，<b>不上传任何数据</b>。</p>
+
+  <main>
+    <div class="stage" id="stage">
+      <canvas id="cv"></canvas>
+      <div class="hint" id="hint">
+        <svg width="54" height="54" viewBox="0 0 54 54" fill="none">
+          <path d="M8 40c8-2 9-24 15-24s5 20 11 20 7-12 14-14" stroke="#a89f8d" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+        <p>在这里写下你的签名<br><span style="font-size:12px">支持鼠标 / 触屏 / 触控笔 · 写得慢笔就粗</span></p>
+      </div>
+      <span class="guide-corner" style="left:10px; top:8px">SIGN HERE ↓</span>
+      <span class="guide-corner" style="right:10px; bottom:8px">100% LOCAL</span>
+    </div>
+
+    <div class="panel">
+      <div class="card">
+        <h2>墨水</h2>
+        <div class="inks" id="inks"></div>
+      </div>
+      <div class="card">
+        <h2>笔锋粗细</h2>
+        <div class="sliderbox">
+          <input type="range" id="wslider" min="0.5" max="2.2" step="0.1" value="1.2">
+          <span class="wval" id="wval">1.2×</span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>操作</h2>
+        <div class="rowbtns">
+          <button id="undoBtn" disabled>↩ 撤销</button>
+          <button id="clearBtn" disabled>✕ 清空</button>
+          <button id="sampleBtn" class="wide">✍ 来个示例签名</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>纸面</h2>
+        <div class="paperrow">
+          <div class="paperdot on" data-paper="light"><span class="sw" style="background:#f6f1e7"></span>米白</div>
+          <div class="paperdot" data-paper="dark"><span class="sw" style="background:#171a20"></span>深夜</div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>导出</h2>
+        <div class="exports">
+          <button id="dlSvgBtn" class="primary" disabled>SVG 下载</button>
+          <button id="dlPngBtn" disabled>PNG 下载</button>
+          <button id="copySvgBtn" class="wide" disabled>复制 SVG 代码</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="stats"><span>笔画 <b id="stStrokes">0</b></span><span>锚点 <b id="stPts">0</b></span><span>路径 <b id="stBytes">0</b> B</span></div>
+      </div>
+      <details>
+        <summary>关于笔锋与隐私</summary>
+        <p>笔宽由运笔速度实时推算：手写时自然忽快忽慢，于是线条有了书法般的粗细呼吸。导出的 SVG 是真正的矢量轮廓（可无限缩放、可二次编辑），不是位图截图。所有计算都在你的浏览器里完成，画布内容不经任何网络请求。</p>
+      </details>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/*==CORE==*/
+// ---------- 纯函数核心（无 DOM 依赖，可独立测试） ----------
+var CORE = (function(){
+  // 速度(px/ms) → 目标笔宽。慢(0)→粗，快(≥2.2)→细，指数插值。
+  function targetWidth(v, base){
+    v = Math.max(0, v || 0);
+    var t = Math.min(1, v / 2.2);          // 归一化速度
+    var k = Math.pow(1 - t, 1.6);          // 快速衰减：慢笔增粗更明显
+    var wmin = base * 0.42, wmax = base * 1.9;
+    return wmin + (wmax - wmin) * k;
+  }
+  // 指数平滑
+  function ema(prev, cur, a){ return prev == null ? cur : prev + (cur - prev) * a; }
+  // 由原始点列构建平滑笔画：{x,y,w}[] → 带方向法线与半宽的轮廓
+  function buildOutline(pts){
+    if(!pts || pts.length === 0) return null;
+    if(pts.length === 1){
+      var r = pts[0].w / 2;
+      return { L:[{x:pts[0].x - r, y:pts[0].y}], R:[{x:pts[0].x + r, y:pts[0].y}],
+               caps:[{x:pts[0].x, y:pts[0].y, r:r}], pts:pts.slice() };
+    }
+    var L = [], R = [];
+    for(var i = 0; i < pts.length; i++){
+      var a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+      var dx = b.x - a.x, dy = b.y - a.y;
+      var len = Math.hypot(dx, dy) || 1;
+      var nx = -dy / len, ny = dx / len;   // 单位法线
+      var h = pts[i].w / 2;
+      L.push({ x: pts[i].x + nx * h, y: pts[i].y + ny * h });
+      R.push({ x: pts[i].x - nx * h, y: pts[i].y - ny * h });
+    }
+    var p0 = pts[0], p1 = pts[pts.length - 1];
+    return { L:L, R:R,
+             caps:[{x:p0.x, y:p0.y, r:p0.w/2}, {x:p1.x, y:p1.y, r:p1.w/2}],
+             pts:pts.slice() };
+  }
+  // 轮廓 → SVG path d（二次贝塞尔中点平滑）。单笔画一条闭合 path。
+  function pathFromOutline(ol){
+    if(!ol) return "";
+    function seg(arr){
+      if(arr.length === 1) return "M" + f(arr[0].x) + " " + f(arr[0].y);
+      var d = "M" + f(arr[0].x) + " " + f(arr[0].y);
+      for(var i = 1; i < arr.length - 1; i++){
+        var mx = (arr[i].x + arr[i+1].x) / 2, my = (arr[i].y + arr[i+1].y) / 2;
+        d += "Q" + f(arr[i].x) + " " + f(arr[i].y) + " " + f(mx) + " " + f(my);
+      }
+      var last = arr[arr.length - 1];
+      d += "L" + f(last.x) + " " + f(last.y);
+      return d;
+    }
+    function f(n){ return Math.round(n * 100) / 100; }
+    var d = seg(ol.L);
+    d += seg(ol.R.slice().reverse()).replace(/^M/, "L");
+    d += "Z";
+    // 笔帽：两端半圆
+    for(var c = 0; c < ol.caps.length; c++){
+      var cp = ol.caps[c];
+      d += "M" + f(cp.x - cp.r) + " " + f(cp.y) +
+           "a" + f(cp.r) + " " + f(cp.r) + " 0 1 0 " + f(cp.r * 2) + " 0" +
+           "a" + f(cp.r) + " " + f(cp.r) + " 0 1 0 " + f(-cp.r * 2) + " 0Z";
+    }
+    return d;
+  }
+  // 单点笔画兜底：宽度极小也至少可见
+  function clampWidth(w){ return Math.max(0.6, Math.min(30, w || 1)); }
+  return { targetWidth:targetWidth, ema:ema, buildOutline:buildOutline,
+           pathFromOutline:pathFromOutline, clampWidth:clampWidth };
+})();
+/*==ENDCORE==*/
+
+// ---------- 状态 ----------
+var $ = function(id){ return document.getElementById(id); };
+var state = {
+  strokes: [],        // [{pts:[{x,y,w}], color}]
+  cur: null,          // 当前笔画原始点 {x,y,t}[]
+  ink: "#23180f",
+  paper: "light",
+  wbase: 1.2,         // 笔锋基准
+  drawing: false
+};
+var INKS = [
+  { c:"#23180f", n:"墨黑" },
+  { c:"#1d3fbf", n:"钢笔蓝" },
+  { c:"#8c1d1d", n:"朱砂红" },
+  { c:"#f2ede4", n:"月白" }
+];
+var PAPERS = { light:"#f6f1e7", dark:"#171a20" };
+var cv = $("cv"), ctx = cv.getContext("2d");
+var DPR = Math.max(1, window.devicePixelRatio || 1);
+
+// ---------- 画布尺寸 ----------
+function fitCanvas(){
+  var r = cv.getBoundingClientRect();
+  if(r.width < 2 || r.height < 2) return;
+  cv.width = Math.round(r.width * DPR);
+  cv.height = Math.round(r.height * DPR);
+  redraw();
+}
+window.addEventListener("resize", fitCanvas);
+
+// ---------- 渲染 ----------
+function renderStroke(s){
+  var ol = CORE.buildOutline(s.pts);
+  if(!ol) return;
+  ctx.fillStyle = s.color;
+  ctx.beginPath();
+  var d = new Path2D(CORE.pathFromOutline(ol));
+  ctx.fill(d);
+}
+function redraw(){
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, cv.width / DPR, cv.height / DPR);
+  for(var i = 0; i < state.strokes.length; i++) renderStroke(state.strokes[i]);
+  updateStats();
+}
+
+// ---------- 书写 ----------
+function canvasPos(e){
+  var r = cv.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top, t: performance.now() };
+}
+cv.addEventListener("pointerdown", function(e){
+  if(e.button !== undefined && e.button !== 0 && e.pointerType === "mouse") return;
+  e.preventDefault();
+  try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+  state.drawing = true;
+  state.cur = [canvasPos(e)];
+  state.lastW = null;
+  $("hint").classList.add("off");
+});
+cv.addEventListener("pointermove", function(e){
+  if(!state.drawing) return;
+  e.preventDefault();
+  var p = canvasPos(e);
+  var pts = state.cur, prev = pts[pts.length - 1];
+  var dt = Math.max(1, p.t - prev.t);
+  var dist = Math.hypot(p.x - prev.x, p.y - prev.y);
+  if(dist < 1.1) return;                       // 过采样抑制
+  var v = dist / dt;                            // px/ms
+  var tw = CORE.clampWidth(CORE.targetWidth(v, state.wbase));
+  var w = CORE.ema(state.lastW, tw, 0.28);      // 平滑笔宽
+  state.lastW = w;
+  pts.push({ x:p.x, y:p.y, w:w });
+  liveDraw();
+});
+function endStroke(){
+  if(!state.drawing) return;
+  state.drawing = false;
+  if(state.cur && state.cur.length){
+    var raw = state.cur;
+    var pts = raw.map(function(p, i){
+      var w = (i === 0) ? CORE.clampWidth(state.wbase * 0.7)
+            : raw[i].w || state.lastW || state.wbase;
+      return { x:p.x, y:p.y, w:w };
+    });
+    if(raw.length === 1) pts = [{ x:raw[0].x, y:raw[0].y, w:CORE.clampWidth(state.wbase) }];
+    state.strokes.push({ pts:pts, color:state.ink });
+  }
+  state.cur = null;
+  redraw();
+}
+cv.addEventListener("pointerup", endStroke);
+cv.addEventListener("pointercancel", endStroke);
+cv.addEventListener("pointerleave", function(){ if(state.drawing) endStroke(); });
+
+function liveDraw(){
+  // 当前笔画预览：连同已提交笔画一起重绘（点数有限，性能足够）
+  var pts = state.cur.map(function(p){ return { x:p.x, y:p.y, w:p.w }; });
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, cv.width / DPR, cv.height / DPR);
+  for(var i = 0; i < state.strokes.length; i++) renderStroke(state.strokes[i]);
+  var s = { pts:pts, color:state.ink };
+  if(pts.length === 1){ // 单点：画个圆点
+    ctx.fillStyle = state.ink;
+    ctx.beginPath();
+    ctx.arc(pts[0].x, pts[0].y, pts[0].w / 2, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  renderStroke(s);
+}
+
+// ---------- 统计 / 按钮 ----------
+function hasInk(){ return state.strokes.length > 0; }
+function syncButtons(){
+  var ok = hasInk();
+  $("undoBtn").disabled = !ok;
+  $("clearBtn").disabled = !ok;
+  $("dlSvgBtn").disabled = !ok;
+  $("dlPngBtn").disabled = !ok;
+  $("copySvgBtn").disabled = !ok;
+}
+function updateStats(){
+  var n = 0, bytes = 0;
+  for(var i = 0; i < state.strokes.length; i++){
+    n += state.strokes[i].pts.length;
+    bytes += CORE.pathFromOutline(CORE.buildOutline(state.strokes[i].pts)).length;
+  }
+  $("stStrokes").textContent = state.strokes.length;
+  $("stPts").textContent = n;
+  $("stBytes").textContent = bytes;
+  syncButtons();
+}
+
+// ---------- SVG 组装 ----------
+function buildSvg(){
+  var r = cv.getBoundingClientRect();
+  var w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+  var body = "";
+  for(var i = 0; i < state.strokes.length; i++){
+    var d = CORE.pathFromOutline(CORE.buildOutline(state.strokes[i].pts));
+    body += '<path d="' + d + '" fill="' + state.strokes[i].color + '"/>\n';
+  }
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + w + ' ' + h + '" width="' + w + '" height="' + h + '">\n' +
+    '<!-- made with INKSIGN (vector signature, local only) -->\n' + body + '</svg>';
+}
+
+// ---------- 导出 ----------
+function download(name, blob){
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 400);
+}
+$("dlSvgBtn").addEventListener("click", function(){
+  if(!hasInk()) return toast("画布还是空的，先写几笔吧", "err");
+  download("signature-inksign.svg", new Blob([buildSvg()], { type:"image/svg+xml" }));
+  toast("SVG 已下载 ✓", "ok");
+});
+$("dlPngBtn").addEventListener("click", function(){
+  if(!hasInk()) return toast("画布还是空的，先写几笔吧", "err");
+  var r = cv.getBoundingClientRect();
+  var oc = document.createElement("canvas");
+  oc.width = Math.round(r.width * 2); oc.height = Math.round(r.height * 2);
+  var octx = oc.getContext("2d");
+  octx.setTransform(2, 0, 0, 2, 0, 0);
+  for(var i = 0; i < state.strokes.length; i++){
+    var ol = CORE.buildOutline(state.strokes[i].pts);
+    octx.fillStyle = state.strokes[i].color;
+    octx.fill(new Path2D(CORE.pathFromOutline(ol)));
+  }
+  oc.toBlob(function(b){
+    if(!b) return toast("PNG 生成失败", "err");
+    download("signature-inksign.png", b);
+    toast("PNG 已下载（2× 透明底）✓", "ok");
+  }, "image/png");
+});
+$("copySvgBtn").addEventListener("click", function(){
+  if(!hasInk()) return toast("画布还是空的，先写几笔吧", "err");
+  var svg = buildSvg();
+  function fallback(){
+    var ta = document.createElement("textarea");
+    ta.value = svg; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); toast("SVG 代码已复制 ✓", "ok"); }
+    catch(e){ toast("复制失败，请手动下载", "err"); }
+    ta.remove();
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(svg).then(function(){ toast("SVG 代码已复制 ✓", "ok"); }, fallback);
+  } else fallback();
+});
+
+// ---------- 编辑动作 ----------
+$("undoBtn").addEventListener("click", function(){ state.strokes.pop(); redraw(); });
+$("clearBtn").addEventListener("click", function(){
+  state.strokes = []; redraw(); $("hint").classList.remove("off");
+});
+
+// ---------- 墨水 / 纸面 / 笔锋 ----------
+(function initInks(){
+  var box = $("inks");
+  INKS.forEach(function(k, i){
+    var b = document.createElement("button");
+    b.className = "ink" + (i === 0 ? " on" : "");
+    b.style.background = k.c;
+    b.title = k.n;
+    b.setAttribute("aria-label", k.n);
+    if(k.c === "#f2ede4") b.style.borderColor = "#4a5260";
+    b.addEventListener("click", function(){
+      state.ink = k.c;
+      var all = box.querySelectorAll(".ink");
+      for(var j = 0; j < all.length; j++) all[j].classList.remove("on");
+      b.classList.add("on");
+    });
+    box.appendChild(b);
+  });
+})();
+document.querySelectorAll(".paperdot").forEach(function(el){
+  el.addEventListener("click", function(){
+    document.querySelectorAll(".paperdot").forEach(function(x){ x.classList.remove("on"); });
+    el.classList.add("on");
+    state.paper = el.dataset.paper;
+    $("stage").style.background = PAPERS[state.paper];
+    $("hint").style.color = state.paper === "dark" ? "#6b7480" : "";
+  });
+});
+$("wslider").addEventListener("input", function(){
+  state.wbase = parseFloat(this.value);
+  $("wval").textContent = state.wbase.toFixed(1) + "×";
+});
+
+// ---------- 示例签名（程序化脚本笔画） ----------
+$("sampleBtn").addEventListener("click", function(){
+  var r = cv.getBoundingClientRect();
+  var W = r.width, H = r.height;
+  var S = Math.min(W, H) / 380;               // 尺度自适应
+  var cx = W / 2, cy = H / 2;
+  function bez(p0, p1, p2, p3, steps, t0, w0, w1){
+    var out = [];
+    for(var i = 0; i <= steps; i++){
+      var t = i / steps, u = 1 - t;
+      var x = u*u*u*p0.x + 3*u*u*t*p1.x + 3*u*t*t*p2.x + t*t*t*p3.x;
+      var y = u*u*u*p0.y + 3*u*u*t*p1.y + 3*u*t*t*p2.y + t*t*t*p3.y;
+      var ease = Math.sin(t * Math.PI);                    // 中段快 → 两端慢
+      out.push({ x:cx + x*S, y:cy + y*S, t:t0 + i * 9,
+                 w:CORE.ema(null, CORE.clampWidth(CORE.targetWidth(1.9 * (1 - ease) + 0.15, state.wbase)), 0.3) });
+      if(out.length > 1){
+        out[out.length-1].w = CORE.ema(out[out.length-2].w, out[out.length-1].w, 0.5);
+      }
+    }
+    return out;
+  }
+  function P(x, y){ return { x:x, y:y }; }
+  // 三笔：大波浪起笔 + 环回交叉 + 收尾点
+  var s1 = bez(P(-150, 20), P(-90, -70), P(-30, 70), P(30, -30), 26, 0, 1, 2);
+  var s2 = bez(P(30, -30), P(80, 60), P(120, -80), P(160, 10), 26, 240, 2, 1);
+  var s3 = bez(P(60, 40), P(80, 90), P(-40, 95), P(-90, 45), 18, 480, 1, 1.5);
+  [s1, s2, s3].forEach(function(pts){
+    state.strokes.push({ pts:pts.map(function(p){ return { x:p.x, y:p.y, w:p.w }; }), color:state.ink });
+  });
+  redraw();
+  $("hint").classList.add("off");
+  toast("示例已载入，直接导出或继续改", "ok");
+});
+
+// ---------- Toast ----------
+var toastTimer = null;
+function toast(msg, cls){
+  var t = $("toast");
+  t.textContent = msg;
+  t.className = "toast show " + (cls || "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.className = "toast"; }, 2200);
+}
+
+// ---------- 启动 ----------
+fitCanvas();
+</script>
+</body>
+</html>
