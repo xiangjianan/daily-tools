@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DOUGHMATH · 面团配比秤</title>
+<meta name="description" content="几个面团×每个多重，即出全配方克数表：水合率滑杆、酵母/酸面团双模式、出炉时间倒推时刻表。纯本地零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥖</text></svg>">
+<style>
+:root{
+  --bg:#12100d;--card:#1b1813;--line:#2e2820;--fg:#efe6d8;--mut:#9a8d7a;
+  --acc:#e8a13c;--acc2:#7fb069;--water:#5a9bd4;--salt:#c96f6f;--lev:#b48ead;
+  --ok:#7fb069;--warn:#e8a13c;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+padding:max(20px,env(safe-area-inset-top)) 14px max(40px,env(safe-area-inset-bottom))}
+main{max-width:720px;margin:0 auto}
+h1{font-size:22px;letter-spacing:.5px}
+h1 .zh{font-size:15px;color:var(--mut);font-weight:400;margin-left:8px}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.card h2{font-size:13px;color:var(--acc);letter-spacing:1.5px;font-weight:600;margin-bottom:12px;text-transform:uppercase}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.row:last-child{margin-bottom:0}
+label{font-size:13.5px;color:var(--mut);white-space:nowrap}
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--mut);padding:7px 14px;font-size:13.5px;cursor:pointer;font-family:inherit}
+.seg button.on{background:var(--acc);color:#1b1408;font-weight:600}
+.num{display:flex;align-items:center;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.num button{border:0;background:#241f18;color:var(--fg);width:34px;height:34px;font-size:18px;cursor:pointer;font-family:inherit}
+.num button:active{background:#322a20}
+.num input{border:0;background:transparent;color:var(--fg);width:56px;text-align:center;font-size:15px;font-family:inherit;-moz-appearance:textfield}
+.num input::-webkit-outer-spin-button,.num input::-webkit-inner-spin-button{-webkit-appearance:none}
+input[type=time]{border:1px solid var(--line);background:#241f18;color:var(--fg);border-radius:9px;padding:6px 10px;font-size:15px;font-family:inherit;color-scheme:dark}
+.unit{color:var(--mut);font-size:13px;min-width:22px}
+.slider{flex:1;min-width:120px;accent-color:var(--acc);height:30px}
+.val{font-variant-numeric:tabular-nums;font-size:14px;color:var(--fg);background:#241f18;border:1px solid var(--line);border-radius:8px;padding:2px 9px;min-width:64px;text-align:center}
+.hint{font-size:12px;color:var(--mut);margin-top:2px}
+/* composition bar */
+.bar{display:flex;height:30px;border-radius:9px;overflow:hidden;border:1px solid var(--line);margin:4px 0 10px}
+.bar div{display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(0,0,0,.75);font-weight:700;white-space:nowrap;overflow:hidden;transition:width .25s}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--mut);margin-bottom:14px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+/* recipe table */
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+td,th{padding:8px 6px;border-top:1px solid var(--line);text-align:left}
+th{border-top:0;color:var(--mut);font-size:12px;letter-spacing:.5px;font-weight:500}
+td .g{font-variant-numeric:tabular-nums;font-weight:700;font-size:16px}
+td .pct{color:var(--mut);font-size:12.5px;font-variant-numeric:tabular-nums}
+tr.total td{border-top:2px solid var(--line);font-weight:700}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px;vertical-align:0}
+/* dough balls */
+.balls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+.ball{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#d9b98a,#a5764a);display:flex;align-items:center;justify-content:center;
+font-size:11px;color:#3a2a14;font-weight:700;box-shadow:inset 0 -6px 10px rgba(0,0,0,.22)}
+.ballsmore{color:var(--mut);font-size:12.5px}
+/* schedule */
+.step{display:flex;gap:12px;padding:9px 2px;border-top:1px dashed var(--line);align-items:baseline}
+.step:first-of-type{border-top:0}
+.step .t{font-variant-numeric:tabular-nums;color:var(--acc);font-weight:700;min-width:52px;font-size:15px}
+.step .d{flex:1}
+.step .d small{color:var(--mut);display:block;font-size:12px}
+.step.key .t{color:var(--acc2)}
+.tagline{font-size:12px;color:var(--mut);margin-top:8px}
+/* buttons */
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:#241f18;color:var(--fg);border-radius:10px;padding:9px 16px;font-size:14px;cursor:pointer;font-family:inherit}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:#1b1408;font-weight:700}
+.btn:active{transform:translateY(1px)}
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:#2b241a;color:var(--fg);
+border:1px solid var(--acc);padding:9px 18px;border-radius:10px;font-size:13.5px;opacity:0;pointer-events:none;transition:.25s;z-index:9}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+footer{margin-top:22px;color:var(--mut);font-size:12px;line-height:1.8}
+footer a{color:var(--acc);text-decoration:none}
+@media (max-width:480px){
+  .row{gap:8px}
+  h1{font-size:19px}
+  td .g{font-size:15px}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>🥖 DOUGHMATH<span class="zh">面团配比秤</span></h1>
+<p class="sub">几个面团 × 每个多重，即出全配方克数表——水合率调软硬，酵母/酸面团双模式，选个出炉时间倒推出完整时刻表。数据全程留在本机。</p>
+
+<div class="card">
+  <h2>① 配料参数</h2>
+  <div class="row">
+    <label>发酵方式</label>
+    <div class="seg" id="modeSeg">
+      <button data-m="yeast" class="on">即发酵母</button>
+      <button data-m="sour">酸面团</button>
+    </div>
+  </div>
+  <div class="row">
+    <label>面团数量</label>
+    <div class="num">
+      <button id="ballsDn" aria-label="减少">−</button>
+      <input id="balls" type="number" min="1" max="24" step="1" value="4" inputmode="numeric">
+      <button id="ballsUp" aria-label="增加">+</button>
+    </div>
+    <span class="unit">个</span>
+    <label style="margin-left:14px">每个重</label>
+    <div class="num">
+      <button id="ballgDn" aria-label="减少">−</button>
+      <input id="ballg" type="number" min="30" max="600" step="5" value="250" inputmode="numeric">
+      <button id="ballgUp" aria-label="增加">+</button>
+    </div>
+    <span class="unit">克</span>
+  </div>
+  <div class="row">
+    <label>水合率</label>
+    <input id="hyd" class="slider" type="range" min="50" max="90" step="1" value="65">
+    <span class="val" id="hydV">65%</span>
+  </div>
+  <p class="hint" id="hydHint">58–62% 贝果硬面团 · 65% 披萨/餐包 · 70%+ 恰巴塔湿软面团</p>
+  <div class="row">
+    <label>盐</label>
+    <input id="salt" class="slider" type="range" min="0" max="3" step="0.1" value="2">
+    <span class="val" id="saltV">2.0%</span>
+  </div>
+  <div class="row" id="yeastRow">
+    <label>即发干酵母</label>
+    <input id="yeast" class="slider" type="range" min="0.1" max="2" step="0.1" value="0.5">
+    <span class="val" id="yeastV">0.5%</span>
+  </div>
+  <div id="sourRows" style="display:none">
+    <div class="row">
+      <label>酵种（占面粉）</label>
+      <input id="starter" class="slider" type="range" min="5" max="40" step="1" value="20">
+      <span class="val" id="starterV">20%</span>
+    </div>
+    <div class="row">
+      <label>酵种水合率</label>
+      <input id="starterHyd" class="slider" type="range" min="50" max="100" step="5" value="100">
+      <span class="val" id="starterHydV">100%</span>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>② 配方克数表</h2>
+  <div class="bar" id="compBar" aria-hidden="true"></div>
+  <div class="legend" id="legend"></div>
+  <table>
+    <thead><tr><th>材料</th><th>烘焙百分比</th><th>用量</th></tr></thead>
+    <tbody id="recipeBody"></tbody>
+  </table>
+  <div class="balls" id="ballsViz"></div>
+</div>
+
+<div class="card">
+  <h2>③ 出炉倒推时刻表</h2>
+  <div class="row">
+    <label>想几点出炉</label>
+    <input id="bakeAt" type="time" value="08:00">
+    <label>发酵总时长</label>
+    <input id="bulk" class="slider" type="range" min="4" max="24" step="1" value="12" style="max-width:170px">
+    <span class="val" id="bulkV">12h</span>
+  </div>
+  <div id="schedule"></div>
+  <p class="tagline" id="schedNote"></p>
+</div>
+
+<div class="card actions">
+  <button class="btn primary" id="copyBtn">📋 复制配方便签</button>
+  <button class="btn" id="resetBtn">↺ 恢复默认（披萨 4×250g）</button>
+</div>
+
+<footer>
+  烘焙百分比：面粉 = 100%，其余材料按占面粉的百分比计；酸面团酵种按自身水合率拆回面粉与水。<br>
+  时刻表按家庭烤箱常规节奏估算，折叠次数与松弛时间可按手感微调。🥖 <a href="../">← daily-tools 全部工具</a>
+</footer>
+</main>
+<div id="toast" role="status"></div>
+
+<script>
+'use strict';
+/* ---------- 纯计算核心 ---------- */
+function clamp(v, lo, hi, fallback) {
+  const n = Number(v);
+  if (!isFinite(n)) return fallback;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/** 由 目标总重/水合率/盐/模式 算出各材料克数（烘焙百分比，面粉=100%） */
+function computeRecipe(p) {
+  const balls = Math.round(clamp(p.balls, 1, 24, 4));
+  const ballG = clamp(p.ballG, 30, 600, 250);
+  const hyd = clamp(p.hyd, 50, 90, 65) / 100;
+  const salt = clamp(p.salt, 0, 3, 2) / 100;
+  const total = balls * ballG;
+  const isSour = p.mode === 'sour';
+  // 酵母也占配方重量（面粉的 y%），进分母
+  const yeast = isSour ? 0 : clamp(p.yeast, 0.1, 2, 0.5) / 100;
+  const denom = 1 + hyd + salt + yeast;
+  const flour = total / denom;
+  const water = flour * hyd;
+  const saltG = flour * salt;
+
+  const r = {
+    balls, ballG, total, hydrationPct: hyd * 100, saltPct: salt * 100,
+    mode: isSour ? 'sour' : 'yeast',
+    flour, water, saltG, leavenG: 0, starterFlour: 0, starterWater: 0,
+    addedFlour: flour, addedWater: water, yeastG: flour * yeast, yeastPct: yeast * 100
+  };
+
+  if (isSour) {
+    const stPct = clamp(p.starterPct, 5, 40, 20) / 100;      // 酵种重量 = 面粉的 st%
+    const stHyd = clamp(p.starterHyd, 50, 100, 100) / 100;   // 酵种自身水合率
+    const starterG = flour * stPct;
+    const stFlour = starterG / (1 + stHyd);
+    const stWater = starterG - stFlour;
+    r.leavenG = starterG;
+    r.starterPctUsed = stPct * 100;
+    r.starterHydUsed = stHyd * 100;
+    r.starterFlour = stFlour;
+    r.starterWater = stWater;
+    r.addedFlour = flour - stFlour;
+    r.addedWater = water - stWater;
+  }
+  // 守恒校验：各分量之和 = 目标总重
+  const sum = r.flour + r.water + r.saltG + r.yeastG;
+  r.checkDelta = sum - r.total;
+  return r;
+}
+
+/** 由出炉时刻倒推时刻表（分钟链，从烘烤终点往回走） */
+function buildSchedule(bakeAtMin, mode, bulkHours) {
+  const bulk = clamp(bulkHours, 4, 24, 12) * 60;
+  const steps = []; // {start, dur, label, sub, key}
+  let t = bakeAtMin;
+  const push = (dur, label, sub, key) => { t -= dur; steps.push({ start: t, dur, label, sub: sub || '', key: !!key }); };
+  push(25, '烘烤', '上下火按自家烤箱脾气', true);
+  push(30, '烤箱预热', '石板/烤盘一并放进去');
+  if (mode === 'sour') {
+    push(Math.max(60, bulk - 165), '冷藏松弛（面团在冰箱）', '低温慢发酵，风味更好');
+    push(15, '整形入篮', '收口朝下，撒米粉防粘');
+    push(30, '预整形 · 静置', '盖布休息放松面筋');
+    push(Math.max(60, bulk - 150), '主发酵 · 折叠', '头 2 小时每 30 分钟折叠一次');
+    push(45, '混合 + 自解', '面粉和水先拌匀，静置 30 分钟再下盐和酵种');
+    push(360, '喂酵种', '等它长高 2 倍再开工（浮水测试）', true);
+  } else {
+    push(60, '二发 · 最终发酵', '手指按下慢回弹即到位');
+    push(15, '整形', '排气滚圆，入模或入盘');
+    push(120, '一发 · 主发酵', '头 1 小时中途折叠一次更有筋度');
+    push(15, '混合面团', '酵母先用温水化开');
+  }
+  steps.reverse(); // 变成时间正序
+  return steps;
+}
+
+function fmtClock(minOfDay) {
+  const m = ((Math.round(minOfDay) % 1440) + 1440) % 1440;
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+}
+function fmtDur(min) {
+  if (min < 60) return min + ' 分钟';
+  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  return h + ' 小时' + (m ? ' ' + m + ' 分' : '');
+}
+
+/* ---------- 渲染 ---------- */
+const $ = id => document.getElementById(id);
+const state = {
+  mode: 'yeast',
+  get balls() { return clamp($('balls').value, 1, 24, 4); },
+  get ballG() { return clamp($('ballg').value, 30, 600, 250); },
+  get hyd() { return clamp($('hyd').value, 50, 90, 65); },
+  get salt() { return clamp($('salt').value, 0, 3, 2); },
+  get yeast() { return clamp($('yeast').value, 0.1, 2, 0.5); },
+  get starterPct() { return clamp($('starter').value, 5, 40, 20); },
+  get starterHyd() { return clamp($('starterHyd').value, 50, 100, 100); },
+  get bulk() { return clamp($('bulk').value, 4, 24, 12); },
+  get bakeAt() {
+    const v = ($('bakeAt').value || '08:00').split(':');
+    const h = clamp(parseInt(v[0], 10) || 0, 0, 23);
+    const m = clamp(parseInt(v[1], 10) || 0, 0, 59);
+    return h * 60 + m;
+  }
+};
+
+const COL = { flour: '#d9b98a', water: '#5a9bd4', salt: '#c96f6f', leaven: '#b48ead', yeast: '#e8d174' };
+function render() {
+  const r = computeRecipe({
+    balls: $('balls').value, ballG: $('ballg').value, hyd: $('hyd').value, salt: $('salt').value,
+    mode: state.mode, yeast: $('yeast').value, starterPct: $('starter').value,
+    starterHyd: $('starterHyd').value
+  });
+
+  $('hydV').textContent = Math.round(r.hydrationPct) + '%';
+  $('saltV').textContent = r.saltPct.toFixed(1) + '%';
+  $('yeastV').textContent = r.yeastPct.toFixed(1) + '%';
+  $('starterV').textContent = Math.round(r.starterPctUsed || 20) + '%';
+  $('starterHydV').textContent = Math.round(r.starterHydUsed || 100) + '%';
+  $('bulkV').textContent = state.bulk + 'h';
+
+  // 水合率提示
+  const h = r.hydrationPct;
+  $('hydHint').textContent =
+    h <= 58 ? '贝果/碱水结级别的硬面团，整形很听话' :
+    h <= 68 ? '披萨、餐包、吐司的通用区间，好揉好整' :
+    h <= 76 ? '恰巴塔、佛卡夏：湿软开孔，建议刮板配合' :
+    '高水合进阶区：免揉 + 折叠法，粘手是正常的';
+
+  // 成分堆叠条（占面团总重比例）
+  const parts = [
+    { k: '面粉', g: r.flour, c: COL.flour },
+    { k: '水', g: r.water, c: COL.water },
+    { k: '盐', g: r.saltG, c: COL.salt }
+  ];
+  if (r.mode === 'sour') parts.push({ k: '酵种', g: r.leavenG, c: COL.leaven });
+  else parts.push({ k: '酵母', g: r.yeastG, c: COL.yeast });
+  $('compBar').innerHTML = parts.map(p => {
+    const w = Math.max(p.g / r.total * 100, 1.5);
+    const show = p.g / r.total > 0.06 ? p.k : '';
+    return '<div style="width:' + w + '%;background:' + p.c + '">' + show + '</div>';
+  }).join('');
+  $('legend').innerHTML = parts.map(p =>
+    '<span><i style="background:' + p.c + '"></i>' + p.k + ' ' + (p.g / r.total * 100).toFixed(1) + '%</span>').join('');
+
+  // 克数表
+  const g1 = x => x.toFixed(x < 10 ? 1 : 0);
+  let rows = '';
+  if (r.mode === 'sour') {
+    rows += tr(COL.leaven, '酵种（' + Math.round(r.starterPctUsed) + '% 水合 · ' + Math.round(r.starterHydUsed) + '%）', r.starterPctUsed * 2, r.leavenG);
+    rows += tr(COL.flour, '高筋面粉（另加）', 100 - (r.starterPctUsed / 100) * (100 / (1 + r.starterHydUsed / 100)), r.addedFlour);
+    rows += tr(COL.water, '水（另加）', '—', r.addedWater);
+  } else {
+    rows += tr(COL.flour, '高筋面粉', 100, r.flour);
+    rows += tr(COL.water, '水', r.hydrationPct, r.water);
+  }
+  rows += tr(COL.salt, '盐', r.saltPct, r.saltG);
+  if (r.mode === 'yeast') rows += tr(COL.yeast, '即发干酵母', r.yeastPct, r.yeastG);
+  rows += '<tr class="total"><td>面团总重</td><td class="pct">' + r.balls + ' 个 × ' + r.ballG + ' g</td><td><span class="g">' + Math.round(r.total) + ' g</span></td></tr>';
+  $('recipeBody').innerHTML = rows;
+
+  function tr(color, name, pct, grams) {
+    return '<tr><td><span class="sw" style="background:' + color + '"></span>' + name + '</td>' +
+      '<td class="pct">' + (pct === '—' ? '—' : pct.toFixed(1) + '%') + '</td>' +
+      '<td><span class="g">' + g1(grams) + '</span> <span class="pct">g</span></td></tr>';
+  }
+
+  // 面团球可视化
+  const show = Math.min(r.balls, 12);
+  let ballsHtml = '';
+  for (let i = 0; i < show; i++) ballsHtml += '<div class="ball">' + r.ballG + 'g</div>';
+  if (r.balls > 12) ballsHtml += '<span class="ballsmore">…共 ' + r.balls + ' 个</span>';
+  $('ballsViz').innerHTML = ballsHtml;
+
+  renderSchedule(r);
+}
+
+function renderSchedule(r) {
+  const steps = buildSchedule(state.bakeAt, state.mode, state.bulk);
+  const cross = steps[0].start < 0; // 跨过午夜
+  $('schedule').innerHTML = steps.map(s =>
+    '<div class="step' + (s.key ? ' key' : '') + '"><span class="t">' + fmtClock(s.start) + '</span>' +
+    '<span class="d">' + s.label + ' <span class="pct">· ' + fmtDur(s.dur) + '</span>' +
+    (s.sub ? '<small>' + s.sub + '</small>' : '') + '</span></div>').join('');
+  const start = steps[0];
+  $('schedNote').textContent = '从 ' + fmtClock(start.start) + ' 的「' + start.label + '」开始倒推，' +
+    (cross ? '需要跨夜（冷藏发酵帮你睡整觉）' : '全程 ' + fmtDur(state.bakeAt - start.start) + '，赶上 ' + fmtClock(state.bakeAt) + ' 出炉') + '。';
+}
+
+/* ---------- 事件 ---------- */
+function bindStep(inputId, dnId, upId, step) {
+  const inp = $(inputId);
+  $(dnId).addEventListener('click', () => { inp.value = clamp((parseFloat(inp.value) || 0) - step, parseFloat(inp.min), parseFloat(inp.max)); render(); });
+  $(upId).addEventListener('click', () => { inp.value = clamp((parseFloat(inp.value) || 0) + step, parseFloat(inp.min), parseFloat(inp.max)); render(); });
+  inp.addEventListener('input', render);
+  inp.addEventListener('blur', () => { inp.value = clamp(inp.value, parseFloat(inp.min), parseFloat(inp.max)); render(); });
+}
+bindStep('balls', 'ballsDn', 'ballsUp', 1);
+bindStep('ballg', 'ballgDn', 'ballgUp', 5);
+['hyd', 'salt', 'yeast', 'starter', 'starterHyd', 'bulk'].forEach(id => $(id).addEventListener('input', render));
+$('bakeAt').addEventListener('input', render);
+
+$('modeSeg').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  state.mode = b.dataset.m;
+  document.querySelectorAll('#modeSeg button').forEach(x => x.classList.toggle('on', x === b));
+  $('yeastRow').style.display = state.mode === 'yeast' ? '' : 'none';
+  $('sourRows').style.display = state.mode === 'sour' ? '' : 'none';
+  render();
+});
+
+$('resetBtn').addEventListener('click', () => {
+  $('balls').value = 4; $('ballg').value = 250; $('hyd').value = 65; $('salt').value = 2;
+  $('yeast').value = 0.5; $('starter').value = 20; $('starterHyd').value = 100; $('bulk').value = 12;
+  if (state.mode !== 'yeast') document.querySelector('#modeSeg button[data-m="yeast"]').click();
+  else render();
+});
+
+let toastTimer;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+$('copyBtn').addEventListener('click', () => {
+  const r = computeRecipe({
+    balls: $('balls').value, ballG: $('ballg').value, hyd: $('hyd').value, salt: $('salt').value,
+    mode: state.mode, yeast: $('yeast').value, starterPct: $('starter').value,
+    starterHyd: $('starterHyd').value
+  });
+  const g1 = x => x.toFixed(x < 10 ? 1 : 0);
+  const L = [];
+  L.push('🥖 DOUGHMATH 配方 — ' + r.balls + ' 个 × ' + r.ballG + 'g 面团');
+  L.push('水合率 ' + Math.round(r.hydrationPct) + '% · 盐 ' + r.saltPct.toFixed(1) + '% · ' + (r.mode === 'sour' ? '酸面团' : '即发酵母'));
+  L.push('');
+  if (r.mode === 'sour') {
+    L.push('酵种            ' + g1(r.leavenG) + ' g');
+    L.push('高筋面粉（另加）  ' + g1(r.addedFlour) + ' g');
+    L.push('水（另加）      ' + g1(r.addedWater) + ' g');
+    L.push('盐              ' + g1(r.saltG) + ' g');
+  } else {
+    L.push('高筋面粉        ' + g1(r.flour) + ' g');
+    L.push('水              ' + g1(r.water) + ' g');
+    L.push('盐              ' + g1(r.saltG) + ' g');
+    L.push('即发干酵母      ' + g1(r.yeastG) + ' g');
+  }
+  L.push('— 共 ' + Math.round(r.total) + ' g —');
+  L.push('');
+  const steps = buildSchedule(state.bakeAt, state.mode, state.bulk);
+  L.push('⏰ 时刻表（' + fmtClock(state.bakeAt) + ' 出炉）');
+  steps.forEach(s => L.push(fmtClock(s.start) + '  ' + s.label + '（' + fmtDur(s.dur) + '）'));
+  const text = L.join('\n');
+  const done = () => toast('已复制配方便签 ✓');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+  } else fallbackCopy(text, done);
+});
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  if (ok) done(); else toast('复制失败，请手动选择');
+  document.body.removeChild(ta);
+}
+
+/* 默认出炉时间 = 明天 08:00 语义由常量表达；time 控件本身只存时刻 */
+render();
+</script>
+</body>
+</html>
