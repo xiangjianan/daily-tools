@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NAILMAP · 挂画定位器 — 钉一次到位</title>
+<meta name="description" content="输入画框数量与尺寸，即刻生成墙面挂画立面图与每颗钉子的毫米级定位清单。画廊 145cm 视线中线标准，全程本地计算。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼️</text></svg>">
+<style>
+:root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--line:#21262d;--acc:#58a6ff;--warn:#d29922;--ok:#3fb950;--card:#161b22}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+padding:max(20px,env(safe-area-inset-top)) 14px max(40px,env(safe-area-inset-bottom))}
+main{max-width:760px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.5px}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.card h2{font-size:13px;color:var(--mut);font-weight:600;letter-spacing:1px;margin-bottom:12px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--bg);color:var(--mut);border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;min-height:36px}
+.chip.on{border-color:var(--acc);color:var(--acc)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(210px,100%),1fr));gap:12px}
+.fld{display:flex;flex-direction:column;gap:4px}
+.fld label{font-size:12.5px;color:var(--mut)}
+.fld .ln{display:flex;align-items:center;gap:10px}
+.fld input[type=range]{flex:1;accent-color:var(--acc);min-width:0}
+.fld input[type=number]{width:74px;background:var(--bg);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:6px 8px;font-size:14px}
+.val{font-size:12.5px;color:var(--acc);font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+.hint{font-size:12px;color:var(--mut)}
+.banner{display:none;margin:10px 0 0;padding:8px 12px;border-radius:8px;font-size:13px}
+.banner.show{display:block}
+.banner.warn{background:#2d2300;border:1px solid #5a4a12;color:var(--warn)}
+.banner.err{background:#2d1215;border:1px solid #6e2229;color:#f85149}
+svg{display:block;width:100%;height:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 8px;border-top:1px solid var(--line);white-space:nowrap}
+th{color:var(--mut);font-weight:600;border-top:none;font-size:12px}
+td.num{font-variant-numeric:tabular-nums}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.btn{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:8px;padding:9px 16px;font-size:13.5px;cursor:pointer;min-height:40px}
+.btn.acc{border-color:var(--acc);color:var(--acc)}
+.note{font-size:12.5px;color:var(--mut);line-height:1.7}
+.note b{color:var(--fg);font-weight:600}
+#toast{position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+background:#1f6feb;color:#fff;padding:9px 18px;border-radius:8px;font-size:13.5px;opacity:0;pointer-events:none;transition:.25s;z-index:9;max-width:88vw}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media print{
+ body{background:#fff;color:#000;padding:0}
+ .card{border:none;background:#fff;break-inside:avoid}
+ .card h2{color:#444}
+ #svgcard,#ctlcard,#toast,.btnrow{display:none}
+ a{color:#000}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>🖼️ NAILMAP · 挂画定位器</h1>
+<p class="sub">输入画框数量与尺寸，即刻生成墙面立面图与每颗钉子的定位清单——按画廊 145cm 视线中线标准，钉一次到位，墙上不留多余的孔。全程本地计算。</p>
+
+<div class="card" id="ctlcard">
+  <h2>布局 LAYOUT</h2>
+  <div class="chips" id="arrChips">
+    <button class="chip on" data-arr="row">一排</button>
+    <button class="chip" data-arr="grid">网格</button>
+    <button class="chip" data-act="sample">示例：三联横幅</button>
+    <button class="chip" data-act="reset">重置</button>
+  </div>
+  <div class="grid" style="margin-top:14px">
+    <div class="fld"><label>画框数量</label><div class="ln">
+      <input type="range" id="count" min="1" max="7" step="1" value="3"><input type="number" id="countN" min="1" max="7" value="3"><span class="val" id="countV">3 幅</span></div></div>
+    <div class="fld"><label>画框宽度（cm）</label><div class="ln">
+      <input type="range" id="fw" min="15" max="150" step="1" value="50"><input type="number" id="fwN" min="10" max="200" step="1" value="50"><span class="val" id="fwV">50cm</span></div></div>
+    <div class="fld"><label>画框高度（cm）</label><div class="ln">
+      <input type="range" id="fh" min="15" max="150" step="1" value="70"><input type="number" id="fhN" min="10" max="200" step="1" value="70"><span class="val" id="fhV">70cm</span></div></div>
+    <div class="fld"><label>画与画间距</label><div class="ln">
+      <input type="range" id="gap" min="2" max="30" step="1" value="6"><input type="number" id="gapN" min="0" max="60" step="1" value="6"><span class="val" id="gapV">6cm</span></div></div>
+    <div class="fld"><label>视线中线高度（画廊标准 145）</label><div class="ln">
+      <input type="range" id="ch" min="120" max="170" step="1" value="145"><input type="number" id="chN" min="80" max="220" step="1" value="145"><span class="val" id="chV">145cm</span></div></div>
+    <div class="fld"><label>挂钩离画框顶边（背面量）</label><div class="ln">
+      <input type="range" id="hook" min="0" max="60" step="0.5" value="17.5"><input type="number" id="hookN" min="0" max="120" step="0.5" value="17.5"><span class="val" id="hookV">17.5cm</span></div></div>
+    <div class="fld"><label>墙面可用宽度</label><div class="ln">
+      <input type="range" id="ww" min="100" max="600" step="5" value="300"><input type="number" id="wwN" min="60" max="1000" step="1" value="300"><span class="val" id="wwV">300cm</span></div></div>
+  </div>
+  <div class="banner warn" id="warnBox"></div>
+  <div class="banner err" id="errBox"></div>
+</div>
+
+<div class="card" id="svgcard">
+  <h2>墙面立面图 WALL ELEVATION（单位 cm）</h2>
+  <div id="wallSvg"></div>
+  <p class="hint" style="margin-top:10px">⊕ = 钉点。中线虚线即视线高度（站立平视），画组整体居中挂在其上。左侧人形为 170cm 参考比例尺。</p>
+</div>
+
+<div class="card" id="listcard">
+  <h2>钉点施工单 NAIL SHEET</h2>
+  <div style="overflow-x:auto"><table id="nailTable"></table></div>
+  <div class="btnrow">
+    <button class="btn acc" id="copyBtn">📋 复制施工单</button>
+    <button class="btn" id="printBtn">🖨️ 打印清单页</button>
+  </div>
+  <p class="note" style="margin-top:14px">
+    <b>换算规则：</b>钉点离地高度 = 中线高度 − 画框高÷2 + 挂钩离框顶距离。挂钩建议默认取框高 1/4（画越高钩越靠下）。
+    <b>诚实说明：</b>本工具按「单钩无松弛」模型计算；若你用横向钢丝挂画，钢丝受力下垂后画框位置会略低于钉点（一般 1–3cm），请以钢丝绷直时挂钩位置为准微调。
+    钉完后建议用手机水平仪复核画框横向水平。
+  </p>
+</div>
+
+</main>
+<div id="toast"></div>
+<script>
+"use strict";
+/*==CORE==*/
+/* ---- 纯函数核心：布局引擎（无 DOM 依赖） ---- */
+function clampN(v, lo, hi, fb){
+  v = parseFloat(v);
+  if (!isFinite(v)) return fb;
+  return Math.min(hi, Math.max(lo, v));
+}
+/* 计算 n 幅画的排布与钉点。
+ * 返回 {frames:[{i,top,left,cx,cy,nailH,nailX,row}], totalW, totalH, warn}
+ * 坐标全部为 cm，left/top 为画框左/上边缘离墙左缘/地面距离。 */
+function computeLayout(o){
+  var warn = [];
+  var n = Math.round(clampN(o.count, 1, 7, 3));
+  var fw = clampN(o.fw, 5, 300, 50);
+  var fh = clampN(o.fh, 5, 300, 70);
+  var gap = clampN(o.gap, 0, 100, 6);
+  var wallW = clampN(o.wallW, 20, 2000, 300);
+  var ch = clampN(o.centerH, 40, 300, 145);
+  var hook = clampN(o.hook, 0, 200, fh * 0.25);
+  var frames = [];
+  var totalW, totalH;
+  if (o.arr === 'grid'){
+    var cols = Math.ceil(Math.sqrt(n));
+    var rows = Math.ceil(n / cols);
+    totalW = cols * fw + (cols - 1) * gap;
+    totalH = rows * fh + (rows - 1) * gap;
+    for (var k = 0; k < n; k++){
+      var r = Math.floor(k / cols);
+      var inRow = Math.min(cols, n - r * cols);      // 该行实际列数（末行可能不满）
+      var rowW = inRow * fw + (inRow - 1) * gap;
+      var c = k % cols;
+      var left = (wallW - rowW) / 2 + c * (fw + gap);
+      var top = ch - totalH / 2 + r * (fh + gap);
+      frames.push({ i:k + 1, top:top, left:left, cx:left + fw / 2, cy:top + fh / 2,
+                    nailH: top + hook, nailX:left + fw / 2, row:r });
+    }
+  } else {
+    totalW = n * fw + (n - 1) * gap;
+    totalH = fh;
+    for (var j = 0; j < n; j++){
+      var lf = (wallW - totalW) / 2 + j * (fw + gap);
+      var tp = ch - fh / 2;
+      frames.push({ i:j + 1, top:tp, left:lf, cx:lf + fw / 2, cy:tp + fh / 2,
+                    nailH: tp + hook, nailX: lf + fw / 2, row:0 });
+    }
+  }
+  if (totalW > wallW) warn.push('画组总宽 ' + totalW.toFixed(1) + 'cm 已超出墙宽 ' + wallW + 'cm——两边会顶到墙或出界，建议减少画数、缩小画框或加宽墙。');
+  if (frames[0].top < 0) warn.push('画框上缘低于地面（挂点高度或画高设置过大），请调高中线或缩小画。');
+  if (hook > fh * 0.5) warn.push('挂钩离框顶超过画高一半，钉点会落在画心之下，画容易后仰，一般取框高 1/4~1/3。');
+  return { frames:frames, totalW:totalW, totalH:totalH, n:n, fw:fw, fh:fh, gap:gap, wallW:wallW, ch:ch, hook:hook, warn:warn };
+}
+function fmt1(x){ return (Math.round(x * 10) / 10).toFixed(1); }
+/* 施工单文本（复制用） */
+function buildChecklist(L){
+  var lines = [];
+  lines.push('🖼️ NAILMAP 挂画钉点施工单');
+  lines.push('墙宽 ' + fmt1(L.wallW) + 'cm ｜ ' + L.fw.toFixed(0) + '×' + L.fh.toFixed(0) + 'cm 画框 ×' + L.n + ' ｜ 间距 ' + fmt1(L.gap) + 'cm ｜ 视线中线 ' + fmt1(L.ch) + 'cm ｜ 挂钩离框顶 ' + fmt1(L.hook) + 'cm');
+  lines.push('');
+  var prevRight = null;
+  for (var i = 0; i < L.frames.length; i++){
+    var f = L.frames[i];
+    var rel = prevRight === null ? ('画组左缘距墙 ' + fmt1(f.left) + 'cm')
+                                 : ('距左邻画右缘 ' + fmt1(f.left - prevRight) + 'cm');
+    lines.push((i + 1) + ') N' + f.i + '：钉点离地 ' + fmt1(f.nailH) + 'cm，距墙左缘 ' + fmt1(f.nailX) + 'cm（' + rel + '）');
+    prevRight = f.left + L.fw;
+  }
+  lines.push('');
+  lines.push('提示：先钉 N1，水平仪校平后再钉其余；钢丝挂画请按绷直位置微调。');
+  return lines.join('\n');
+}
+/*==ENDCORE==*/
+
+/* ---- state & dom ---- */
+var state = { arr:'row', count:3, fw:50, fh:70, gap:6, ch:145, hook:17.5, ww:300, hookDirty:false };
+var $ = function(id){ return document.getElementById(id); };
+var PAIRS = [['count','countN','countV',1,7,' 幅'],['fw','fwN','fwV',10,200,'cm'],['fh','fhN','fhV',10,200,'cm'],
+             ['gap','gapN','gapV',0,60,'cm'],['ch','chN','chV',80,220,'cm'],['hook','hookN','hookV',0,120,'cm'],
+             ['ww','wwN','wwV',60,1000,'cm']];
+
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._tm);
+  toast._tm = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+function showBanner(id, msg){
+  var b = $(id);
+  if (!msg){ b.classList.remove('show'); b.textContent = ''; return; }
+  b.textContent = msg;
+  b.classList.add('show');
+}
+
+/* ---- SVG 渲染 ---- */
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function renderWall(L){
+  var viewW = Math.max(L.wallW, L.totalW) + 40;           // 左右各留 20cm
+  var top = Math.max(L.ch + L.totalH / 2 + 30, L.ch + 30, 200);
+  var viewH = top + 12;
+  var y = function(hcm){ return viewH - hcm; };           // 地面 = viewH
+  var s = [];
+  s.push('<svg viewBox="0 0 ' + viewW.toFixed(1) + ' ' + viewH.toFixed(1) + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="墙面挂画立面图">');
+  s.push('<rect x="0" y="0" width="' + viewW + '" height="' + viewH + '" fill="#0d1117"/>');
+  // 墙体
+  s.push('<rect x="20" y="0" width="' + L.wallW + '" height="' + (viewH) + '" fill="#10161f" stroke="#21262d" stroke-width="0.6"/>');
+  // 地面
+  s.push('<line x1="0" y1="' + viewH + '" x2="' + viewW + '" y2="' + viewH + '" stroke="#8b949e" stroke-width="1.2"/>');
+  s.push('<text x="6" y="' + (viewH + 8) + '" fill="#8b949e" font-size="7">地面 0cm</text>');
+  // 视线中线
+  s.push('<line x1="12" y1="' + y(L.ch).toFixed(1) + '" x2="' + (viewW - 12).toFixed(1) + '" y2="' + y(L.ch).toFixed(1) + '" stroke="#d29922" stroke-width="0.6" stroke-dasharray="4 3"/>');
+  s.push('<text x="' + (viewW - 46) + '" y="' + (y(L.ch) - 3).toFixed(1) + '" fill="#d29922" font-size="7.5">中线 ' + fmt1(L.ch) + '</text>');
+  // 人形比例尺（170cm）
+  var px = 32, headR = 7, hipY = y(95), headY = y(170) - headR, shoulderY = y(152);
+  s.push('<g stroke="#58a6ff" fill="none" stroke-width="1.6" stroke-linecap="round" opacity="0.9">');
+  s.push('<circle cx="' + px + '" cy="' + (headY + headR) + '" r="' + headR + '"/>');
+  s.push('<line x1="' + px + '" y1="' + (headY + headR * 2) + '" x2="' + px + '" y2="' + hipY + '"/>');      // 躯干
+  s.push('<line x1="' + px + '" y1="' + shoulderY + '" x2="' + (px - 9) + '" y2="' + y(118) + '"/>');         // 左臂
+  s.push('<line x1="' + px + '" y1="' + shoulderY + '" x2="' + (px + 9) + '" y2="' + y(118) + '"/>');         // 右臂
+  s.push('<line x1="' + px + '" y1="' + hipY + '" x2="' + (px - 7) + '" y2="' + viewH + '"/>');               // 左腿
+  s.push('<line x1="' + px + '" y1="' + hipY + '" x2="' + (px + 7) + '" y2="' + viewH + '"/>');               // 右腿
+  s.push('</g>');
+  s.push('<text x="' + (px + 10) + '" y="' + (y(170) + 2) + '" fill="#58a6ff" font-size="6.5">170cm</text>');
+  // 画框 + 钉点
+  for (var i = 0; i < L.frames.length; i++){
+    var f = L.frames[i];
+    var x1 = 20 + f.left, yTop = y(f.top + L.fh);
+    var inWall = f.left >= 0 && f.left + L.fw <= L.wallW;
+    s.push('<g>');
+    s.push('<rect x="' + x1.toFixed(1) + '" y="' + yTop.toFixed(1) + '" width="' + L.fw + '" height="' + L.fh + '" fill="' + (inWall ? '#1c2531' : '#2d1215') + '" stroke="' + (inWall ? '#58a6ff' : '#f85149') + '" stroke-width="0.9"/>');
+    s.push('<line x1="' + x1.toFixed(1) + '" y1="' + y(f.top + L.fh * 0.22).toFixed(1) + '" x2="' + (x1 + L.fw).toFixed(1) + '" y2="' + y(f.top + L.fh * 0.22).toFixed(1) + '" stroke="#30363d" stroke-width="0.5"/>'); // 画面装饰线
+    s.push('<line x1="' + x1.toFixed(1) + '" y1="' + y(f.top + L.fh * 0.62).toFixed(1) + '" x2="' + (x1 + L.fw * 0.7).toFixed(1) + '" y2="' + y(f.top + L.fh * 0.62).toFixed(1) + '" stroke="#30363d" stroke-width="0.5"/>');
+    // 钉点 crosshair
+    var nx = 20 + f.nailX, ny = y(f.nailH);
+    s.push('<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="2.6" fill="none" stroke="#3fb950" stroke-width="1.2"/>');
+    s.push('<line x1="' + (nx - 4.6).toFixed(1) + '" y1="' + ny.toFixed(1) + '" x2="' + (nx + 4.6).toFixed(1) + '" y2="' + ny.toFixed(1) + '" stroke="#3fb950" stroke-width="1"/>');
+    s.push('<line x1="' + nx.toFixed(1) + '" y1="' + (ny - 4.6).toFixed(1) + '" x2="' + nx.toFixed(1) + '" y2="' + (ny + 4.6).toFixed(1) + '" stroke="#3fb950" stroke-width="1"/>');
+    s.push('<text x="' + (nx + 6).toFixed(1) + '" y="' + (ny - 5).toFixed(1) + '" fill="#3fb950" font-size="7">N' + f.i + '</text>');
+    s.push('</g>');
+  }
+  // 两端留缝标注（只标首尾，避免叠字）
+  var f0 = L.frames[0], fN = L.frames[L.frames.length - 1];
+  s.push('<text x="' + (20 + f0.left / 2).toFixed(1) + '" y="' + (y(L.ch + L.totalH / 2 + 8)).toFixed(1) + '" fill="#8b949e" font-size="6.5" text-anchor="middle">' + fmt1(f0.left) + '</text>');
+  var rightGap = L.wallW - (fN.left + L.fw);
+  if (rightGap > 0.05) s.push('<text x="' + (20 + fN.left + L.fw + rightGap / 2).toFixed(1) + '" y="' + (y(L.ch + L.totalH / 2 + 8)).toFixed(1) + '" fill="#8b949e" font-size="6.5" text-anchor="middle">' + fmt1(rightGap) + '</text>');
+  s.push('</svg>');
+  return s.join('');
+}
+
+/* ---- 表格渲染 ---- */
+function renderTable(L){
+  var rows = ['<tr><th>#</th><th>钉点离地</th><th>距墙左缘</th><th>间距参考</th><th>画框位置（左缘离墙）</th></tr>'];
+  var prevRight = null;
+  for (var i = 0; i < L.frames.length; i++){
+    var f = L.frames[i];
+    var rel = prevRight === null ? '—' : fmt1(f.left - prevRight) + 'cm';
+    rows.push('<tr><td>N' + f.i + '</td><td class="num">' + fmt1(f.nailH) + 'cm</td><td class="num">' + fmt1(f.nailX) + 'cm</td><td class="num">' + rel + '</td><td class="num">' + fmt1(f.left) + 'cm</td></tr>');
+    prevRight = f.left + L.fw;
+  }
+  $('nailTable').innerHTML = rows.join('');
+}
+
+/* ---- 主渲染 ---- */
+var lastLayout = null;
+function render(){
+  var L = computeLayout({ arr:state.arr, count:state.count, fw:state.fw, fh:state.fh, gap:state.gap,
+                          centerH:state.ch, hook:state.hook, wallW:state.ww });
+  lastLayout = L;
+  $('wallSvg').innerHTML = renderWall(L);
+  renderTable(L);
+  showBanner('warnBox', L.warn[0] || '');
+  showBanner('errBox', '');
+}
+
+/* ---- 控件绑定 ---- */
+function syncPair(key){
+  for (var i = 0; i < PAIRS.length; i++){
+    var p = PAIRS[i];
+    if (p[0] !== key) continue;
+    var rng = $(p[0]), num = $(p[1]), val = $(p[2]);
+    var v = parseFloat(rng.value);
+    rng.value = v; num.value = v;
+    val.textContent = (p[0] === 'count' ? v : v) + p[5];
+    return v;
+  }
+  return null;
+}
+function onInput(key, rawVal, fromNumber){
+  if (key === 'hook') state.hookDirty = true;
+  if (key === 'fh' && !state.hookDirty){
+    var auto = Math.round(parseFloat(rawVal) * 0.25 * 2) / 2;
+    state.hook = auto;
+    $('hook').value = auto; $('hookN').value = auto; $('hookV').textContent = auto + 'cm';
+  }
+  if (key === 'count') state.count = parseInt(rawVal, 10) || 1;
+  else state[key] = parseFloat(rawVal) || 0;
+  render();
+}
+PAIRS.forEach(function(p){
+  $(p[0]).addEventListener('input', function(){ syncPair(p[0]); onInput(p[0], this.value); });
+  $(p[1]).addEventListener('input', function(){
+    var raw = this.value;
+    if (raw === '' || !isFinite(parseFloat(raw))){ showBanner('errBox', '请输入数字（' + $(p[0]).min + '–' + $(p[0]).max + ' 之间）'); return; }
+    var v = clampN(raw, parseFloat($(p[0]).min), parseFloat($(p[0]).max), parseFloat($(p[0]).value));
+    if (String(v) !== String(parseFloat(raw)) && v !== parseFloat(raw)){
+      showBanner('errBox', '数值已收进范围 ' + $(p[0]).min + '–' + $(p[0]).max);
+    } else showBanner('errBox', '');
+    $(p[0]).value = v;
+    onInput(p[0], v);
+    var pe = PAIRS.filter(function(q){ return q[0] === p[0]; })[0];
+    $(pe[2]).textContent = v + pe[5];
+  });
+});
+$('arrChips').addEventListener('click', function(e){
+  var t = e.target.closest('button');
+  if (!t) return;
+  if (t.dataset.act === 'sample'){
+    Object.assign(state, { arr:'row', count:3, fw:60, fh:80, gap:8, ch:145, ww:320 });
+    state.hook = 20; state.hookDirty = false;
+    setAllInputs(); markArr(); render();
+    toast('已载入示例：三联横幅 60×80'); return;
+  }
+  if (t.dataset.act === 'reset'){
+    Object.assign(state, { arr:'row', count:3, fw:50, fh:70, gap:6, ch:145, hook:17.5, ww:300, hookDirty:false });
+    setAllInputs(); markArr(); render();
+    toast('已重置'); return;
+  }
+  if (t.dataset.arr){
+    state.arr = t.dataset.arr;
+    markArr(); render();
+  }
+});
+function markArr(){
+  document.querySelectorAll('#arrChips [data-arr]').forEach(function(b){
+    b.classList.toggle('on', b.dataset.arr === state.arr);
+  });
+}
+function setAllInputs(){
+  PAIRS.forEach(function(p){
+    var v = state[p[0]];
+    $(p[0]).value = v; $(p[1]).value = v;
+    $(p[2]).textContent = v + p[5];
+  });
+}
+
+/* ---- 复制 / 打印 ---- */
+$('copyBtn').addEventListener('click', function(){
+  if (!lastLayout) return;
+  var text = buildChecklist(lastLayout);
+  function fallback(){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    toast(ok ? '施工单已复制 ✓' : '复制失败——请手动长按选择文本');
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ toast('施工单已复制 ✓'); }, fallback);
+  } else fallback();
+});
+$('printBtn').addEventListener('click', function(){ window.print(); });
+
+render();
+</script>
+</body>
+</html>
