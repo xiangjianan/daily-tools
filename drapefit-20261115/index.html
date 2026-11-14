@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DRAPEFIT · 窗帘裁布计算器</title>
+<meta name="description" content="输入窗宽帘长与褶皱倍率，即刻算出用布米数、每幅裁剪尺寸、打孔数与采购清单——布卷排料图可视化，全程本地计算，数据零上传。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪟</text></svg>">
+<style>
+:root{
+  --bg:#0e1116;--panel:#161b22;--panel2:#1b2230;--fg:#e6edf3;--mut:#8b949e;
+  --line:#242c38;--acc:#6cb2ff;--acc2:#8ee0b0;--warn:#ffb454;--bad:#ff7a7a;
+  --fabric:#7fb8ff;--waste:#2a3342;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  padding:max(20px,env(safe-area-inset-top)) 14px max(36px,env(safe-area-inset-bottom))}
+main{max-width:720px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.4px}
+h1 .zh{font-weight:400;color:var(--mut);font-size:15px;margin-left:8px}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 16px 14px;margin-bottom:14px}
+.card h2{font-size:13px;color:var(--mut);font-weight:600;letter-spacing:1px;margin-bottom:12px;text-transform:uppercase}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+@media(max-width:560px){.grid{grid-template-columns:1fr}}
+.field label{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--mut);margin-bottom:4px}
+.field label b{color:var(--fg);font-size:14px;font-variant-numeric:tabular-nums}
+input[type=number]{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  color:var(--fg);font:inherit;font-size:16px;padding:8px 10px;outline:none}
+input[type=number]:focus{border-color:var(--acc)}
+.rowline{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--panel2);color:var(--mut);border-radius:999px;
+  padding:4px 12px;font-size:13px;cursor:pointer;user-select:none;-webkit-user-select:none}
+.chip.on{color:#0e1116;background:var(--acc);border-color:var(--acc);font-weight:600}
+input[type=range]{width:100%;accent-color:var(--acc);height:30px}
+.slider label{display:flex;justify-content:space-between;font-size:13px;color:var(--mut);margin-bottom:2px}
+.slider label b{color:var(--acc);font-variant-numeric:tabular-nums}
+.result{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap}
+.big{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 16px;min-width:150px;flex:1}
+.big .n{font-size:32px;font-weight:700;color:var(--acc2);font-variant-numeric:tabular-nums;line-height:1.2}
+.big .n small{font-size:14px;color:var(--mut);font-weight:400;margin-left:2px}
+.big .t{font-size:12px;color:var(--mut);margin-top:2px}
+.big.warnv .n{color:var(--warn)}
+.stats{font-size:13px;color:var(--mut);line-height:1.9;flex:1;min-width:220px}
+.stats b{color:var(--fg);font-variant-numeric:tabular-nums}
+svg{display:block;width:100%;height:auto;background:var(--panel2);border-radius:10px;border:1px solid var(--line)}
+.warnings{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.warnline{font-size:13px;color:var(--warn);background:#2a2313;border:1px solid #4a3a15;border-radius:8px;padding:7px 10px}
+.warnline.bad{color:var(--bad);background:#2a1414;border-color:#4a1a1a}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+button{background:var(--acc);color:#0e1116;border:none;border-radius:9px;padding:10px 18px;
+  font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:var(--panel2);color:var(--fg);border:1px solid var(--line)}
+button:active{transform:translateY(1px)}
+footer{color:var(--mut);font-size:12.5px;margin-top:18px}
+footer a{color:var(--acc);text-decoration:none}
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);opacity:0;
+  background:#30363d;color:var(--fg);border:1px solid var(--line);border-radius:9px;padding:9px 16px;
+  font-size:14px;pointer-events:none;transition:all .25s;z-index:9}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.note{font-size:12.5px;color:var(--mut);margin-top:10px}
+@media print{
+  body{background:#fff;color:#111;padding:0}
+  .card{border-color:#ccc;background:#fff;break-inside:avoid}
+  svg{background:#fff;border-color:#ccc}
+  .actions,#toast,.slider input{display:none}
+  .big .n,.stats b{color:#111}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>DRAPEFIT<span class="zh">窗帘裁布计算器</span></h1>
+<p class="sub">窗宽帘长 × 褶皱倍率 × 布料门幅 → 用布米数、每幅裁剪尺寸、打孔配件与采购清单。布卷排料所见即所得，全部本地计算，数据零上传。</p>
+
+<div class="card">
+  <h2>① 量窗</h2>
+  <div class="grid">
+    <div class="field"><label>窗宽（轨道覆盖宽度）<b><span id="vW">150</span> cm</b></label>
+      <input type="number" id="W" value="150" min="30" max="600" inputmode="decimal"></div>
+    <div class="field"><label>帘长（完成高度）<b><span id="vH">250</span> cm</b></label>
+      <input type="number" id="H" value="250" min="60" max="330" inputmode="decimal"></div>
+  </div>
+  <div class="rowline chips" id="presets">
+    <span style="font-size:13px;color:var(--mut)">预设：</span>
+    <button class="chip" data-drop="250">落地帘 250</button>
+    <button class="chip" data-drop="155">半帘 窗上15 155</button>
+    <button class="chip" data-drop="110">飘窗/柜帘 110</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>② 定风格</h2>
+  <div class="rowline chips" id="styleChips" style="margin-top:0">
+    <button class="chip on" data-style="grommet">打孔帘（韩折）</button>
+    <button class="chip" data-style="hook">四爪钩</button>
+    <button class="chip" data-style="pocket">穿杆/穿管</button>
+  </div>
+  <div class="rowline chips" id="openChips">
+    <button class="chip on" data-panels="2">对开（左右两片）</button>
+    <button class="chip" data-panels="1">单开（整片）</button>
+  </div>
+  <div class="slider" style="margin-top:14px">
+    <label>褶皱倍率 <b id="vFull">2.0×</b>（1.6 简·2.0 标准·2.5 酒店）</label>
+    <input type="range" id="full" min="1.6" max="2.5" step="0.1" value="2">
+  </div>
+  <div class="rowline chips" id="fabChips">
+    <span style="font-size:13px;color:var(--mut)">布料门幅：</span>
+    <button class="chip on" data-fw="150">150 常规</button>
+    <button class="chip" data-fw="280">280 高宽幅</button>
+    <button class="chip" data-fw="custom">自定义</button>
+    <input type="number" id="FW" value="150" min="80" max="320" style="width:96px" inputmode="decimal">
+  </div>
+  <div class="grid" style="margin-top:12px">
+    <div class="field"><label>底边折边 <b><span id="vHem">10</span> cm</b></label>
+      <input type="number" id="hem" value="10" min="0" max="40" inputmode="decimal"></div>
+    <div class="field"><label>布单价（选填，元/米）</label>
+      <input type="number" id="price" value="" min="0" step="0.5" placeholder="不填则不算价" inputmode="decimal"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>③ 结果</h2>
+  <div class="result">
+    <div class="big" id="bigBox"><div class="n"><span id="totalM">--</span><small>m</small></div><div class="t">用布合计（含折边余量）</div></div>
+    <div class="stats" id="stats"></div>
+  </div>
+  <div class="warnings" id="warns"></div>
+  <p class="note" id="styleNote"></p>
+</div>
+
+<div class="card">
+  <h2>④ 立面示意</h2>
+  <svg id="svgElev" viewBox="0 0 640 400" role="img" aria-label="窗帘立面示意图"></svg>
+</div>
+
+<div class="card">
+  <h2>⑤ 布卷排料图</h2>
+  <svg id="svgRoll" viewBox="0 0 640 400" role="img" aria-label="布卷裁切排料图"></svg>
+  <p class="note" id="rollNote"></p>
+</div>
+
+<div class="card">
+  <h2>⑥ 采购清单</h2>
+  <div class="actions">
+    <button id="copyBtn">📋 复制采购清单</button>
+    <button id="printBtn" class="ghost">🖨️ 打印本页</button>
+  </div>
+  <p class="note">建议多买 5–10% 应对缩水与裁剪误差；清单含杆长、幅数、每幅裁剪尺寸与配件数量，可直接发给裁缝或客服。</p>
+</div>
+
+<footer>DRAPEFIT · 每日创意小工具 #64 · <a href="../index.html">目录</a> · 数据全程本地计算，零上传 · License: MIT</footer>
+</main>
+<div id="toast"></div>
+
+<script>
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+
+/* ---------- 状态 ---------- */
+var state = {
+  W: 150, H: 250, full: 2.0, FW: 150, hem: 10, price: null,
+  panels: 2, style: 'grommet', fwCustom: false
+};
+var STYLE_META = {
+  grommet: { name:'打孔帘（韩折）', top: 10, note:'打孔款：顶部翻边 10cm 穿入孔位，孔数为奇数、间距 14–18cm 时的褶最挺括。' },
+  hook:    { name:'四爪钩',        top: 10, note:'四爪钩款：钩子间隔约 12cm，抓褶深度靠钩位调节，倍率 2.0 起步更立体。' },
+  pocket:  { name:'穿杆/穿管',     top: 15, note:'穿杆款：顶部翻边 15cm 走线，杆径 ≤3cm 才穿得进；褶皱由穿杆自然形成，倍率建议 ≥2.0。' }
+};
+
+/* ---------- 输入绑定（数字框 ↔ 联动） ---------- */
+function syncPair(inputId, labelId, key, min, max, isInt){
+  var el = $(inputId);
+  el.addEventListener('input', function(){
+    var v = parseFloat(el.value);
+    if (isNaN(v)) { return; } // 输入中，先不回写
+    v = Math.min(max, Math.max(min, v));
+    if (isInt) v = Math.round(v);
+    state[key] = v;
+    $(labelId).textContent = v;
+    render();
+  });
+  el.addEventListener('blur', function(){
+    var v = parseFloat(el.value);
+    if (isNaN(v)) { v = state[key]; el.value = v; } // 非法回退
+    else { v = Math.min(max, Math.max(min, v)); if (isInt) v = Math.round(v); state[key] = v; el.value = v; }
+    $(labelId).textContent = v;
+    render();
+  });
+}
+syncPair('W','vW','W',30,600,true);
+syncPair('H','vH','H',60,330,true);
+syncPair('hem','vHem','hem',0,40,true);
+
+$('full').addEventListener('input', function(){
+  state.full = parseFloat(this.value);
+  $('vFull').textContent = state.full.toFixed(1) + '×';
+  render();
+});
+$('price').addEventListener('input', function(){
+  var v = parseFloat(this.value);
+  state.price = (isNaN(v) || v < 0) ? null : v;
+  render();
+});
+$('FW').addEventListener('input', function(){
+  var v = parseFloat(this.value);
+  if (isNaN(v)) return;
+  state.FW = Math.min(320, Math.max(80, Math.round(v)));
+  setChip('fabChips', 'custom');
+  render();
+});
+
+function setChip(group, attr, value){
+  var chips = $(group).querySelectorAll('.chip');
+  for (var i=0;i<chips.length;i++){
+    chips[i].classList.toggle('on', chips[i].getAttribute('data-'+attr) === String(value));
+  }
+}
+$('presets').addEventListener('click', function(e){
+  var c = e.target.closest('.chip'); if(!c) return;
+  var d = parseInt(c.getAttribute('data-drop'),10);
+  state.H = d; $('H').value = d; $('vH').textContent = d;
+  setChip('presets','drop',d); render();
+});
+$('styleChips').addEventListener('click', function(e){
+  var c = e.target.closest('.chip'); if(!c) return;
+  state.style = c.getAttribute('data-style');
+  setChip('styleChips','style',state.style); render();
+});
+$('openChips').addEventListener('click', function(e){
+  var c = e.target.closest('.chip'); if(!c) return;
+  state.panels = parseInt(c.getAttribute('data-panels'),10);
+  setChip('openChips','panels',state.panels); render();
+});
+$('fabChips').addEventListener('click', function(e){
+  var c = e.target.closest('.chip'); if(!c) return;
+  var v = c.getAttribute('data-fw');
+  if (v === 'custom'){
+    state.fwCustom = true; $('FW').focus(); return;
+  }
+  state.fwCustom = false; state.FW = parseInt(v,10); $('FW').value = v;
+  setChip('fabChips','fw',v); render();
+});
+
+/* ---------- 核心计算 ---------- */
+function calc(){
+  var meta = STYLE_META[state.style];
+  var rodLen = state.W + 2*20;                     // 杆比窗宽每侧外延 20cm
+  var finWPanel = rodLen * state.full / state.panels;   // 每片完成宽度
+  var widths = Math.max(1, Math.ceil(finWPanel / state.FW - 0.02)); // 每片用料幅数
+  var cutLen = state.H + meta.top + state.hem;     // 每幅裁长
+  var totalCm = state.panels * widths * cutLen;
+  var totalM = Math.ceil(totalCm / 10) / 10;       // 进位到 0.1m
+  var res = {
+    rodLen: rodLen, finWPanel: finWPanel, widths: widths,
+    cutLen: cutLen, totalM: totalM, joins: (widths>1 ? widths-1 : 0) * state.panels,
+    hooks: 0, grommets: 0, rings: 0, spacing: 0, cost: null, warns: []
+  };
+  if (state.style === 'grommet'){
+    var n = Math.round(finWPanel / 16);
+    if (n % 2 === 0) n += 1;
+    n = Math.min(25, Math.max(7, n));
+    res.grommets = n; res.rings = n * state.panels;
+    res.spacing = finWPanel / (n - 1);
+    if (res.spacing > 20) res.warns.push({t:'孔距 '+res.spacing.toFixed(0)+'cm 偏大，褶皱会偏平——可提高褶皱倍率或改小孔距。', bad:false});
+  } else if (state.style === 'hook'){
+    res.hooks = Math.round(finWPanel / 12) + 1;
+    res.rings = 0;
+  }
+  if (widths > 1) res.warns.push({t:'每片需 '+widths+' 幅拼接（共 '+res.joins+' 道竖拼缝），下单时让卖家按同一匹剪料，避免色差。', bad:false});
+  if (state.FW < 150 && widths > 2) res.warns.push({t:'门幅偏窄导致拼缝多，若做落地帘建议换 280cm 高宽幅，可省一半拼缝。', bad:false});
+  if (state.H > 280 && state.style === 'pocket') res.warns.push({t:'帘长超过 280cm 的穿杆款，建议中部加一道管托，防止杆身弯。', bad:false});
+  if (totalM > 30) res.warns.push({t:'用布超过 30m，确认是整面墙窗帘后再下单。', bad:true});
+  if (state.full < 1.8 && state.style === 'grommet') res.warns.push({t:'打孔帘倍率低于 1.8 时孔位撑不满，收拢后偏薄，建议 ≥2.0。', bad:false});
+  if (state.price != null) res.cost = Math.round(totalM * state.price);
+  return res;
+}
+
+/* ---------- 渲染：结果与警告 ---------- */
+function esc(s){ return String(s).replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+
+function renderStats(r){
+  var html = '杆长建议 <b>'+r.rodLen+' cm</b>（窗宽 '+state.W+' + 每侧外延 20）<br>'
+    + '共 <b>'+state.panels+'</b> 片 × 每片 <b>'+r.widths+'</b> 幅，每幅裁剪 <b>'+state.FW+' × '+r.cutLen+' cm</b><br>'
+    + '每片完成宽 <b>'+r.finWPanel.toFixed(1)+' cm</b>（杆长 × '+state.full.toFixed(1)+' 倍率 ÷ '+state.panels+'）';
+  if (state.style === 'grommet') html += '<br>打孔 <b>'+r.grommets+'</b> 孔/片 × '+state.panels+' 片 = 配环 <b>'+r.rings+'</b> 个，孔距 '+r.spacing.toFixed(1)+' cm';
+  if (state.style === 'hook')    html += '<br>四爪钩 <b>'+r.hooks+'</b> 个/片 × '+state.panels+' 片 = <b>'+(r.hooks*state.panels)+'</b> 个';
+  if (r.cost != null) html += '<br>参考总价 ≈ <b>¥'+r.cost+'</b>（'+state.price+' 元/m × '+r.totalM+' m）';
+  $('stats').innerHTML = html;
+  $('bigBox').classList.toggle('warnv', r.warns.some(function(w){return w.bad;}));
+  var whtml = '';
+  for (var i=0;i<r.warns.length;i++){
+    whtml += '<div class="warnline'+(r.warns[i].bad?' bad':'')+'">'+esc(r.warns[i].t)+'</div>';
+  }
+  $('warns').innerHTML = whtml;
+  $('styleNote').textContent = STYLE_META[state.style].note;
+}
+
+/* ---------- SVG 1：立面示意 ---------- */
+function renderElev(r){
+  // 比例尺：画面高 340px 代表 state.H + 60cm
+  var svg = $('svgElev');
+  var scale = 320 / (state.H + 40);
+  var wallW = 560, ox = 40, oy = 30;
+  var rodY = oy + 24;
+  var floorY = oy + 24 + state.H * scale;
+  var rodHalf = (r.rodLen/2) * (wallW / (r.rodLen + 60)); // 帘宽映射
+  var s = '';
+  s += '<rect x="0" y="0" width="640" height="400" fill="none"/>';
+  // 墙面底线与地面
+  s += '<line x1="'+ox+'" y1="'+floorY+'" x2="'+(ox+wallW)+'" y2="'+floorY+'" stroke="#3d4656" stroke-width="2"/>';
+  s += '<text x="'+(ox+wallW)+'" y="'+(floorY+18)+'" fill="#8b949e" font-size="12" text-anchor="end">地面</text>';
+  // 窗（示意，位于帘后）
+  var winW = Math.min(state.W * (wallW/(r.rodLen+60)), wallW-120);
+  var winH = Math.min(state.H * 0.7, floorY - rodY - 40);
+  var wx = 320 - winW/2, wy = rodY + 26;
+  s += '<rect x="'+wx+'" y="'+wy+'" width="'+winW+'" height="'+winH+'" fill="#141a24" stroke="#3d4656" stroke-width="2" rx="3"/>';
+  s += '<line x1="'+(wx+winW/2)+'" y1="'+wy+'" x2="'+(wx+winW/2)+'" y2="'+(wy+winH)+'" stroke="#242c38" stroke-width="1.5"/>';
+  s += '<line x1="'+wx+'" y1="'+(wy+winH/2)+'" x2="'+(wx+winW)+'" y2="'+(wy+winH/2)+'" stroke="#242c38" stroke-width="1.5"/>';
+  s += '<text x="'+(wx+winW/2)+'" y="'+(wy+winH/2)+'" fill="#4a5468" font-size="12" text-anchor="middle">窗 '+state.W+' cm</text>';
+  // 窗帘两片（波浪路径）
+  function panel(cx, dir){
+    var w = rodHalf; // 单片覆盖宽
+    var top = rodY + 8;
+    var folds = Math.max(5, Math.round(w/26));
+    var path = 'M '+(cx - w)+' '+top;
+    for (var i=0;i<folds;i++){
+      var x0 = cx - w + (2*w)*i/folds, x1 = cx - w + (2*w)*(i+1)/folds;
+      path += ' Q '+((x0+x1)/2)+' '+(top+ (i%2? 10:-10))+' '+x1+' '+top;
+    }
+    path += ' L '+(cx + w)+' '+(floorY - state.hem*scale)+' L '+(cx - w)+' '+(floorY - state.hem*scale)+' Z';
+    return '<path d="'+path+'" fill="#2b4a75" fill-opacity="0.85" stroke="#6cb2ff" stroke-width="1.5"/>';
+  }
+  if (state.panels === 2){
+    s += panel(320 - rodHalf/2, -1) + panel(320 + rodHalf/2, 1);
+    s += '<line x1="320" y1="'+(rodY+8)+'" x2="320" y2="'+(floorY-6)+'" stroke="#0e1116" stroke-width="2" stroke-dasharray="4 4"/>';
+  } else {
+    s += panel(320, 1);
+  }
+  // 杆
+  s += '<rect x="'+(320-rodHalf-14)+'" y="'+(rodY-4)+'" width="'+(2*rodHalf+28)+'" height="8" rx="4" fill="#4a5468"/>';
+  s += '<text x="'+(320-rodHalf-14)+'" y="'+(rodY-10)+'" fill="#8b949e" font-size="12">杆 '+r.rodLen+' cm（比窗宽每侧多出 20）</text>';
+  // 帘长标注
+  s += '<line x1="'+(ox+wallW+16)+'" y1="'+(rodY+8)+'" x2="'+(ox+wallW+16)+'" y2="'+floorY+'" stroke="#6cb2ff" stroke-width="1"/>';
+  s += '<text x="'+(ox+wallW+20)+'" y="'+((rodY+8+floorY)/2)+'" fill="#6cb2ff" font-size="13">帘长 '+state.H+' cm</text>';
+  // 比例人（170cm）
+  var ph = 170*scale, py = floorY - ph;
+  if (ph > 40 && ph < floorY - rodY - 10){
+    s += '<circle cx="'+(ox+34)+'" cy="'+(py+10*scale)+'" r="'+(5*scale)+'" fill="#3d4656"/>';
+    s += '<line x1="'+(ox+34)+'" y1="'+(py+16*scale)+'" x2="'+(ox+34)+'" y2="'+(py+60*scale)+'" stroke="#3d4656" stroke-width="'+(4*scale)+'" stroke-linecap="round"/>';
+    s += '<line x1="'+(ox+34)+'" y1="'+(py+60*scale)+'" x2="'+(ox+26)+'" y2="'+floorY+'" stroke="#3d4656" stroke-width="'+(4*scale)+'" stroke-linecap="round"/>';
+    s += '<line x1="'+(ox+34)+'" y1="'+(py+60*scale)+'" x2="'+(ox+42)+'" y2="'+floorY+'" stroke="#3d4656" stroke-width="'+(4*scale)+'" stroke-linecap="round"/>';
+    s += '<text x="'+(ox+52)+'" y="'+(floorY-4)+'" fill="#8b949e" font-size="11">170cm 人形比例</text>';
+  }
+  svg.innerHTML = s;
+}
+
+/* ---------- SVG 2：布卷排料 ---------- */
+function renderRoll(r){
+  var svg = $('svgRoll');
+  var pieces = [];
+  for (var p=0;p<state.panels;p++){
+    for (var w=0;w<r.widths;w++){
+      pieces.push('第'+(p+1)+'片 · 幅'+(w+1));
+    }
+  }
+  var rollWpx = 150, ox = 60, oy = 28;
+  var totalCm = pieces.length * r.cutLen;
+  var pxPerCm = Math.min(330/totalCm, 1.15);
+  var s = '';
+  s += '<text x="'+ox+'" y="'+(oy-8)+'" fill="#8b949e" font-size="12">布卷展开（门幅 '+state.FW+' cm × 总长 '+r.totalM+' m）</text>';
+  // 布匹底
+  var rollH = totalCm * pxPerCm;
+  s += '<rect x="'+ox+'" y="'+oy+'" width="'+rollWpx+'" height="'+rollH+'" fill="#1e2530" stroke="#3d4656" stroke-width="1.5" rx="3"/>';
+  var y = oy;
+  for (var i=0;i<pieces.length;i++){
+    var h = r.cutLen * pxPerCm;
+    s += '<rect x="'+(ox+4)+'" y="'+(y+2)+'" width="'+(rollWpx-8)+'" height="'+(h-4)+'" fill="#2b4a75" stroke="#6cb2ff" stroke-width="1" rx="2" fill-opacity="0.9"/>';
+    s += '<text x="'+(ox+rollWpx/2)+'" y="'+(y+h/2+4)+'" fill="#dce7f5" font-size="12" text-anchor="middle">'+esc(pieces[i])+' · '+r.cutLen+'cm</text>';
+    y += h;
+  }
+  // 门幅标注
+  s += '<line x1="'+(ox-8)+'" y1="'+oy+'" x2="'+(ox-8)+'" y2="'+(oy+rollH)+'" stroke="#8b949e" stroke-width="1"/>';
+  s += '<text x="'+(ox-14)+'" y="'+(oy+rollH/2)+'" fill="#8b949e" font-size="12" text-anchor="middle" transform="rotate(-90 '+(ox-14)+' '+(oy+rollH/2)+')">门幅 '+state.FW+' cm</text>';
+  // 侧注释
+  var nx = ox + rollWpx + 36;
+  var lines = [
+    '共 '+pieces.length+' 幅，每幅 '+state.FW+'×'+r.cutLen+' cm',
+    '横向叠放不变，沿布卷长度方向依次裁下',
+    '裁完的幅片竖向拼接成每片完成宽 '+r.finWPanel.toFixed(0)+' cm'
+  ];
+  if (r.joins > 0) lines.push('拼接缝 '+r.joins+' 道：内侧幅互相叠压 2cm 车缝');
+  lines.push('同匹连裁避免色差，剩下的零头布可做绑带');
+  for (var li=0;li<lines.length;li++){
+    s += '<text x="'+nx+'" y="'+(oy+30+li*24)+'" fill="#a8b3c2" font-size="13">· '+esc(lines[li])+'</text>';
+  }
+  svg.innerHTML = s;
+  $('rollNote').textContent = pieces.length >= 8
+    ? '幅数较多：竖排从布卷一次通裁损耗最小；实际下单可按整米向上取整。'
+    : '按清单尺寸连裁即可；图中每格就是一刀。';
+}
+
+/* ---------- 采购清单 ---------- */
+function buildList(r){
+  var L = [];
+  L.push('窗帘采购清单（DRAPEFIT · '+new Date().toLocaleDateString('zh-CN')+'）');
+  L.push('风格：'+STYLE_META[state.style].name+' × '+(state.panels===2?'对开两片':'单开整片')+' × 褶皱倍率 '+state.full.toFixed(1));
+  L.push('1. 窗宽 '+state.W+' cm → 杆长 '+r.rodLen+' cm（每侧外延 20cm）');
+  L.push('2. 用布 '+r.totalM+' m（门幅 '+state.FW+' cm，共 '+(state.panels*r.widths)+' 幅，每幅 '+state.FW+'×'+r.cutLen+' cm）');
+  L.push('3. 完成尺寸：每片宽 '+r.finWPanel.toFixed(1)+' cm × 帘长 '+state.H+' cm（底折边 '+state.hem+'cm）');
+  if (state.style === 'grommet') L.push('4. 配件：打孔环 '+r.rings+' 个（'+r.grommets+' 孔/片，孔距 '+r.spacing.toFixed(1)+' cm，孔径内圈 4cm）');
+  if (state.style === 'hook')    L.push('4. 配件：四爪钩 '+(r.hooks*state.panels)+' 个（'+r.hooks+' 个/片，间距约 12cm）');
+  if (state.style === 'pocket')  L.push('4. 配件：无外购配件，确认杆径 ≤3cm');
+  if (r.joins > 0) L.push('5. 拼缝 '+r.joins+' 道，要求同匹连裁避免色差');
+  if (r.cost != null) L.push('参考总价 ≈ ¥'+r.cost+'（'+state.price+' 元/m × '+r.totalM+' m）');
+  L.push('—— 数据仅本地计算，DRAPEFIT');
+  return L.join('\n');
+}
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(function(){ t.classList.remove('show'); }, 1800);
+}
+$('copyBtn').addEventListener('click', function(){
+  var r = calc();
+  var text = buildList(r);
+  function fallback(){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('已复制采购清单'); }
+    catch(e){ toast('复制失败，请手动选择文本'); }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ toast('已复制采购清单'); }, fallback);
+  } else fallback();
+});
+$('printBtn').addEventListener('click', function(){ window.print(); });
+
+/* ---------- 总渲染 ---------- */
+function render(){
+  var r = calc();
+  $('totalM').textContent = r.totalM;
+  renderStats(r);
+  renderElev(r);
+  renderRoll(r);
+  return r;
+}
+render();
+window.addEventListener('error', function(e){
+  $('warns').insertAdjacentHTML('beforeend',
+    '<div class="warnline bad">脚本异常：'+esc(e.message)+'</div>');
+});
+</script>
+</body>
+</html>
