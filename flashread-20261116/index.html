@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FLASHREAD · 速读放映机</title>
+<meta name="description" content="Paste a long article, watch it flash word by word with a fixed red focus point — RSVP speed reading, 100% local.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📽️</text></svg>">
+<style>
+:root{
+  --bg:#0c0e12;--panel:#14171d;--panel2:#1a1e26;--line:#262b35;
+  --fg:#e8ebf0;--mut:#8a93a3;--acc:#ff5a5f;--glow:#ffd166;--ok:#3fb96f;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--fg);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+  display:flex;flex-direction:column;min-height:100dvh;
+  padding:max(14px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom));
+}
+main{max-width:720px;margin:0 auto;width:100%;display:flex;flex-direction:column;flex:1}
+header{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+h1{font-size:19px;letter-spacing:1px}
+h1 b{color:var(--acc)}
+header .zh{color:var(--mut);font-size:13px}
+header .priv{margin-left:auto;color:var(--mut);font-size:12px}
+
+/* ── input stage ─────────────────────────── */
+#stage-input{display:flex;flex-direction:column;gap:10px;flex:1}
+#txt{
+  flex:1;min-height:180px;resize:vertical;width:100%;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  color:var(--fg);font:15px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  padding:14px 16px;outline:none;
+}
+#txt:focus{border-color:#3a4150}
+#txt::placeholder{color:#555f70}
+.hint{color:var(--mut);font-size:13px}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button{
+  font:inherit;cursor:pointer;border:1px solid var(--line);border-radius:10px;
+  background:var(--panel2);color:var(--fg);padding:9px 16px;
+}
+button:hover{border-color:#3a4150}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+button.primary:hover{filter:brightness(1.08)}
+.err{color:var(--acc);font-size:13px;min-height:1.2em}
+
+/* ── theater ─────────────────────────────── */
+#stage-play{display:none;flex-direction:column;flex:1;gap:14px}
+/* film strip decoration */
+.film{
+  height:16px;border-radius:8px;background:#161a21;border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 10px;gap:6px;overflow:hidden;
+}
+.film i{width:14px;height:8px;border-radius:2px;background:#232a36;flex:none}
+#screen{
+  position:relative;flex:1;min-height:230px;
+  background:radial-gradient(120% 90% at 50% 30%,#1b202b 0%,#10131a 70%);
+  border:1px solid var(--line);border-radius:16px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;user-select:none;overflow:hidden;
+}
+#screen.paused::after{
+  content:"⏸ 已暂停 · 点击或按空格继续";
+  position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  color:var(--mut);font-size:12.5px;background:#14171dcc;
+  padding:5px 12px;border-radius:99px;white-space:nowrap;
+}
+/* ORP fixed alignment: 3 columns 40/20/40 */
+#flash{
+  display:grid;grid-template-columns:40fr 20fr 40fr;
+  width:100%;max-width:560px;padding:0 18px;
+  font-weight:700;align-items:baseline;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Noto Sans SC",monospace;
+}
+#flash .l{text-align:right;white-space:pre}
+#flash .c{color:var(--acc);text-align:center;white-space:pre;text-shadow:0 0 18px #ff5a5f55}
+#flash .r{text-align:left;white-space:pre}
+#fs-main{font-size:clamp(30px,7.5vw,52px);line-height:1.25}
+#fs-tail{
+  position:absolute;bottom:12px;left:0;right:0;text-align:center;
+  color:#5a6373;font-size:13px;pointer-events:none;
+}
+#punct{position:absolute;top:14px;right:16px;color:#3d4553;font-size:22px;opacity:0;transition:opacity .25s}
+#punct.on{opacity:1}
+
+/* progress ribbon */
+#ribbon{height:26px;display:flex;align-items:center;gap:10px}
+#bar{
+  flex:1;height:10px;border-radius:99px;background:var(--panel2);
+  border:1px solid var(--line);position:relative;cursor:pointer;
+}
+#fill{position:absolute;inset:1px auto 1px 1px;width:0%;border-radius:99px;
+  background:linear-gradient(90deg,#ff5a5f,#ffd166)}
+#knob{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;
+  background:#fff;border:2px solid var(--acc);transform:translate(-50%,-50%);pointer-events:none}
+.tstat{color:var(--mut);font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* controls */
+#deck{display:flex;flex-direction:column;gap:10px;background:var(--panel);
+  border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.deck-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.deck-row label{color:var(--mut);font-size:13px;white-space:nowrap}
+#wpm{-webkit-appearance:none;appearance:none;flex:1;min-width:120px;height:6px;border-radius:99px;background:#232a36;outline:none}
+#wpm::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+  background:var(--acc);border:3px solid #fff2;cursor:grab}
+#wpm::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--acc);border:2px solid #fff2;cursor:grab}
+#wpmval{color:var(--glow);font-weight:700;font-variant-numeric:tabular-nums;min-width:64px}
+.chips{display:flex;gap:6px}
+.chip{padding:5px 12px;border-radius:99px;font-size:13px;background:var(--panel2);border:1px solid var(--line);color:var(--mut)}
+.chip.on{background:#2a1e22;border-color:var(--acc);color:var(--acc)}
+kbd{
+  background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;
+  border-radius:6px;padding:1px 7px;font-size:12px;color:var(--mut)
+}
+
+/* done card */
+#done{
+  display:none;flex-direction:column;align-items:center;gap:8px;text-align:center;
+  background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px 18px;
+}
+#done .big{font-size:34px}
+#done h2{font-size:17px}
+#done p{color:var(--mut);font-size:13.5px}
+#done p b{color:var(--glow);font-variant-numeric:tabular-nums}
+
+footer{margin-top:12px;color:#57606f;font-size:12px;text-align:center}
+footer a{color:#57606f}
+@media (max-width:520px){
+  #fs-tail{font-size:11.5px}
+  .deck-row{gap:8px}
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>📽️ FLASH<b>READ</b></h1><span class="zh">速读放映机</span>
+  <span class="priv">🔒 全程本地 · 零上传</span>
+</header>
+
+<!-- 输入台 -->
+<section id="stage-input">
+  <textarea id="txt" placeholder="把要速读的文章粘贴到这里…&#10;&#10;支持中英混排：英文按词闪现，中文按词组切片。"></textarea>
+  <div class="hint">要点：视线钉住红色对焦字，眼珠不用回扫行首——RSVP（快速串视呈现）一次只放一块，省掉扫视与回跳。</div>
+  <div class="btnrow">
+    <button class="primary" id="btn-go">🎬 开始放映</button>
+    <button id="btn-demo">塞一篇示例文章</button>
+    <button id="btn-clear">清空</button>
+    <span class="err" id="err"></span>
+  </div>
+</section>
+
+<!-- 放映厅 -->
+<section id="stage-play">
+  <div class="film" id="film"></div>
+  <div id="screen" title="点击播放/暂停">
+    <div id="punct"></div>
+    <div id="flash">
+      <span class="l" id="fl"></span><span class="c" id="fc"></span><span class="r" id="fr"></span>
+    </div>
+    <div id="fs-tail">上下文上一块 · 本块 · 下一块</div>
+  </div>
+  <div id="ribbon">
+    <span class="tstat" id="pos">0 / 0</span>
+    <div id="bar"><div id="fill"></div><div id="knob"></div></div>
+    <span class="tstat" id="eta">--:-- 剩余</span>
+  </div>
+  <div id="deck">
+    <div class="deck-row">
+      <button id="btn-play">⏸ 暂停</button>
+      <button id="btn-restart">↺ 从头</button>
+      <button id="btn-back">← 上块</button>
+      <button id="btn-fwd">下块 →</button>
+      <button id="btn-edit">✎ 改文本</button>
+      <span class="tstat" id="wcount"></span>
+    </div>
+    <div class="deck-row">
+      <label>速度 <span id="wpmval">400 字/分</span></label>
+      <input type="range" id="wpm" min="120" max="900" step="10" value="400">
+      <label>每组</label>
+      <div class="chips" id="chunksz">
+        <button class="chip" data-v="1">1 字</button>
+        <button class="chip on" data-v="2">2 字</button>
+        <button class="chip" data-v="3">3 字</button>
+        <button class="chip" data-v="4">4 字</button>
+      </div>
+    </div>
+    <div class="deck-row">
+      <span class="hint"><kbd>空格</kbd>/<kbd>点击</kbd> 播放暂停 · <kbd>←</kbd><kbd>→</kbd> 前后一块 · <kbd>R</kbd> 重来</span>
+    </div>
+  </div>
+</section>
+
+<!-- 结账卡 -->
+<section id="done">
+  <div class="big">🎞️</div>
+  <h2>放映结束</h2>
+  <p>共 <b id="d-chunks">0</b> 块 · 实际用时 <b id="d-time">0s</b> · 平均 <b id="d-rate">0</b> 字/分</p>
+  <div class="btnrow">
+    <button class="primary" id="btn-again">↺ 再放一遍</button>
+    <button id="btn-new">📃 换一篇</button>
+  </div>
+</section>
+
+<footer>RSVP: Rapid Serial Visual Presentation · 参考 OpenSpritz / Spritz 思路，中英分词与标点停顿为本工具原创实现 · <a href="https://github.com/xiangjianan/daily-tools/tree/main/flashread-20261116">源码</a></footer>
+</main>
+
+<script>
+"use strict";
+/* ───────────────────────── tokenizer ─────────────────────────
+   英文：按空白切词，标点挂回词尾。
+   中文：整句 → 子句 → 按 chunkSize 切片，标点独立成块（触发停顿）。 */
+var SENT_END = "。！？!?….\n";
+var CLAUSE_END = "，、；：,;:—–-（）()「」『』\"\"''《》<>【】";
+
+function isCJK(ch){
+  var c = ch.codePointAt(0);
+  return (c >= 0x3400 && c <= 0x9FFF) || (c >= 0xF900 && c <= 0xFAFF) ||
+         (c >= 0x3040 && c <= 0x30FF) || (c >= 0xFF00 && c <= 0xFFEF) ||
+         (c >= 0x3000 && c <= 0x303F) || (c >= 0x20000 && c <= 0x2FA1F);
+}
+/* token: {t:text, orp:index, pause:multiplier, sent:bool} */
+function tokenize(text, chunkSize){
+  var toks = [];
+  // 按“语言段”切：连续 CJK 视为一段，连续非空白拉丁视为词
+  var i = 0, n = text.length;
+  var curCJK = "", punctAfter = "";
+  function flushCJK(){
+    if(!curCJK) return;
+    // 先把标点剥离成独立停顿块，再按 chunkSize 切剩余文字
+    var run = "", k = 0;
+    function flushRun(){
+      var s = 0;
+      while(s < run.length){
+        var take = Math.min(chunkSize, run.length - s);
+        toks.push({t:run.substr(s, take), orp: Math.floor((take-1)/2), pause:1, sent:false});
+        s += take;
+      }
+      run = "";
+    }
+    while(k < curCJK.length){
+      var c2 = curCJK[k];
+      if(SENT_END.indexOf(c2) >= 0){
+        flushRun();
+        toks.push({t:c2, orp:0, pause:2.2, sent:true, punct:true});
+      } else if(CLAUSE_END.indexOf(c2) >= 0){
+        flushRun();
+        toks.push({t:c2, orp:0, pause:1.5, sent:false, punct:true});
+      } else {
+        run += c2;
+      }
+      k++;
+    }
+    flushRun();
+    curCJK = "";
+  }
+  while(i < n){
+    var ch = text[i];
+    if(/\s/.test(ch)){ flushCJK(); i++; continue; }
+    if(isCJK(ch)){ curCJK += ch; i++; continue; }
+    flushCJK();
+    // 拉丁词：吃掉连续非空白
+    var w = "";
+    while(i < n && !/\s/.test(text[i])){ w += text[i]; i++; }
+    // 剥尾部标点：停顿由标点决定
+    var pause = 1, sent = false, m = w, trail = "";
+    while(m.length && SENT_END.indexOf(m[m.length-1]) >= 0){ trail = m[m.length-1] + trail; m = m.slice(0,-1); sent = true; }
+    while(m.length && CLAUSE_END.indexOf(m[m.length-1]) >= 0){ trail = m[m.length-1] + trail; m = m.slice(0,-1); }
+    if(m.length){
+      var orp = Math.max(0, Math.floor((m.length - 1) / 2) - (m.length >= 6 ? 1 : 0));
+      toks.push({t:m, orp:orp, pause: sent ? 2.2 : (trail ? 1.5 : 1), sent:sent});
+    }
+    if(trail) toks.push({t:trail, orp:0, pause: sent ? 2.2 : 1.5, sent:sent, punct:true});
+  }
+  flushCJK();
+  return toks;
+}
+function countUnits(toks){
+  var u = 0;
+  toks.forEach(function(tk){ if(!tk.punct) u += isCJK(tk.t[0]) ? tk.t.length : 1; });
+  return u;
+}
+
+/* ───────────────────────── state ───────────────────────── */
+var toks = [], idx = 0, units = 0;
+var playing = false, raf = 0, nextAt = 0, startedAt = 0, elapsedBefore = 0;
+var wpm = 400, chunkSize = 2;
+
+var $ = function(id){ return document.getElementById(id); };
+var elL = $("fl"), elC = $("fc"), elR = $("fr");
+var elScreen = $("screen"), elFill = $("fill"), elKnob = $("knob");
+var elPos = $("pos"), elEta = $("eta"), elPunct = $("punct");
+
+/* 胶片孔装饰 */
+(function(){
+  var f = $("film"), html = "";
+  for(var i = 0; i < 24; i++) html += "<i></i>";
+  f.innerHTML = html;
+})();
+
+function delayOf(tk){
+  var base = 60000 / wpm;                     // 每“字/词”基准毫秒
+  var len = tk.punct ? 1 : (isCJK(tk.t[0]) ? tk.t.length : 1);
+  return base * len * tk.pause;
+}
+function fmtTime(ms){
+  var s = Math.max(0, Math.round(ms/1000));
+  var m = Math.floor(s/60); s = s % 60;
+  return m + ":" + (s < 10 ? "0" : "") + s;
+}
+function show(i){
+  if(!toks.length) return;
+  var tk = toks[i];
+  elL.textContent = tk.t.slice(0, tk.orp);
+  elC.textContent = tk.t[tk.orp] || "";
+  elR.textContent = tk.t.slice(tk.orp + 1);
+  elPunct.textContent = tk.sent ? "。" : (tk.pause > 1 ? "，" : "");
+  elPunct.className = tk.pause > 1 ? "on" : "";
+  var pct = toks.length > 1 ? (i / (toks.length - 1)) * 100 : 0;
+  elFill.style.width = pct + "%";
+  elKnob.style.left = "calc(" + pct + "% + 1px)";
+  elPos.textContent = (i + 1) + " / " + toks.length;
+  var remain = 0;
+  for(var k = i; k < toks.length; k++) remain += delayOf(toks[k]);
+  elEta.textContent = fmtTime(remain) + " 剩余";
+}
+function setPlay(on){
+  playing = on;
+  $("btn-play").textContent = on ? "⏸ 暂停" : "▶ 播放";
+  elScreen.classList.toggle("paused", !on);
+  if(on){ nextAt = performance.now(); loop(); }
+  else cancelAnimationFrame(raf);
+}
+function loop(){
+  raf = requestAnimationFrame(loop);
+  var now = performance.now();
+  if(now < nextAt) return;
+  show(idx);
+  var tk = toks[idx];
+  if(tk.sent || tk.punct) setTimeout(function(){ /* 空屏呼吸 */ }, 0);
+  nextAt = now + delayOf(tk);
+  idx++;
+  if(idx >= toks.length){ finish(); }
+}
+function finish(){
+  setPlay(false);
+  var total = (performance.now() - startedAt) / 1000;
+  $("stage-play").style.display = "none";
+  $("done").style.display = "flex";
+  $("d-chunks").textContent = toks.length;
+  $("d-time").textContent = total < 60 ? Math.round(total) + "s" : Math.floor(total/60) + "m" + Math.round(total%60) + "s";
+  $("d-rate").textContent = Math.round(units / Math.max(total/60, 0.01));
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+function start(){
+  if(!toks.length) return;
+  idx = 0; elapsedBefore = 0; startedAt = performance.now();
+  $("stage-input").style.display = "none";
+  $("done").style.display = "none";
+  $("stage-play").style.display = "flex";
+  $("wcount").textContent = units + " 字·词 · " + toks.length + " 块";
+  setPlay(true);
+}
+
+/* ───────────────────────── events ───────────────────────── */
+$("btn-go").addEventListener("click", function(){
+  var text = $("txt").value;
+  var err = $("err");
+  if(!text || !text.trim()){
+    err.textContent = "⚠️ 先粘贴一段文字，或点「塞一篇示例文章」试试。";
+    return;
+  }
+  if(text.trim().length < 4){
+    err.textContent = "⚠️ 文本太短啦，至少来一句话。";
+    return;
+  }
+  err.textContent = "";
+  toks = tokenize(text, chunkSize);
+  units = countUnits(toks);
+  start();
+});
+$("btn-demo").addEventListener("click", function(){
+  $("txt").value = DEMO;
+  $("err").textContent = "";
+});
+$("btn-clear").addEventListener("click", function(){ $("txt").value = ""; $("err").textContent = ""; });
+
+elScreen.addEventListener("click", function(){ setPlay(!playing); });
+$("btn-play").addEventListener("click", function(){ setPlay(!playing); });
+$("btn-restart").addEventListener("click", function(){ idx = 0; startedAt = performance.now(); if(!playing) show(0); });
+$("btn-back").addEventListener("click", function(){ if(idx > 0){ idx--; show(idx); } });
+$("btn-fwd").addEventListener("click", function(){ if(idx < toks.length - 1){ idx++; show(idx); } });
+$("btn-edit").addEventListener("click", function(){
+  setPlay(false);
+  $("stage-play").style.display = "none";
+  $("stage-input").style.display = "flex";
+});
+$("btn-again").addEventListener("click", start);
+$("btn-new").addEventListener("click", function(){
+  $("done").style.display = "none";
+  $("stage-input").style.display = "flex";
+  $("txt").focus();
+});
+
+$("wpm").addEventListener("input", function(){
+  wpm = +this.value;
+  $("wpmval").textContent = wpm + " 字/分";
+});
+$("chunksz").addEventListener("click", function(e){
+  var b = e.target.closest(".chip");
+  if(!b) return;
+  chunkSize = +b.dataset.v;
+  this.querySelectorAll(".chip").forEach(function(c){ c.classList.toggle("on", c === b); });
+  if($("txt").value.trim()){ toks = tokenize($("txt").value, chunkSize); units = countUnits(toks); idx = 0; show(0); }
+});
+
+/* 进度条拖动跳转 */
+var bar = $("bar"), scrubbing = false;
+function scrubTo(clientX){
+  var r = bar.getBoundingClientRect();
+  var p = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+  idx = Math.round(p * (toks.length - 1));
+  show(idx);
+}
+bar.addEventListener("pointerdown", function(e){
+  if(!toks.length) return;
+  scrubbing = true; bar.setPointerCapture(e.pointerId);
+  var wasPlaying = playing;
+  if(wasPlaying) setPlay(false);
+  scrubTo(e.clientX);
+  bar._wasPlaying = wasPlaying;
+});
+bar.addEventListener("pointermove", function(e){ if(scrubbing) scrubTo(e.clientX); });
+bar.addEventListener("pointerup", function(){
+  scrubbing = false;
+  if(bar._wasPlaying) setPlay(true);
+});
+
+document.addEventListener("keydown", function(e){
+  if($("stage-play").style.display === "none") {
+    if(e.key === "Enter" && (e.ctrlKey || e.metaKey)) $("btn-go").click();
+    return;
+  }
+  if(e.target.tagName === "TEXTAREA") return;
+  if(e.code === "Space"){ e.preventDefault(); setPlay(!playing); }
+  else if(e.key === "ArrowLeft"){ $("btn-back").click(); }
+  else if(e.key === "ArrowRight"){ $("btn-fwd").click(); }
+  else if(e.key === "r" || e.key === "R"){ $("btn-restart").click(); }
+});
+
+/* ───────────────────────── demo text ───────────────────────── */
+var DEMO = "你有没有过这种体验：一篇文章明明不长，读起来却格外慢？其实大部分时间并没有花在理解上，而是花在眼球的移动上。传统阅读时，眼睛并非平滑地滑过文字，而是像跳格子一样，跳一下、停一下、再跳一下。每一次停顿叫一次注视，每一次回跳叫一次回扫。研究表明，普通读者的回扫占了阅读时间的三分之一以上——也就是说，你花在“找刚才读到哪儿”上的时间，比花在理解内容上的还多。RSVP 快速串视呈现的思路很简单：既然眼球移动是瓶颈，那就让文字自己动，眼球原地不动。文字一块一块地闪现在屏幕同一个位置，每个词的最佳识别点对齐在同一条竖线上，视线只需钉住这一点。你不再需要扫视，不再需要回跳，省下来的注意力全部还给理解本身。试试把速度拉到六百，你会发现：不是你读得慢，是文字动得太慢。";
+
+/* 预热：首次 show 用演示文本填一次视觉元素，避免空闪 */
+show(0);
+</script>
+</body>
+</html>
