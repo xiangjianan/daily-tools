@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DUMAP · 磁盘空间树图 — 粘贴 du 输出，秒出占用地图</title>
+<meta name="description" content="把 du 命令输出粘贴进来，本地即时生成方块树图与占地大户排行。零安装、纯浏览器解析、数据不出本机。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1117'/%3E%3Crect x='5' y='6' width='13' height='13' rx='2' fill='%2358a6ff'/%3E%3Crect x='20' y='6' width='7' height='8' rx='2' fill='%233fb950'/%3E%3Crect x='5' y='21' width='8' height='6' rx='2' fill='%23d29922'/%3E%3Crect x='15' y='16' width='12' height='11' rx='2' fill='%23a371f7'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2129; --line:#30363d;
+    --fg:#e6edf3; --dim:#8b949e; --acc:#58a6ff; --ok:#3fb950; --warn:#d29922; --err:#f85149;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,'Courier New',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,'PingFang SC','Segoe UI','Noto Sans CJK SC',sans-serif;padding-bottom:env(safe-area-inset-bottom)}
+  .wrap{max-width:980px;margin:0 auto;padding:16px 14px 40px}
+  h1{font-size:1.35rem;margin:0 0 2px;letter-spacing:.5px}
+  h1 .badge{font-size:.62em;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:2px 8px;vertical-align:3px;color:var(--acc);margin-left:6px}
+  .sub{color:var(--dim);font-size:.88rem;margin:0 0 14px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+  textarea{width:100%;min-height:130px;resize:vertical;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px;font:13px/1.55 var(--mono);white-space:pre;overflow:auto}
+  textarea:focus{outline:2px solid var(--acc);outline-offset:-1px}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+  button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:7px 14px;font-size:14px;cursor:pointer;min-height:34px}
+  button:hover{border-color:var(--acc);color:var(--acc)}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#04121f;font-weight:600}
+  button.primary:hover{filter:brightness(1.1);color:#04121f}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .hint{font-size:.8rem;color:var(--dim);margin-top:6px}
+  .hint code{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-size:.78rem;color:#79c0ff;word-break:break-all}
+  .msg{display:none;border-radius:8px;padding:9px 12px;font-size:.88rem;margin-top:8px}
+  .msg.show{display:block}
+  .msg.err{background:rgba(248,81,73,.12);border:1px solid var(--err);color:#ffb3ad}
+  .msg.info{background:rgba(88,166,255,.1);border:1px solid var(--acc);color:#a5d6ff}
+  .msg.ok{background:rgba(63,185,80,.12);border:1px solid var(--ok);color:#7ee2a8}
+  .stats{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:.85rem;color:var(--dim)}
+  .stats b{color:var(--fg);font-family:var(--mono);font-size:.95rem}
+  .crumbs{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:8px;font-size:.82rem;min-height:24px}
+  .crumbs button{padding:2px 10px;min-height:26px;font-size:.8rem;border-radius:6px;font-family:var(--mono)}
+  .crumbs .sep{color:var(--dim)}
+  #mapbox{background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  #map{display:block;width:100%;height:auto}
+  #map rect.tile{stroke:var(--bg);stroke-width:1.5;cursor:pointer;transition:filter .12s}
+  #map rect.tile:hover{filter:brightness(1.25)}
+  #map text{font-family:var(--mono);pointer-events:none;fill:#f0f6fc}
+  #map .tsize{fill:rgba(240,246,252,.75)}
+  .empty{color:var(--dim);text-align:center;padding:70px 20px;font-size:.92rem}
+  .hogs{margin-top:2px}
+  .hog{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:.86rem}
+  .hog:last-child{border-bottom:none}
+  .hog .no{color:var(--dim);width:18px;text-align:right;flex:none;font-family:var(--mono);font-size:.78rem}
+  .hog .p{font-family:var(--mono);word-break:break-all;flex:1;min-width:0}
+  .hog .bar{height:8px;border-radius:4px;background:var(--panel2);flex:2;min-width:60px;overflow:hidden}
+  .hog .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),#a371f7);border-radius:4px}
+  .hog .sz{font-family:var(--mono);color:var(--dim);flex:none;font-size:.8rem;min-width:86px;text-align:right}
+  .two{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:12px;align-items:start}
+  @media (max-width:720px){ .two{grid-template-columns:minmax(0,1fr)} .wrap{padding:12px 10px 32px} h1{font-size:1.15rem} }
+  footer{color:var(--dim);font-size:.78rem;margin-top:18px;line-height:1.7}
+  footer a{color:var(--acc);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🃏 DUMAP · 磁盘空间树图<span class="badge">#66 daily-tools</span></h1>
+  <p class="sub">把 <code style="font-family:var(--mono)">du</code> 的文字输出粘贴进来，立刻得到一张可交互的方块树图——哪块是巨无霸、点进去看明细。全程本地解析，数据不出浏览器。</p>
+
+  <div class="panel">
+    <textarea id="inp" spellcheck="false" placeholder="粘贴 du 命令输出，例如：&#10;4096	/srv&#10;10485760	/srv/apps/web/node_modules&#10;819200	/srv/logs/access.log&#10;……&#10;也支持 du -ah 的人类可读格式（4.0K / 12M / 2.3G）"></textarea>
+    <div class="row">
+      <button id="btnSample" class="primary">装载示例</button>
+      <button id="btnSampleH">示例 · 人类可读格式</button>
+      <button id="btnCopy" disabled>复制 Markdown 报告</button>
+      <button id="btnSvg" disabled>导出 SVG</button>
+      <button id="btnClear">清空</button>
+    </div>
+    <div class="hint">在服务器上生成：<code>du -ab /path 2>/dev/null</code>（字节级，推荐）或 <code>du -ah --max-depth=1 /path</code>（人类可读）。输出只是尺寸和路径，不含文件内容，粘贴无隐私风险。</div>
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <div id="stats" class="panel" style="display:none">
+    <div class="stats" id="statline"></div>
+  </div>
+
+  <div class="two" id="main" style="display:none">
+    <div>
+      <div class="crumbs" id="crumbs"></div>
+      <div id="mapbox"><svg id="map" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <div class="hint" id="mapnote">点击方块进入子目录，面包屑返回。面积 ∝ 占用字节。</div>
+    </div>
+    <div class="panel hogs">
+      <div style="font-weight:600;margin-bottom:4px">🏆 占地大户 TOP 8</div>
+      <div id="hogs"></div>
+    </div>
+  </div>
+
+  <footer>
+    DUMAP #66 · <a href="https://github.com/xiangjianan/daily-tools/tree/main/dumap-20261117" target="_blank" rel="noopener">xiangjianan/daily-tools</a> ·
+    单文件零依赖，处理全部在浏览器本地完成。<br>
+    提示：目录的 du 值是「含子项」的，本工具已做去重换算（自身字节 = 目录值 − 直接子项之和），面积不会双重计数。
+  </footer>
+</div>
+
+<script>
+'use strict';
+/*==CORE==*/
+/* ---------- 解析：du 输出 → 条目列表 ---------- */
+var UNIT = { K:1024, M:1024*1024, G:1024*1024*1024, T:1024*1024*1024*1024, P:1024*1024*1024*1024*1024 };
+
+function parseDu(text){
+  var res = { ok:false, error:'', entries:[], skipped:[], format:'bytes' };
+  if(!text || !String(text).trim()){ res.error = '输入为空：先在服务器跑 du，把输出整段粘进来（或点「装载示例」看看长什么样）'; return res; }
+  var humanCount = 0, byteCount = 0, seen = {};
+  var lines = String(text).split('\n');
+  for(var i=0;i<lines.length;i++){
+    var line = lines[i].trim();
+    if(!line) continue;
+    var m = line.match(/^([\d.]+)\s*([KMGTPkmgtp]?)\s+(.+)$/);
+    if(!m){ res.skipped.push(line); continue; }
+    var num = parseFloat(m[1]);
+    if(!isFinite(num) || num < 0){ res.skipped.push(line); continue; }
+    var suf = m[2].toUpperCase();
+    var bytes;
+    if(suf){ bytes = num * UNIT[suf]; humanCount++; }
+    else { bytes = num; byteCount++; }
+    var path = m[3].replace(/\/+$/,'').replace(/^\/+/,'/');
+    if(!path || path === '/'){ res.skipped.push(line); continue; }
+    var key = path;
+    if(seen[key] !== undefined){ if(bytes > seen[key]) { seen[key] = bytes; } continue; }
+    seen[key] = bytes;
+    res.entries.push({ size: Math.round(bytes), path: path });
+  }
+  if(!res.entries.length){ res.error = '没有解析出任何条目——每行应是「尺寸 + 路径」，例如 4096\t/srv/logs'; return res; }
+  res.format = humanCount > byteCount ? 'human' : 'bytes';
+  res.skippedNote = res.skipped.length ? ('有 ' + res.skipped.length + ' 行无法识别已跳过') : '';
+  res.ok = true;
+  return res;
+}
+
+/* ---------- 建树：路径条目 → 层级（du 目录值含子项，需算自身字节防双计） ---------- */
+function buildTree(entries){
+  var root = { name:'', path:'', size:0, own:false, kids:{}, self:0 };
+  var abs = entries.length > 0 && entries[0].path.charAt(0) === '/';
+  var i, e, parts, cur, j, name;
+  for(i=0;i<entries.length;i++){
+    e = entries[i];
+    parts = e.path.split('/').filter(Boolean);
+    cur = root;
+    for(j=0;j<parts.length;j++){
+      name = parts[j];
+      if(!cur.kids[name]) cur.kids[name] = { name:name, path:childPath(cur.path, name, abs), size:0, own:false, kids:{}, self:0 };
+      cur = cur.kids[name];
+    }
+    if(e.size > cur.size) cur.size = e.size;
+    cur.own = true;
+  }
+  fixup(root);
+  return root;
+}
+function childPath(parentPath, name, abs){
+  if(abs) return parentPath === '/' ? '/' + name : (parentPath ? parentPath + '/' + name : '/' + name);
+  return parentPath ? parentPath + '/' + name : name;
+}
+function fixup(node){
+  var s = 0, k;
+  for(k in node.kids){ fixup(node.kids[k]); s += node.kids[k].size; }
+  if(hasKids(node)){
+    if(node.own && s > node.size) node.size = s;  // 部分输入兜底：子项和超过记录值
+    if(!node.own) node.size = s;                  // 输出里没有该目录自身的行（如 --max-depth 粘贴）：尺寸 = 子项和
+    node.self = node.own ? node.size - s : 0;
+    if(node.self < 0) node.self = 0;
+  } else {
+    node.self = node.size;
+  }
+}
+function hasKids(n){ for(var k in n.kids) return true; return false; }
+function kidList(node){
+  var arr = [], k;
+  for(k in node.kids) arr.push(node.kids[k]);
+  arr.sort(function(a,b){ return b.size - a.size; });
+  return arr;
+}
+
+/* ---------- Squarified 树图布局（Bruls et al.） ---------- */
+function worstRow(row, side){
+  var s = 0, mx = 0, mn = Infinity, i;
+  for(i=0;i<row.length;i++){ s += row[i].area; if(row[i].area > mx) mx = row[i].area; if(row[i].area < mn) mn = row[i].area; }
+  if(s <= 0 || mn <= 0) return Infinity;
+  var a = side*side*mx/(s*s), b = s*s/(side*side*mn);
+  return a > b ? a : b;
+}
+function pickRow(items, side){
+  var row = [items[0]], i = 1;
+  while(i < items.length){
+    var cand = row.concat([items[i]]);
+    if(worstRow(cand, side) <= worstRow(row, side)){ row = cand; i++; }
+    else break;
+  }
+  return row;
+}
+function squarify(items, x, y, w, h){
+  if(!items.length) return [];
+  if(items.length === 1) return [{ it:items[0], x:x, y:y, w:w, h:h }];
+  var side = Math.min(w, h);
+  var row = pickRow(items, side);
+  var rest = items.slice(row.length);
+  var s = 0, i, out = [];
+  for(i=0;i<row.length;i++) s += row[i].area;
+  if(w >= h){
+    var rw = s / h, cy = y;
+    if(!(rw > 0)) rw = 0.001;
+    for(i=0;i<row.length;i++){
+      var rh = row[i].area / rw;
+      if(!(rh > 0)) rh = 0.001;
+      out.push({ it:row[i], x:x, y:cy, w:rw, h:rh }); cy += rh;
+    }
+    return out.concat(squarify(rest, x+rw, y, Math.max(0.001, w-rw), h));
+  } else {
+    var rh2 = s / w, cx = x;
+    if(!(rh2 > 0)) rh2 = 0.001;
+    for(i=0;i<row.length;i++){
+      var rw2 = row[i].area / rh2;
+      if(!(rw2 > 0)) rw2 = 0.001;
+      out.push({ it:row[i], x:cx, y:y, w:rw2, h:rh2 }); cx += rw2;
+    }
+    return out.concat(squarify(rest, x, y+rh2, w, Math.max(0.001, h-rh2)));
+  }
+}
+
+/* ---------- 整树递归布局：叶子矩形集合（面积守恒 + 深层截断） ---------- */
+var MAX_LEAVES = 3500, MAX_DEPTH = 6;
+function layoutTree(node, x, y, w, h, depth, branchIdx, out, st){
+  var items = [], i, kids = kidList(node);
+  for(i=0;i<kids.length;i++) items.push({ node:kids[i], area:0 });
+  if(node.self > 0) items.push({ pseudo:true, label:'(本级文件)', size:node.self, area:0 });
+  if(!items.length){ out.push(mkLeaf(node, x, y, w, h, depth, branchIdx, true)); return; }
+  var total = node.size || 1, area = w * h;
+  for(i=0;i<items.length;i++) items[i].area = area * (itemSize(items[i]) / total);
+  var rects = squarify(items, x, y, w, h);
+  for(i=0;i<rects.length;i++){
+    var r = rects[i], it = r.it;
+    if(it.pseudo){ out.push(mkLeafPseudo(it.label, it.size, r, depth, branchIdx)); continue; }
+    var goDeep = depth < MAX_DEPTH && st.count < MAX_LEAVES && r.w >= 2 && r.h >= 2 && hasKids(it.node);
+    if(goDeep){ out.push(mkBacking(it.node, r.x, r.y, r.w, r.h, depth, branchIdx)); st.count++; layoutTree(it.node, r.x, r.y, r.w, r.h, depth+1, branchIdx, out, st); }
+    else { out.push(mkLeaf(it.node, r.x, r.y, r.w, r.h, depth, branchIdx, false)); }
+  }
+}
+function itemSize(it){ return it.pseudo ? it.size : it.node.size; }
+function mkLeaf(node, x, y, w, h, depth, branchIdx, emptyDir){
+  return { node:node, x:x, y:y, w:w, h:h, depth:depth, branch:branchIdx, empty:!!emptyDir };
+}
+function mkBacking(node, x, y, w, h, depth, branchIdx){
+  return { backing:true, node:node, x:x, y:y, w:w, h:h, depth:depth, branch:branchIdx, empty:false };
+}
+function mkLeafPseudo(label, size, r, depth, branchIdx){
+  return { pseudo:true, label:label, size:size, x:r.x, y:r.y, w:r.w, h:r.h, depth:depth, branch:branchIdx, empty:false };
+}
+
+/* ---------- 格式化 ---------- */
+function human(bytes){
+  if(!isFinite(bytes) || bytes < 0) return '—';
+  var u = ['B','KiB','MiB','GiB','TiB','PiB'], i = 0, v = bytes;
+  while(v >= 1024 && i < u.length-1){ v /= 1024; i++; }
+  return (i === 0 ? Math.round(v) : (Math.round(v*10)/10)) + ' ' + u[i];
+}
+/*==ENDCORE==*/
+
+/* ---------- 状态与 DOM ---------- */
+function $(id){ return document.getElementById(id); }
+var state = { parsed:null, tree:null, rootPath:'', lastEntries:[], truncated:0 };
+
+var SAMPLE = [
+'2048\t/srv/apps/web/node_modules/react/index.js',
+'71271424\t/srv/apps/web/node_modules',
+'8388608\t/srv/apps/web/dist',
+'5242880\t/srv/apps/web/src',
+'2097152\t/srv/apps/web/public',
+'87296000\t/srv/apps/web',
+'27262976\t/srv/apps/api/venv',
+'6291456\t/srv/apps/api/logs/api.log',
+'1572864\t/srv/apps/api/app.py',
+'35127296\t/srv/apps/api',
+'1048576\t/srv/apps/worker/job.py',
+'123471872\t/srv/apps',
+'157286400\t/srv/data/postgres/base',
+'157286400\t/srv/data/postgres',
+'33554432\t/srv/data/uploads/img.tar',
+'33554432\t/srv/data/uploads',
+'12582912\t/srv/data/backups/db-2026-11-16.sql.gz',
+'12582912\t/srv/data/backups',
+'203393744\t/srv/data',
+'33554432\t/srv/logs/access.log',
+'12582912\t/srv/logs/error.log',
+'2097152\t/srv/logs/nginx.pid',
+'48334496\t/srv/logs',
+'375199616\t/srv',
+'2048\t/etc/nginx/nginx.conf',
+'2048\t/etc/nginx',
+'1024\t/etc/crontab',
+'3072\t/etc',
+'10737418240\t/var/lib/docker',
+'10737418240\t/var/lib',
+'1048576000\t/var/log/journal',
+'1048576000\t/var/log',
+'536870912\t/var/tmp/scratch.bin',
+'536870912\t/var/tmp',
+'12322975152\t/var'
+].join('\n');
+var SAMPLE_H = [
+'90M\t/srv/apps/web',
+'68M\t/srv/apps/web/node_modules',
+'8.0M\t/srv/apps/web/dist',
+'40M\t/srv/apps/api',
+'26M\t/srv/apps/api/venv',
+'200M\t/srv/data',
+'150M\t/srv/data/postgres',
+'32M\t/srv/data/uploads',
+'12M\t/srv/logs',
+'512M\t/srv',
+'10G\t/var/lib/docker',
+'512M\t/var/tmp'
+].join('\n');
+
+var HUES = [210, 150, 30, 280, 0, 190, 60, 330, 90, 250];
+function branchHue(i){ return HUES[i % HUES.length]; }
+function depthLight(d){ return [42, 50, 56, 61, 65, 68][Math.min(d,5)]; }
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function showToast(kind, text){
+  var m = $('msg');
+  m.className = 'msg show ' + kind;
+  m.textContent = text;
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(function(){ m.className = 'msg'; }, 4200);
+}
+
+function findNode(node, path){
+  if(node.path === path) return node;
+  var kids = kidList(node), i, f;
+  for(i=0;i<kids.length;i++){
+    if(path.indexOf(kids[i].path + '/') === 0 || kids[i].path === path){
+      f = findNode(kids[i], path);
+      if(f) return f;
+    }
+  }
+  return null;
+}
+
+function rootFor(){
+  if(!state.tree) return null;
+  if(!state.rootPath) return state.tree;
+  var n = findNode(state.tree, state.rootPath);
+  return n || state.tree;
+}
+
+/* ---------- 渲染 ---------- */
+function render(){
+  var svg = $('map');
+  if(!state.tree){ svg.innerHTML = ''; return; }
+  var rootNode = rootFor();
+  if(!rootNode){ svg.innerHTML = ''; return; }
+  var W = 1000, H = 620;
+  var out = [], st = { count:0 };
+  var branchOf = {};
+  var kids = kidList(rootNode), i, bi = 0;
+  for(i=0;i<kids.length;i++){ branchOf[kids[i].path] = bi; bi++; }
+  // 根下第一层逐个分支布局，保证每个顶级目录有独立色相
+  if(kids.length){
+    var items = [], j;
+    for(j=0;j<kids.length;j++) items.push({ node:kids[j], area:0 });
+    if(rootNode.self > 0) items.push({ pseudo:true, label:'(本级文件)', size:rootNode.self, area:0 });
+    var area = W*H, total = rootNode.size || 1;
+    for(j=0;j<items.length;j++) items[j].area = area * (itemSize(items[j]) / total);
+    var rects = squarify(items, 0, 0, W, H);
+    for(j=0;j<rects.length;j++){
+      var r = rects[j], idx = r.it.pseudo ? branchOf[''] || 0 : (branchOf[r.it.node.path] !== undefined ? branchOf[r.it.node.path] : j);
+      if(r.it.pseudo){ out.push(mkLeafPseudo(r.it.label, r.it.size, r, 0, 0)); continue; }
+      if(r.w >= 2 && r.h >= 2 && hasKids(r.it.node) && st.count < MAX_LEAVES){ out.push(mkBacking(r.it.node, r.x, r.y, r.w, r.h, 0, idx)); st.count++; layoutTree(r.it.node, r.x, r.y, r.w, r.h, 1, idx, out, st); }
+      else out.push(mkLeaf(r.it.node, r.x, r.y, r.w, r.h, 1, idx, false));
+    }
+  } else {
+    layoutTree(rootNode, 0, 0, W, H, 0, 0, out, st);
+  }
+  state.truncated = st.count >= MAX_LEAVES ? st.count : 0;
+
+  var s = '';
+  for(i=0;i<out.length;i++){
+    var lf = out[i];
+    var hue = branchHue(lf.branch), lit = depthLight(lf.depth);
+    var fill = 'hsl(' + hue + ',' + (lf.empty ? '12%,' : '46%,') + lit + '%)';
+    var tip = lf.pseudo ? lf.label + ' · ' + human(lf.size) : (lf.node.path || '/') + '\n' + human(lf.pseudo ? lf.size : lf.node.size) + (lf.empty ? ' · 空目录' : '') + (lf.backing ? ' · 点空白处进入' : '');
+    s += '<rect class="tile" data-path="' + esc(lf.pseudo ? '' : lf.node.path) + '" data-size="' + (lf.pseudo ? lf.size : lf.node.size) + '" x="' + lf.x.toFixed(1) + '" y="' + lf.y.toFixed(1) + '" width="' + Math.max(0.5, lf.w).toFixed(1) + '" height="' + Math.max(0.5, lf.h).toFixed(1) + '" rx="3" fill="' + fill + '">';
+    s += '<title>' + esc(tip) + '</title></rect>';
+    var nm = lf.pseudo ? lf.label : lf.node.name;
+    var szTxt = human(lf.pseudo ? lf.size : lf.node.size);
+    if(!lf.backing && lf.w > 66 && lf.h > 30 && nm){
+      var maxCh = Math.floor((lf.w - 12) / 6.6);
+      var shown = nm.length > maxCh ? nm.slice(0, Math.max(1, maxCh - 1)) + '…' : nm;
+      s += '<text x="' + (lf.x + 6).toFixed(1) + '" y="' + (lf.y + 17).toFixed(1) + '" font-size="12">' + esc(shown) + '</text>';
+      if(lf.w > 76 && lf.h > 46) s += '<text class="tsize" x="' + (lf.x + 6).toFixed(1) + '" y="' + (lf.y + 33).toFixed(1) + '" font-size="11">' + esc(szTxt) + '</text>';
+    }
+  }
+  svg.innerHTML = s;
+  renderCrumbs(rootNode);
+  renderHogs();
+}
+
+function renderCrumbs(rootNode){
+  var c = $('crumbs');
+  if(!state.rootPath){ c.innerHTML = '<span style="color:var(--dim)">当前位置：全览</span>'; return; }
+  var parts = state.rootPath.split('/').filter(Boolean);
+  var h = '<button data-p="">▒ 全览</button>';
+  var acc = '';
+  for(var i=0;i<parts.length;i++){
+    acc += (i? '/' : '') + parts[i];
+    h += '<span class="sep">›</span><button data-p="' + esc(acc) + '">' + esc(parts[i]) + '</button>';
+  }
+  h += '<span class="sep">· ' + esc(human(rootNode.size)) + '</span>';
+  c.innerHTML = h;
+}
+
+function renderHogs(){
+  var box = $('hogs');
+  var es = state.lastEntries.slice().sort(function(a,b){ return b.size - a.size; }).slice(0,8);
+  if(!es.length){ box.innerHTML = '<div class="hint">暂无数据</div>'; return; }
+  var max = es[0].size || 1, h = '', i;
+  for(i=0;i<es.length;i++){
+    var pct = Math.round(es[i].size / max * 100);
+    h += '<div class="hog"><span class="no">' + (i+1) + '</span><span class="p">' + esc(es[i].path) + '</span>' +
+         '<span class="bar"><i style="width:' + pct + '%"></i></span>' +
+         '<span class="sz">' + human(es[i].size) + '</span></div>';
+  }
+  box.innerHTML = h;
+}
+
+function renderStats(){
+  var es = state.lastEntries;
+  var total = 0, i;
+  for(i=0;i<es.length;i++) total += es[i].size;
+  var top = es.slice().sort(function(a,b){ return b.size - a.size; })[0];
+  var bits = [];
+  bits.push('总计 <b>' + human(total) + '</b>');
+  bits.push('条目 <b>' + es.length + '</b>');
+  if(top) bits.push('最大 <b>' + esc(top.path.split('/').pop()) + '</b> ' + human(top.size));
+  bits.push('格式 <b>' + (state.parsed.format === 'human' ? '人类可读' : '字节') + '</b>');
+  if(state.parsed.skipped.length) bits.push('<span style="color:var(--warn)">跳过 ' + state.parsed.skipped.length + ' 行</span>');
+  if(state.truncated) bits.push('<span style="color:var(--warn)">深层已截断（>' + MAX_LEAVES + ' 块）</span>');
+  $('statline').innerHTML = bits.join('<span style="opacity:.4">｜</span>');
+}
+
+/* ---------- 入口 ---------- */
+function consume(text){
+  var p = parseDu(text);
+  if(!p.ok){
+    state.tree = null; state.rootPath = ''; state.lastEntries = [];
+    $('stats').style.display = 'none';
+    $('main').style.display = 'none';
+    $('btnCopy').disabled = true; $('btnSvg').disabled = true;
+    $('map').innerHTML = '';
+    showToast('err', p.error);
+    return;
+  }
+  state.parsed = p;
+  state.lastEntries = p.entries;
+  state.tree = buildTree(p.entries);
+  state.rootPath = '';
+  $('stats').style.display = 'block';
+  $('main').style.display = 'grid';
+  $('btnCopy').disabled = false; $('btnSvg').disabled = false;
+  render(); renderStats();
+  var note = p.skippedNote ? p.skippedNote + '。' : '';
+  showToast('ok', note + '已生成：' + p.entries.length + ' 个条目，' + human(state.tree.size));
+}
+
+function report(){
+  var es = state.lastEntries.slice().sort(function(a,b){ return b.size - a.size; });
+  var total = 0, i;
+  for(i=0;i<es.length;i++) total += es[i].size;
+  var lines = ['# DUMAP 磁盘空间报告', '', '- 总计：' + human(total) + '（' + total + ' B），条目 ' + es.length + ' 个', '- 占地大户：'];
+  for(i=0;i<Math.min(8,es.length);i++){
+    lines.push('  ' + (i+1) + '. `' + es[i].path + '` — ' + human(es[i].size) + '（' + (total? (Math.round(es[i].size/total*1000)/10) : 0) + '%）');
+  }
+  lines.push('', '> 由 DUMAP（daily-tools #66）本地生成，数据未离开浏览器。');
+  return lines.join('\n');
+}
+
+function copyText(t, done){
+  function fb(){
+    var ta = document.createElement('textarea');
+    ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try{ ok = document.execCommand('copy'); }catch(e){ ok = false; }
+    document.body.removeChild(ta);
+    done(ok);
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(function(){ done(true); }, fb);
+  } else fb();
+}
+
+/* ---------- 事件 ---------- */
+var debounceT = null;
+$('inp').addEventListener('input', function(){
+  clearTimeout(debounceT);
+  debounceT = setTimeout(function(){
+    var v = $('inp').value;
+    if(v.trim()) consume(v);
+  }, 350);
+});
+$('map').addEventListener('click', function(ev){
+  var t = ev.target;
+  if(!t.classList || !t.classList.contains('tile')) return;
+  var p = t.getAttribute('data-path');
+  if(!p) return;
+  var node = findNode(state.tree, p);
+  if(node && hasKids(node)){ state.rootPath = p; render(); }
+  else showToast('info', '「' + (p.split('/').pop()) + '」下面没有子目录了（' + human(node ? node.size : 0) + '）');
+});
+$('crumbs').addEventListener('click', function(ev){
+  var t = ev.target;
+  if(t.tagName !== 'BUTTON') return;
+  state.rootPath = t.getAttribute('data-p') || '';
+  render();
+});
+$('btnSample').addEventListener('click', function(){ $('inp').value = SAMPLE; consume(SAMPLE); });
+$('btnSampleH').addEventListener('click', function(){ $('inp').value = SAMPLE_H; consume(SAMPLE_H); });
+$('btnClear').addEventListener('click', function(){
+  $('inp').value = '';
+  state.tree = null; state.rootPath = ''; state.lastEntries = [];
+  $('stats').style.display = 'none'; $('main').style.display = 'none';
+  $('btnCopy').disabled = true; $('btnSvg').disabled = true;
+  $('map').innerHTML = ''; $('crumbs').innerHTML = ''; $('hogs').innerHTML = '';
+});
+$('btnCopy').addEventListener('click', function(){
+  copyText(report(), function(ok){
+    if(ok) showToast('ok', '报告已复制到剪贴板 ✓');
+    else showToast('err', '复制失败：请手动全选文本框内容复制');
+  });
+});
+$('btnSvg').addEventListener('click', function(){
+  try{
+    var svg = $('map').cloneNode(true);
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    var src = '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(svg);
+    var blob = new Blob([src], { type:'image/svg+xml' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'dumap-' + Date.now() + '.svg';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); document.body.removeChild(a); }, 400);
+    showToast('ok', 'SVG 已导出 ✓');
+  }catch(e){ showToast('err', '导出失败：' + e.message); }
+});
+</script>
+</body>
+</html>
