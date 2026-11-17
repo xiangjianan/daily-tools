@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPX 爬坡剖面仪 CLIMBSCOPE</title>
+<style>
+  :root{
+    --bg:#101418; --panel:#1a2027; --panel2:#212a33; --line:#2e3944;
+    --fg:#e8eef4; --dim:#8a99a8; --accent:#ffb454;
+    --g0:#7ad97a; --g1:#ffd166; --g2:#ff9f43; --g3:#ff6b6b; --g4:#c0392b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--fg);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;
+    padding:16px 12px 40px;
+  }
+  header{text-align:center;margin-bottom:6px}
+  header h1{font-size:1.35rem;letter-spacing:.04em}
+  header h1 .en{color:var(--accent)}
+  header p{color:var(--dim);font-size:.85rem;margin-top:4px}
+  #drop{
+    margin-top:14px;width:100%;max-width:900px;
+    border:2px dashed var(--line);border-radius:14px;
+    background:var(--panel);padding:34px 16px;text-align:center;
+    cursor:pointer;transition:.2s;color:var(--dim);
+  }
+  #drop.drag{border-color:var(--accent);background:#243040;color:var(--fg)}
+  #drop b{color:var(--fg)}
+  #drop input{display:none}
+  .hint{font-size:.8rem;margin-top:8px}
+  button{
+    background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    border-radius:8px;padding:7px 14px;font-size:.85rem;cursor:pointer;
+  }
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  #toolbar{display:none;gap:8px;margin:12px auto 0;max-width:900px;width:100%;flex-wrap:wrap;align-items:center;justify-content:space-between}
+  #stats{
+    display:none;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+    gap:8px;max-width:900px;width:100%;margin-top:10px;
+  }
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .stat .k{font-size:.7rem;color:var(--dim)}
+  .stat .v{font-size:1.05rem;font-weight:600;margin-top:2px}
+  .stat .v small{font-size:.7rem;color:var(--dim);font-weight:400}
+  #chartWrap{display:none;position:relative;max-width:900px;width:100%;margin-top:10px}
+  #chart{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:100%;display:block;touch-action:pan-y}
+  #tip{
+    position:absolute;pointer-events:none;display:none;z-index:5;
+    background:#0c1014ee;border:1px solid var(--line);border-radius:8px;
+    padding:6px 10px;font-size:.75rem;line-height:1.5;white-space:nowrap;
+  }
+  #climbs{display:none;max-width:900px;width:100%;margin-top:14px}
+  #climbs h2{font-size:.95rem;margin-bottom:8px;color:var(--dim)}
+  .climb{
+    background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--g1);
+    border-radius:10px;padding:9px 12px;margin-bottom:8px;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;cursor:pointer;transition:.15s;
+  }
+  .climb:hover{background:var(--panel2)}
+  .badge{
+    width:34px;height:34px;border-radius:50%;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:.8rem;color:#101418;
+  }
+  .climb .info{flex:1;min-width:150px;font-size:.85rem;line-height:1.5}
+  .climb .info .name{font-weight:600}
+  .climb .meta{color:var(--dim);font-size:.78rem}
+  #err{
+    display:none;max-width:900px;width:100%;margin-top:10px;
+    background:#3a1d1d;border:1px solid #7a3b3b;color:#ffb3b3;
+    border-radius:10px;padding:10px 14px;font-size:.85rem;
+  }
+  footer{margin-top:26px;color:var(--dim);font-size:.72rem;text-align:center;line-height:1.8}
+  footer a{color:var(--dim)}
+  @media (max-width:520px){
+    header h1{font-size:1.1rem}
+    .stat .v{font-size:.95rem}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>⛰️ CLIMBSCOPE <span class="en">GPX 爬坡剖面仪</span></h1>
+  <p>拖入 GPX 轨迹，立刻得到坡度染色剖面 + 环法标准爬坡分级 · 全程本地解析，不上传任何数据</p>
+</header>
+
+<div id="drop">
+  <div style="font-size:2rem">🚴⛰️</div>
+  <div><b>点击选择或拖入 .gpx 文件</b></div>
+  <div class="hint">支持 Garmin / Strava / Keep / 两步路等导出的轨迹（trkpt 含海拔效果最佳）</div>
+  <input type="file" id="file" accept=".gpx,text/xml,application/xml,application/gpx+xml">
+</div>
+
+<div id="err"></div>
+
+<div id="toolbar">
+  <span id="fname" style="color:var(--dim);font-size:.8rem;flex:1"></span>
+  <button id="btnExport">⬇ 导出剖面 PNG</button>
+  <button id="btnReset">换一条轨迹</button>
+</div>
+
+<div id="stats"></div>
+
+<div id="chartWrap">
+  <canvas id="chart"></canvas>
+  <div id="tip"></div>
+</div>
+
+<div id="climbs"><h2>🚩 爬坡段清单（点卡片可在图上高亮）</h2><div id="climbList"></div></div>
+
+<footer>
+  爬坡分级参考环法标准：按海拔增益与平均坡度综合评定（4 类 → HC，超出即神仙坡）。<br>
+  数据 100% 在浏览器本地解析 · <a href="https://github.com/xiangjianan/daily-tools/tree/main/climbscope-20261118">源码</a>
+</footer>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const drop = $('drop'), fileInput = $('file'), errBox = $('err');
+const chart = $('chart'), ctx = chart.getContext('2d'), tip = $('tip');
+let profile = null;   // {pts:[{d,e}], climbs:[], stats:{}}
+let hoverX = -1, activeClimb = -1;
+
+/* ---------- 分级色板与阈值 ---------- */
+const GRADES = [
+  {max: 3,   color: '#7ad97a', label: '缓坡'},
+  {max: 6,   color: '#ffd166', label: '中等'},
+  {max: 9,   color: '#ff9f43', label: '陡'},
+  {max: 14,  color: '#ff6b6b', label: '很陡'},
+  {max: 1e9, color: '#c0392b', label: '极陡'},
+];
+function gradeColor(g){ for (const s of GRADES) if (Math.abs(g) < s.max) return s.color; return GRADES[4].color; }
+
+/* 环法分级：综合增益与平均坡度。返回 {cat, badge, color} */
+function classifyClimb(gain, avgGrade, lengthKm){
+  const score = gain * (1 + Math.max(0, avgGrade - 4) * 0.12); // 越陡加权越高
+  if (score >= 1500 || (gain >= 1000 && avgGrade >= 8)) return {cat:'HC', badge:'HC', color:'#7d3c98', label:'环法 HC 级 · 超级爬坡'};
+  if (score >= 800)  return {cat:'1', badge:'1', color:'#c0392b', label:'1 类爬坡'};
+  if (score >= 450)  return {cat:'2', badge:'2', color:'#e67e22', label:'2 类爬坡'};
+  if (score >= 210)  return {cat:'3', badge:'3', color:'#f1c40f', label:'3 类爬坡'};
+  if (gain >= 60 && avgGrade >= 3) return {cat:'4', badge:'4', color:'#27ae60', label:'4 类爬坡'};
+  return null; // 不构成爬坡段
+}
+
+/* ---------- GPX 解析 ---------- */
+function parseGPX(text){
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.querySelector('parsererror')) throw new Error('文件不是有效的 XML/GPX');
+  let nodes = [...doc.querySelectorAll('trkpt')];
+  if (!nodes.length) nodes = [...doc.querySelectorAll('rtept')];
+  if (!nodes.length) throw new Error('没有找到轨迹点（trkpt/rtept）');
+  const raw = nodes.map(n => ({
+    lat: parseFloat(n.getAttribute('lat')),
+    lon: parseFloat(n.getAttribute('lon')),
+    ele: n.querySelector('ele') ? parseFloat(n.querySelector('ele').textContent) : null,
+  }));
+  if (!raw.length || !isFinite(raw[0].lat)) throw new Error('轨迹点缺少经纬度');
+  return raw;
+}
+
+const R = 6371000;
+function distM(a, b){
+  const dLat = (b.lat-a.lat)*Math.PI/180, dLon = (b.lon-a.lon)*Math.PI/180;
+  const la = a.lat*Math.PI/180, lb = b.lat*Math.PI/180;
+  const h = Math.sin(dLat/2)**2 + Math.cos(la)*Math.cos(lb)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+
+/* ---------- 构建剖面：平滑海拔 → 累计里程 → 坡度 → 爬坡段识别 ---------- */
+function buildProfile(raw){
+  const pts = [];
+  let d = 0;
+  for (let i = 0; i < raw.length; i++){
+    if (i > 0) d += distM(raw[i-1], raw[i]);
+    pts.push({d, e: raw[i].ele});
+  }
+  const hasEle = pts.some(p => p.e !== null && isFinite(p.e));
+  if (!hasEle) throw new Error('轨迹不含海拔数据（ele），无法分析坡度');
+  // 补齐缺失海拔（线性插值）
+  let last = pts.find(p => p.e !== null).e;
+  for (const p of pts){ if (p.e === null || !isFinite(p.e)) p.e = last; else last = p.e; }
+  // 中值滤波去毛刺（窗口5）
+  const es = pts.map(p => p.e);
+  for (let i = 0; i < pts.length; i++){
+    const w = es.slice(Math.max(0,i-2), i+3).sort((a,b)=>a-b);
+    pts[i].e = w[Math.floor(w.length/2)];
+  }
+  // 累计增益
+  let gain = 0, loss = 0;
+  for (let i = 1; i < pts.length; i++){
+    const de = pts[i].e - pts[i-1].e;
+    if (de > 0) gain += de; else loss -= de;
+  }
+  // 爬坡段识别：滑动窗口，增益>8m 且平均坡度>=3% 合并连续段
+  const climbs = [];
+  let seg = null;
+  for (let i = 1; i < pts.length; i++){
+    const dd = pts[i].d - pts[i-1].d;
+    const de = pts[i].e - pts[i-1].e;
+    const g = dd > 1 ? de/dd*100 : 0;
+    if (de > 0 && g >= 3){
+      if (!seg) seg = {i0:i-1, gain:0, dist:0};
+      seg.gain += de; seg.dist += dd; seg.i1 = i;
+    } else if (seg){
+      // 允许段内 <=6% 长度的短暂下坡缓冲：直接断段，靠合并逻辑
+      finishSeg(seg, pts, climbs); seg = null;
+    }
+  }
+  if (seg) finishSeg(seg, pts, climbs);
+  mergeClimbs(climbs, pts);
+  const totalKm = pts[pts.length-1].d / 1000;
+  const stats = {
+    km: totalKm, gain: Math.round(gain), loss: Math.round(loss),
+    n: raw.length,
+    eleMin: Math.round(Math.min(...pts.map(p=>p.e))),
+    eleMax: Math.round(Math.max(...pts.map(p=>p.e))),
+    climbs: climbs.length,
+    hardest: climbs.length ? climbs.reduce((a,b)=>b.score>a.score?b:a) : null,
+  };
+  return {pts, climbs, stats};
+}
+function finishSeg(seg, pts, climbs){
+  const p0 = pts[seg.i0], p1 = pts[seg.i1];
+  const avg = seg.dist > 5 ? seg.gain/seg.dist*100 : 0;
+  const info = classifyClimb(seg.gain, avg, seg.dist/1000);
+  if (info) climbs.push({i0:seg.i0, i1:seg.i1, gain:Math.round(seg.gain),
+    dist:seg.dist/1000, avg, max:0, startE:p0.e, endE:p1.e, startD:p0.d,
+    ...info, score: seg.gain*(1+Math.max(0,avg-4)*0.12)});
+}
+function mergeClimbs(climbs, pts){
+  // 相邻爬坡间隔 < 400m 且落差 < 15m 时合并
+  for (let i = climbs.length-1; i > 0; i--){
+    const a = climbs[i-1], b = climbs[i];
+    const gap = pts[b.i0].d - pts[a.i1].d;
+    const drop = a.endE - b.startE;
+    if (gap < 400 && drop < 15){
+      a.i1 = b.i1; a.gain += b.gain; a.dist += (pts[a.i1].d - pts[a.i0].d)/1000;
+      a.avg = a.gain/((pts[a.i1].d - pts[a.i0].d))*100;
+      a.score = a.gain*(1+Math.max(0,a.avg-4)*0.12);
+      const info = classifyClimb(a.gain, a.avg, a.dist);
+      if (info){ Object.assign(a, {cat:info.cat, badge:info.badge, color:info.color, label:info.label}); }
+      climbs.splice(i,1);
+    }
+  }
+  for (const c of climbs){
+    let mx = 0;
+    for (let i = c.i0+1; i <= c.i1; i++){
+      const dd = pts[i].d - pts[i-1].d;
+      if (dd > 5) mx = Math.max(mx, (pts[i].e - pts[i-1].e)/dd*100);
+    }
+    c.max = Math.round(mx*10)/10;
+    c.avg = Math.round(c.avg*10)/10;
+  }
+  climbs.sort((a,b)=>a.startD-b.startD);
+}
+
+/* ---------- 绘图 ---------- */
+function draw(){
+  if (!profile) return;
+  const {pts, climbs, stats} = profile;
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.min(chart.parentElement.clientWidth, 900);
+  const H = Math.max(260, Math.min(380, W*0.42));
+  chart.width = W*dpr; chart.height = H*dpr;
+  chart.style.height = H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const L = 44, Rp = 14, T = 22, B = 30;
+  const pw = W-L-Rp, ph = H-T-B;
+  const eMin = stats.eleMin, eMax = stats.eleMax, pad = Math.max(12,(eMax-eMin)*0.08);
+  const y0 = eMin-pad, y1 = eMax+pad;
+  const x = d => L + d/stats.km*pw;
+  const y = e => T + (1-(e-y0)/(y1-y0))*ph;
+  ctx.clearRect(0,0,W,H);
+
+  // 网格 + 海拔刻度
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#8a99a8';
+  ctx.strokeStyle = '#2e3944'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++){
+    const ey = y0 + (y1-y0)*i/4, yy = y(ey);
+    ctx.beginPath(); ctx.moveTo(L,yy); ctx.lineTo(W-Rp,yy); ctx.stroke();
+    ctx.fillText(Math.round(ey)+'m', 4, yy+3);
+  }
+  // 里程刻度
+  const step = niceStep(stats.km/5);
+  for (let d = 0; d <= stats.km; d += step){
+    const xx = x(d);
+    ctx.fillText(d.toFixed(0)+'km', xx-8, H-8);
+    ctx.beginPath(); ctx.moveTo(xx, T+ph); ctx.lineTo(xx, T+ph+4); ctx.stroke();
+  }
+
+  // 坡度染色填充（逐段）
+  const drawFill = (from, to, dimmed) => {
+    for (let i = Math.max(1,from); i <= to; i++){
+      const dd = pts[i].d - pts[i-1].d;
+      const g = dd > 1 ? (pts[i].e - pts[i-1].e)/dd*100 : 0;
+      ctx.beginPath();
+      ctx.moveTo(x(pts[i-1].d), y(pts[i-1].e));
+      ctx.lineTo(x(pts[i].d), y(pts[i].e));
+      ctx.lineTo(x(pts[i].d), T+ph); ctx.lineTo(x(pts[i-1].d), T+ph);
+      ctx.closePath();
+      ctx.fillStyle = gradeColor(g) + (dimmed ? '55' : 'cc');
+      ctx.fill();
+    }
+  };
+  // 爬坡段高亮窗口
+  const inActive = i => activeClimb >= 0 && climbs[activeClimb] &&
+    i >= climbs[activeClimb].i0 && i <= climbs[activeClimb].i1;
+  if (activeClimb >= 0 && climbs[activeClimb]){
+    drawFill(1, pts.length-1, true);
+    drawFill(climbs[activeClimb].i0, climbs[activeClimb].i1, false);
+  } else {
+    drawFill(1, pts.length-1, false);
+  }
+  // 轮廓线
+  ctx.beginPath();
+  pts.forEach((p,i)=> i ? ctx.lineTo(x(p.d), y(p.e)) : ctx.moveTo(x(p.d), y(p.e)));
+  ctx.strokeStyle = '#e8eef4'; ctx.lineWidth = 1.4; ctx.stroke();
+
+  // 爬坡标记
+  ctx.font = 'bold 11px sans-serif';
+  climbs.forEach((c, idx)=>{
+    const cx = x(pts[c.i0].d), cy = y(pts[c.i0].e);
+    ctx.beginPath(); ctx.arc(cx, cy-12, 9, 0, Math.PI*2);
+    ctx.fillStyle = c.color; ctx.fill();
+    ctx.fillStyle = '#101418'; ctx.textAlign = 'center';
+    ctx.fillText(c.badge, cx, cy-8);
+    ctx.textAlign = 'left';
+  });
+
+  // 起终点
+  ctx.fillStyle = '#e8eef4';
+  ctx.beginPath(); ctx.arc(x(pts[0].d), y(pts[0].e), 3.5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x(pts[pts.length-1].d), y(pts[pts.length-1].e), 3.5, 0, Math.PI*2); ctx.fill();
+
+  // 悬停十字线
+  if (hoverX >= 0){
+    const dd = Math.max(0, Math.min(1,(hoverX-L)/pw)) * stats.km;
+    const idx = nearestIdx(pts, dd);
+    const p = pts[idx];
+    ctx.strokeStyle = '#ffb454'; ctx.lineWidth = 1;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(x(p.d), T); ctx.lineTo(x(p.d), T+ph); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(x(p.d), y(p.e), 4, 0, Math.PI*2);
+    ctx.fillStyle = '#ffb454'; ctx.fill();
+    showTip(p, idx);
+  } else {
+    tip.style.display = 'none';
+  }
+}
+function niceStep(v){
+  const cands = [0.5,1,2,5,10,20,25,50,100];
+  for (const c of cands) if (c >= v) return c;
+  return 100;
+}
+function nearestIdx(pts, d){
+  let lo = 0, hi = pts.length-1;
+  while (lo < hi){ const m = (lo+hi)>>1; if (pts[m].d < d) lo = m+1; else hi = m; }
+  return lo;
+}
+function showTip(p, idx){
+  const dd = idx > 0 ? p.d - profile.pts[idx-1].d : 1;
+  const de = idx > 0 ? p.e - profile.pts[idx-1].e : 0;
+  const g = dd > 1 ? de/dd*100 : 0;
+  tip.innerHTML = `<b>${(p.d/1000).toFixed(2)} km</b> · 海拔 ${Math.round(p.e)} m<br>坡度 <span style="color:${gradeColor(g)}">${g>=0?'+':''}${g.toFixed(1)}%</span>`;
+  tip.style.display = 'block';
+  const wrap = chart.parentElement;
+  const left = Math.min(chart.clientWidth-130, Math.max(4, hoverX+12));
+  tip.style.left = left+'px';
+  tip.style.top = '8px';
+}
+
+/* ---------- 统计与清单 ---------- */
+function renderStats(){
+  const s = profile.stats;
+  $('stats').innerHTML = [
+    ['总里程', s.km.toFixed(1), 'km'],
+    ['累计爬升', s.gain, 'm'],
+    ['累计下降', s.loss, 'm'],
+    ['海拔范围', `${s.eleMin}~${s.eleMax}`, 'm'],
+    ['爬坡段', s.climbs, s.climbs>2?'段':'段'],
+    ['最狠坡段', s.hardest ? `${s.hardest.gain}m@${s.hardest.avg}%` : '—', s.hardest? s.hardest.badge : ''],
+  ].map(([k,v,u]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}<small> ${u}</small></div></div>`).join('');
+  $('climbList').innerHTML = profile.climbs.length ? profile.climbs.map((c,i)=>`
+    <div class="climb" data-i="${i}" style="border-left-color:${c.color}">
+      <div class="badge" style="background:${c.color}">${c.badge}</div>
+      <div class="info">
+        <div class="name">${c.label} @ ${(c.startD/1000).toFixed(1)} km 处</div>
+        <div class="meta">${c.dist.toFixed(2)} km · 平均 ${c.avg}% · 最大 ${c.max}% · 爬升 ${c.gain} m · ${Math.round(c.startE)}m → ${Math.round(c.endE)}m</div>
+      </div>
+    </div>`).join('')
+    : '<div style="color:var(--dim);font-size:.85rem;padding:8px">这条轨迹比较温柔，没有达到环法标准的爬坡段（增益≥60m 且平均≥3% 才算数）。</div>';
+  $('climbs').style.display = 'block';
+}
+
+/* ---------- 事件 ---------- */
+drop.addEventListener('click', ()=> fileInput.click());
+drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.classList.add('drag'); });
+drop.addEventListener('dragleave', ()=> drop.classList.remove('drag'));
+drop.addEventListener('drop', e=>{
+  e.preventDefault(); drop.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+fileInput.addEventListener('change', ()=>{ if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+function loadFile(f){
+  errBox.style.display = 'none';
+  if (!/\.gpx$/i.test(f.name) && f.type.indexOf('xml') < 0 && f.type.indexOf('gpx') < 0){
+    showErr('请选择 .gpx 格式的轨迹文件'); return;
+  }
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const raw = parseGPX(rd.result);
+      profile = buildProfile(raw);
+      $('fname').textContent = `📄 ${f.name}（${raw.length} 点）`;
+      $('drop').style.display = 'none';
+      ['toolbar','stats','chartWrap'].forEach(id => $(id).style.display = id==='toolbar' ? 'flex' : (id==='stats' ? 'grid' : 'block'));
+      activeClimb = -1; hoverX = -1;
+      renderStats(); draw();
+    } catch(err){ showErr('解析失败：' + err.message); }
+  };
+  rd.onerror = () => showErr('文件读取失败');
+  rd.readAsText(f);
+}
+function showErr(msg){ errBox.textContent = '⚠️ ' + msg; errBox.style.display = 'block'; }
+
+$('btnReset').addEventListener('click', ()=>{
+  profile = null; fileInput.value = '';
+  ['toolbar','stats','chartWrap','climbs'].forEach(id => $(id).style.display = 'none');
+  $('drop').style.display = 'block';
+});
+
+function chartPos(e){
+  const r = chart.getBoundingClientRect();
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+  return cx;
+}
+chart.addEventListener('mousemove', e=>{ hoverX = chartPos(e); draw(); });
+chart.addEventListener('mouseleave', ()=>{ hoverX = -1; draw(); });
+chart.addEventListener('touchmove', e=>{ e.preventDefault(); hoverX = chartPos(e); draw(); }, {passive:false});
+chart.addEventListener('touchend', ()=>{ hoverX = -1; draw(); });
+window.addEventListener('resize', ()=>{ if (profile) draw(); });
+
+$('climbList').addEventListener('click', e=>{
+  const card = e.target.closest('.climb');
+  if (!card) return;
+  const i = +card.dataset.i;
+  activeClimb = activeClimb === i ? -1 : i;
+  chart.scrollIntoView({behavior:'smooth', block:'center'});
+  draw();
+});
+
+$('btnExport').addEventListener('click', ()=>{
+  const a = document.createElement('a');
+  a.download = (profile ? 'climbscope-profile' : 'profile') + '.png';
+  a.href = chart.toDataURL('image/png');
+  a.click();
+});
+
+/* 演示轨迹：页面加载后提供内置示例，便于零文件体验 */
+const DEMO = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">
+<trk><trkseg>${demoPoints()}</trkseg></trk></gpx>`;
+function demoPoints(){
+  let s = '', lat = 30.6586, lon = 104.0633, ele = 500;
+  const push = (dLat,dLon,dE)=>{ lat+=dLat; lon+=dLon; ele+=dE;
+    s += `<trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}"><ele>${ele.toFixed(1)}</ele></trkpt>`; };
+  for (let i=0;i<80;i++) push(0.0004,0.0003,(Math.random()*2-1)*1.5);          // 热身缓坡
+  for (let i=0;i<220;i++) push(0.0004,0.0002,3.3+(Math.random()*2-1)*1);        // 长坡 ~7.5%
+  for (let i=0;i<40;i++) push(0.0004,0.0003,-2.5+(Math.random()*2-1)*1);        // 缓降
+  for (let i=0;i<160;i++) push(0.0003,0.0004,4+(Math.random()*2-1)*1);          // 陡坡 ~10%
+  for (let i=0;i<120;i++) push(0.0005,0.0003,-4+(Math.random()*2-1)*2);         // 长下坡
+  for (let i=0;i<90;i++) push(0.0003,0.0003,2.2+(Math.random()*2-1)*1);         // 三坡 ~5%
+  for (let i=0;i<60;i++) push(0.0004,0.0002,(Math.random()*2-1)*2);             // 收尾
+  return s;
+}
+</script>
+<div style="margin-top:10px"><button id="btnDemo">👀 没有文件？加载示例轨迹试试</button></div>
+<script>
+'use strict';
+document.getElementById('btnDemo').addEventListener('click', ()=>{
+  const f = new File([DEMO], 'demo-灌口-四座山.gpx', {type:'application/gpx+xml'});
+  loadFile(f);
+  window.scrollTo({top:0, behavior:'smooth'});
+});
+</script>
+</body>
+</html>
