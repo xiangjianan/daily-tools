@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>STITCHMAP · 照片变十字绣图纸</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23101418'/%3E%3Cpath d='M8 8l16 16M24 8L8 24' stroke='%23ff9f43' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0e1216; --panel:#151b21; --panel2:#1a222a; --line:#242e38;
+  --tx:#dde5ec; --tx2:#8a99a8; --acc:#ff9f43; --acc2:#4cc3ff;
+  --ok:#3ecf8e; --err:#ff6b6b; --r:12px;
+}
+*{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+body{
+  background:var(--bg); color:var(--tx);
+  font:15px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 40px);
+}
+.wrap{max-width:1180px; margin:0 auto;}
+header{margin-bottom:14px;}
+h1{font-size:22px; letter-spacing:.5px;}
+h1 .tag{color:var(--acc); font-size:12px; vertical-align:middle; border:1px solid var(--line); border-radius:99px; padding:2px 10px; margin-left:8px; font-weight:normal;}
+.sub{color:var(--tx2); font-size:13px; margin-top:4px;}
+.grid{display:grid; grid-template-columns:340px minmax(0,1fr); gap:16px; align-items:start;}
+@media (max-width:900px){ .grid{grid-template-columns:minmax(0,1fr);} }
+.card{background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:16px; margin-bottom:14px;}
+.card h2{font-size:13px; color:var(--tx2); font-weight:600; letter-spacing:.08em; margin-bottom:12px; text-transform:uppercase;}
+.drop{
+  border:1.5px dashed #35434f; border-radius:var(--r); padding:22px 14px; text-align:center;
+  color:var(--tx2); cursor:pointer; transition:.15s; font-size:13.5px;
+}
+.drop.on{border-color:var(--acc); color:var(--acc); background:rgba(255,159,67,.06);}
+.drop b{color:var(--tx); font-weight:600;}
+.row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:14px; flex-wrap:wrap;}
+.row label{font-size:13px; color:var(--tx2); white-space:nowrap;}
+.row .val{color:var(--acc); font-variant-numeric:tabular-nums; min-width:44px; text-align:right;}
+input[type=range]{flex:1; min-width:120px; accent-color:var(--acc); height:24px;}
+select{
+  background:var(--panel2); color:var(--tx); border:1px solid var(--line); border-radius:8px;
+  padding:5px 8px; font-size:13px;
+}
+.seg{display:flex; gap:0; border:1px solid var(--line); border-radius:8px; overflow:hidden; margin-top:12px;}
+.seg button{
+  flex:1; background:var(--panel2); border:none; color:var(--tx2); padding:7px 4px; font-size:12.5px; cursor:pointer;
+}
+.seg button.on{background:var(--acc); color:#161009; font-weight:600;}
+.btns{display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;}
+button.act{
+  background:var(--panel2); color:var(--tx); border:1px solid var(--line); border-radius:8px;
+  padding:8px 14px; font-size:13px; cursor:pointer; transition:.15s;
+}
+button.act:hover{border-color:var(--acc); color:var(--acc);}
+button.act.primary{background:var(--acc); border-color:var(--acc); color:#161009; font-weight:600;}
+button.act:disabled{opacity:.4; cursor:not-allowed;}
+#stageWrap{position:relative;}
+#chart{width:100%; display:block; border-radius:10px; border:1px solid var(--line); background:
+  repeating-conic-gradient(#141a20 0 25%, #10151b 0 50%) 0 0/24px 24px;}
+.empty{position:absolute; inset:0; display:flex; flex-direction:column; gap:8px; align-items:center; justify-content:center; color:var(--tx2); font-size:14px; text-align:center; padding:20px;}
+.empty .ico{font-size:34px; opacity:.7;}
+.stats{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:12px;}
+@media (max-width:520px){ .stats{grid-template-columns:repeat(2,minmax(0,1fr));} }
+.stat{background:var(--panel2); border-radius:8px; padding:8px 10px;}
+.stat b{display:block; font-size:17px; color:var(--acc); font-variant-numeric:tabular-nums;}
+.stat span{font-size:11.5px; color:var(--tx2);}
+.legend{margin-top:6px; max-height:340px; overflow:auto; border:1px solid var(--line); border-radius:8px;}
+.lrow{display:flex; align-items:center; gap:9px; padding:6px 10px; border-bottom:1px solid var(--line); font-size:12.5px;}
+.lrow:last-child{border-bottom:none;}
+.lrow .sw{width:30px; height:30px; border-radius:6px; flex:none; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; border:1px solid rgba(255,255,255,.14);}
+.lrow .sw.light{color:#111;} .lrow .sw.dark{color:#fff;}
+.lrow .code{color:var(--acc2); font-weight:600; min-width:44px;}
+.lrow .nm{color:var(--tx2); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.lrow .ct{font-variant-numeric:tabular-nums; color:var(--tx);}
+.lrow .sk{color:var(--ok); font-variant-numeric:tabular-nums; min-width:52px; text-align:right;}
+.toast{
+  position:fixed; left:50%; bottom:28px; transform:translateX(-50%) translateY(20px);
+  background:#202a33; border:1px solid var(--line); color:var(--tx);
+  padding:9px 18px; border-radius:99px; font-size:13px; opacity:0; pointer-events:none; transition:.25s; z-index:99;
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+.note{font-size:12px; color:var(--tx2); line-height:1.55; margin-top:10px;}
+.note b{color:var(--tx2);}
+footer{margin-top:20px; color:#5c6b7a; font-size:12px; text-align:center;}
+footer a{color:var(--tx2);}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>STITCHMAP<span class="tag">照片 → 十字绣图纸</span></h1>
+  <div class="sub">拖一张图进来，出一张能照着绣的图纸：真实 DMC 绣线色号 · 方格图 · 配线清单。全程本地处理，图片不出浏览器。</div>
+</header>
+
+<div class="grid">
+<div>
+  <div class="card">
+    <h2>① 图片</h2>
+    <div class="drop" id="drop">
+      <b>点击选择 / 拖拽图片</b><br>PNG · JPG · WebP，也可以直接 <b>Ctrl+V 粘贴</b>
+    </div>
+    <input type="file" id="file" accept="image/*" hidden>
+    <div class="btns">
+      <button class="act primary" id="btnDemo">试个示例图</button>
+      <button class="act" id="btnClear">清空</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>② 图纸参数</h2>
+    <div class="row"><label>图纸宽度</label><input type="range" id="wGrid" min="30" max="180" value="90"><span class="val" id="wGridV">90格</span></div>
+    <div class="row"><label>最多颜色</label><input type="range" id="nCol" min="6" max="48" value="16"><span class="val" id="nColV">16色</span></div>
+    <div class="row"><label>绣布格数</label>
+      <select id="ct">
+        <option value="11">11ct（大方格）</option>
+        <option value="14" selected>14ct（最常用）</option>
+        <option value="16">16ct</option>
+        <option value="18">18ct（细密）</option>
+      </select>
+    </div>
+    <div class="seg" id="views">
+      <button data-v="fill" class="on">色块</button>
+      <button data-v="sym">符号</button>
+      <button data-v="both">色块+符号</button>
+    </div>
+    <div class="note">小提示：宽格数越多越像原图，但也越大越费工。照片建议 80–120 格，头像/Logo 40–60 格就够。</div>
+  </div>
+
+  <div class="card" id="statCard" style="display:none">
+    <h2>③ 配线清单（DMC）</h2>
+    <div class="stats" id="stats"></div>
+    <div class="legend" id="legend"></div>
+    <div class="btns">
+      <button class="act" id="btnCopy">复制配线清单</button>
+      <button class="act" id="btnPng">下载图纸 PNG</button>
+    </div>
+    <div class="note" id="formulaNote"></div>
+  </div>
+</div>
+
+<div>
+  <div class="card">
+    <h2>图纸预览</h2>
+    <div id="stageWrap">
+      <canvas id="chart" width="800" height="600"></canvas>
+      <div class="empty" id="empty">
+        <div class="ico">✚</div>
+        <div>还没有图片<br><span style="font-size:12.5px">左侧选一张照片，或点「试个示例图」先看看效果</span></div>
+      </div>
+    </div>
+    <div class="stats" id="topStats" style="display:none"></div>
+    <div class="note" id="hintLine" style="margin-top:10px">图纸上每个格子 = 一针。色块视图看整体，符号视图方便对着数格子。</div>
+  </div>
+</div>
+</div>
+
+<footer>STITCHMAP · 数据：DMC 线号色值来自社区色表（社区通用近似色值）· 一切计算与图片都在你的浏览器本地完成 · <a href="https://github.com/xiangjianan/daily-tools/tree/main/stitchmap-20261119" target="_blank" rel="noopener">GitHub</a></footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/*==CORE==*/
+'use strict';
+/* DMC palette: "floss|name|hex;..." injected at build time */
+var DMC_RAW = "Ecru|Ecru/off-white|FFF7E7;315|Antique Mauve - MED DK|7D4246;Blanc|White|EEEEEE;316|Antique Mauve - MED|BC757F;B5200|Snow White|FCFCFF;317|Pewter Gray|6D6469;White|White|FFFFFF;318|Steel Gray - LT|999B9D;150|Red - BRIGHT|CF0053;319|Pistachio Green - VY DK|3A553B;151|Pink|FFCBD7;320|Pistachio Green - MED|608C59;152|Tawny - DK|E1A1A1;321|Red|BD1136;153|Lilac|EAC5EB;322|Baby Blue|3A609D;154|Red - VY DK|4B233A;326|Rose - VY DK|AC1C37;155|Forget-me-not Blue|9774B6;327|Violet|5E0F77;156|Blue - MED|8577B4;333|Blue Violet - VY DK|6E2E9B;157|Blue - LT|B5B8EA;334|Baby Blue - MED|6085B8;158|Blue - DK|393068;335|Rose|D63D57;159|Petrol Blue - LT|BCB5DE;336|Blue|0C275E;160|Petrol Blue - MED|8178A9;340|Blue Violet - MED|996DC3;161|Petrol Blue - DK|60568B;341|Blue Violet - LT|A39AD7;162|Baby Blue - LT|CAE7F0;347|Salmon - VY DK|AB1B33;163|Green|557A60;349|Coral - DK|C62C38;164|Green - LT|BAE4B6;350|Coral - MED|DE3F40;165|Green - BRIGHT|E1F477;351|Coral|ED625B;166|Lime Green|ADC238;352|Coral - LT|F78372;167|Khaki Brown|855D31;353|Peach|FDB4A1;168|Silver Gray|B1AEB7;355|Terra Cotta - DK|97382B;169|Pewter Gray|827D7D;356|Terra Cotta - MED|BE5C4B;208|Lavender - VY DK|9442A7;367|Pistachio Green - DK|446B45;209|Lavender - DK|BA72C6;368|Pistachio Green - LT|7FC66D;210|Lavender - MED|D49FE1;369|Pistachio Green - VY LT|CDEFA6;211|Lavender - LT|E5BDED;370|Mustard - MED|917245;221|Shell Pink - VY DK|792631;371|Mustard|9F8352;223|Shell Pink - LT|BB6864;372|Mustard - LT|AD9564;224|Shell Pink - VY LT|E2A598;400|Mahogany - DK|813718;225|Shell Pink - ULT VY LT|F8D9CD;402|Mahogany - VY LT|EF9E74;300|Mahogany - VY DK|6C3116;407|Desert Sand - DK|B77159;301|Mahogany - MED|AA5237;413|Pewter Gray - DK|4A4749;304|Red - MED|A10C39;414|Steel Gray - DK|766E72;307|Lemon|FDE949;415|Pearl Gray|B8B9BD;309|Rose - DK|BA2044;420|Hazelnut Brown - DK|855A30;310|Black|000000;422|Hazelnut Brown - LT|C99A67;311|Blue - MED|002A64;433|Brown - MED|73421E;312|Baby Blue - VY DK|1F3279;434|Brown - LT|8F5332;435|Brown - VY LT|A96538;600|Cranberry - VY DK|BF1C48;436|Tan|C78559;601|Cranberry - DK|C62A53;437|Tan - LT|DAA26F;602|Cranberry - MED|D63F68;444|Lemon - DK|F5BC13;603|Cranberry|ED5D84;445|Lemon - LT|FCF999;604|Cranberry - LT|F793B2;451|Shell Gray - DK|887773;605|Cranberry - VY LT|FBACC4;452|Shell Gray - MED|AD9994;606|Orange-red - BRIGHT|F70F00;453|Shell Gray - LT|CCB8AA;608|Orange - BRIGHT|FD480C;469|Avocado Green|5B6533;610|Drab Brown - DK|6B5039;470|Avocado Green - LT|72813E;611|Drab Brown|7C5F46;471|Avocado Green - VY LT|9EB357;612|Drab Brown - LT|A6885E;472|Avocado Green - ULT LT|D1DE75;613|Drab Brown - VY LT|B99F72;498|Red - DK|970B2C;632|Desert Sand - ULT VY DK|7F4232;500|Blue Green - VY DK|1D362A;640|Beige Gray - VY DK|817868;501|Blue Green - DK|2F5446;642|Beige Gray - DK|958D79;502|Blue Green|57826E;644|Beige Gray - MED|C4BEA6;503|Blue Green - MED|89B89F;645|Beaver Gray - VY DK|5D5D54;504|Blue Green - VY LT|ACDAC1;646|Beaver Gray - DK|6B6860;505|Grass Green - DK|CEDDC1;647|Beaver Gray - MED|908E85;517|Wedgewood - DK|216285;648|Beaver Gray - LT|A7A69F;518|Wedgewood - LT|50819C;666|Red - BRIGHT|CE1B33;519|Sky Blue|94B7CB;676|Old Gold - LT|ECBF7D;520|Fern Green - DK|384526;677|Old Gold - VY LT|F2DC9F;522|Fern Green|808B6E;680|Old Gold - DK|B07B46;523|Fern Green - LT|959F7A;699|Green|075B26;524|Fern Green - VY LT|AEA78E;700|Green - BRIGHT|076C34;535|Ash Gray - VY LT|4B4B49;701|Green - LT|217C36;543|Beige Brown - ULT VY LT|EAD0B5;702|Kelly Green|379130;550|Violet - VY DK|580E5C;703|Chartreuse|63B330;552|Violet - MED|902F99;704|Chartreuse - BRIGHT|88C53A;553|Violet|A449AC;712|Cream|F6EFDA;554|Violet - LT|DC9CDE;718|Plum|CB2089;561|Jade - VY DK|285E48;720|Orange Spice - DK|C83A24;562|Jade - MED|3B8C5A;721|Orange Spice - MED|F46440;563|Jade - LT|6ED39A;722|Orange Spice - LT|F98756;564|Jade - VY LT|95E4AF;725|Topaz|F9C15B;580|Moss Green - DK|355F0B;726|Topaz - LT|FDDB63;581|Moss Green|838A29;727|Topaz - VY LT|FDE98B;597|Turquoise|52ADAB;728|Golden Yellow|F2AE3F;598|Turquoise - LT|97D8D3;729|Old Gold - MED|CE9657;730|Olive Green - VY DK|63520B;803|Blue - DEEP|202754;731|Olive Green - DK|6B580B;806|Peacock Blue - DK|1D6C87;732|Olive Green|725C0C;807|Peacock Blue|558B9E;733|Olive Green - MED|A78A44;809|Delft Blue|919FD5;734|Olive Green - LT|BB9C54;813|Blue - LT|7FA0C6;738|Tan - VY LT|E2B783;814|Garnet - DK|711033;739|Tan - ULT VY LT|F2DEB9;815|Garnet - MED|800B34;740|Tangerine|FD6F1A;816|Garnet|921238;741|Tangerine - MED|FC8B10;817|Coral Red - VY DK|BB1630;742|Tangerine - LT|FDAE3C;818|Baby Pink|FEDEDD;743|Yellow - MED|FDD769;819|Baby Pink - LT|FCEBDE;744|Yellow - PALE|FEE88D;820|Royal Blue - VY DK|151264;745|Yellow - LT PALE|FEEBA5;822|Beige Gray - LT|E8DFC7;746|Off White|FAF2D5;823|Blue - DK|000B44;747|Sky Blue - VY LT|CEE9EA;824|Blue - VY DK|284779;754|Peach - LT|F7C9B0;825|Blue - DK|34588F;758|Terra Cotta - VY LT|E99F83;826|Blue - MED|5075A7;760|Salmon|EC8880;827|Blue - VY LT|A4C1DE;761|Salmon - LT|F8B4AD;828|Blue - ULT VY LT|C3D7E6;762|Pearl Gray - VY LT|D1D0D2;829|Golden Olive - VY DK|64480C;772|Yellow Green - VY LT|D7EFA7;830|Golden Olive - DK|6E501D;775|Baby Blue - VY LT|D4E3EF;831|Golden Olive - MED|7C5F20;776|Pink - MED|FCA8AD;832|Golden Olive|9C7230;777|Red - DEEP|9B0042;833|Golden Olive - LT|B99956;778|Antique Mauve - VY LT|DCA6A4;834|Golden Olive - VY LT|D2B468;779|Brown|53332D;838|Beige Brown - VY DK|4A3021;780|Topaz - ULT VY DK|945026;839|Beige Brown - DK|5A3C2D;781|Topaz - VY DK|A25F1F;840|Beige Brown - MED|7A5939;782|Topaz - DK|B26923;841|Beige Brown - LT|A37D64;783|Topaz - MED|D0883D;842|Beige Brown - VY LT|CBB094;791|Cornflower Blue - VY DK|2D2068;844|Beaver Gray - ULT DK|494842;792|Cornflower Blue - DK|454B8B;868|Hazel Nut Brown|995C30;793|Cornflower Blue - MED|7C82B5;869|Hazelnut Brown - VY DK|784C28;794|Cornflower Blue - LT|A0B2D7;890|Pistachio Green - ULT DK|324233;796|Royal Blue - DK|272276;891|Carnation - DK|EE3246;797|Royal Blue|2B3288;892|Carnation - MED|F44753;798|Delft Blue - DK|4E5CA7;893|Carnation - LT|F66879;799|Delft Blue - MED|6B7FC0;894|Carnation - VY LT|FD95A3;800|Delft Blue - PALE|B5C7E9;895|Hunter Green - VY DK|344B2E;801|Coffee Brown - DK|60391D;898|Coffee Brown - VY DK|532F1B;899|Rose - MED|EA6B78;955|Nile Green - LT|A8EBAD;900|Burnt Orange - DK|C63117;956|Geranium|F7566D;902|Garnet - VY DK|651329;957|Geranium - PALE|FD99AF;904|Parrot Green - VY DK|386324;958|Seagreen - DK|0DB294;905|Parrot Green - DK|467924;959|Seagreen - MED|72D0B7;906|Parrot Green - MED|6C9E29;961|Dusty Rose - DK|DE586C;907|Parrot Green - LT|9DC72D;962|Dusty Rose - MED|EB7183;909|Emerald Green - VY DK|106B43;963|Dusty Rose - ULT VY LT|FDCCD1;910|Emerald Green - DK|10814E;964|Seagreen - LT|A5E4D4;911|Emerald Green - MED|109256;966|Baby Green - MED|94D28A;912|Emerald Green - LT|36B26B;967|Peach - LT|FFC2AC;913|Nile Green - MED|55CA7D;970|Pumpkin - LT|FB6721;915|Plum - DK|95085A;971|Pumpkin|FC670D;917|Plum - MED|AC1071;972|Canary - DEEP|FB9F11;918|Red Copper - DK|883630;973|Canary - BRIGHT|FCCD2D;919|Red Copper|9B371B;975|Golden Brown - DK|813C11;920|Copper - MED|AB4836;976|Golden Brown - MED|CF7532;921|Copper|C0573D;977|Golden Brown - LT|EC8F43;922|Copper - LT|DD6E4C;986|Forest Green - VY DK|2E5230;924|Gray Green - VY DK|384A4A;987|Forest Green - DK|436838;926|Gray Green - MED|617674;988|Forest Green - MED|66924A;927|Gray Green - LT|9FA8A5;989|Forest Green|71A74E;928|Gray Green - VY LT|C0C6C0;991|Aquamarine - DK|135F55;930|Antique Blue - DK|495C6B;992|Aquamarine - LT|42B59E;931|Antique Blue - MED|667684;993|Aquamarine - VY LT|62D8B6;932|Antique Blue - LT|93A0AF;995|Electric Blue - DK|0061B0;934|Avocado Green - BLACK|323324;996|Electric Blue - MED|49A8EB;935|Avocado Green - DK|383A2A;3011|Khaki Green - DK|655935;936|Avocado Green - VY DK|3F4227;3012|Khaki Green - MED|8B7B4E;937|Avocado Green - MED|434F2C;3013|Khaki Green - LT|AFA97B;938|Coffee Brown - ULT DK|45271A;3021|Brown Gray - VY DK|50403B;939|Blue - VY DK|09092F;3022|Brown Gray - MED|848274;943|Aquamarine - MED|009A77;3023|Brown Gray - LT|A29B86;945|Tawny|F6C19A;3024|Brown Gray - VY LT|BEB8AC;946|Burnt Orange - MED|ED4115;3031|Mocha Brown - VY DK|423014;947|Burnt Orange|FC4F16;3032|Mocha Brown - MED|9D8868;948|Peach - VY LT|FDE6D3;3033|Mocha Brown - VY LT|DBC7AD;950|Desert Sand - LT|E5AC8D;3041|Antique Violet - MED|866A76;951|Tawny - LT|FADDB6;3042|Antique Violet - LT|AF98A0;954|Nile Green|6FDA8A;3045|Yellow Beige - DK|AF8152;3046|Yellow Beige - MED|CEB074;3731|Dusty Rose - VY DK|C34C5C;3047|Yellow Beige - LT|EAD8AB;3733|Dusty Rose|EA7E86;3051|Green Gray - DK|4C4C1E;3740|Antique Violet - DK|71535D;3052|Green Gray - MED|787E5C;3743|Antique Violet - VY LT|CFC2C9;3053|Green Gray|999D75;3746|Blue Violet - DK|844AB5;3064|Desert Sand|BA7056;3747|Blue Violet - VY LT|D0C5EC;3072|Beaver Gray - VY LT|D2D2CA;3750|Antique Blue - VY DK|1D4552;3078|Golden Yellow - VY LT|FCF6B6;3752|Antique Blue - VY LT|BAC9CC;3325|Baby Blue - LT|ADCDE7;3753|Antique Blue - ULT VY LT|D9E6EC;3326|Rose - LT|F9979C;3755|Baby Blue (?)|81A5D8;3328|Salmon - DK|BE444A;3756|Baby Blue|E9F4FA;3340|Apricot - MED|FD6B4F;3760|Wedgewood - MED|467293;3341|Apricot|FD8E78;3761|Sky Blue - LT|B1D0DF;3345|Hunter Green - DK|40552E;3765|Peacock Blue - VY DK|175E78;3346|Hunter Green|56743B;3766|Peacock Blue - LT|4B8AA1;3347|Yellow Green - MED|6D9646;3768|Gray Green - DK|4C605F;3348|Yellow Green - LT|BEDF74;3770|Tawny - VY LT|FEF1D8;3350|Dusty Rose - ULT DK|AA3949;3771|Peach - DK|E8AC9B;3354|Dusty Rose - LT|EFA5AC;3772|Desert Sand - VY DK|995744;3362|Pine Green - DK|49523C;3773|Desert Sand - MED|CF866D;3363|Pine Green - MED|617451;3774|Desert Sand - VY LT|F3CFB4;3364|Pine Green|8E9B6D;3776|Mahogany - LT|C96444;3371|Black Brown|36220E;3777|Terra Cotta - VY DK|922F25;3607|Plum - LT|D94C9D;3778|Terra Cotta - LT|D2705C;3608|Plum - VY LT|EC81BE;3779|Terra Cotta - ULT VY LT|F2AB95;3609|Plum - ULT LT|F6B0DF;3781|Mocha Brown - DK|593F2B;3685|Mauve - VY DK|79263B;3782|Mocha Brown - LT|B69D80;3687|Mauve|B5455D;3787|Brown Gray - DK|62524C;3688|Mauve - MED|DC7C86;3790|Beige Gray - ULT DK|6D5A4B;3689|Mauve - LT|F8BBC8;3799|Pewter Gray - VY DK|39393D;3705|Melon - DK|F2494F;3801|Melon - VY DK|E4353D;3706|Melon - MED|FD6E70;3802|Antique Mauve - VY DK|672A33;3708|Melon - LT|FDA0AE;3803|Mauve - DK|872A43;3712|Salmon - MED|D95D5D;3804|Cyclamen Pink - DK|CE2B63;3713|Salmon - VY LT|FDD5D0;3805|Cyclamen Pink|DF3C73;3716|Dusty Rose - VY LT|FCAFB9;3806|Cyclamen Pink - LT|F15A91;3721|Shell Pink - DK|933B3D;3807|Cornflower Blue|4B599E;3722|Shell Pink - MED|A04B4C;3808|Turquoise - ULT VY DK|03535C;3726|Antique Mauve - DK|95565C;3809|Turquoise - VY DK|136A75;3727|Antique Mauve - LT|DA9EA6;3810|Turquoise - DK|2D8D98;3811|Turquoise - VY LT|A8E2E5;3839|Lavender Blue - MED|7A7EC5;3812|Seagreen - VY DK|07A184;3840|Lavender Blue - LT|B2BDEA;3813|Blue Green - LT|86C3AB;3841|Baby Blue - PALE|D9EAF2;3814|Aquamarine|0B8673;3842|Wedgewood - DK|06506A;3815|Celadon Green - DK|437259;3843|Electric Blue|28A3DE;3816|Celadon Green|60937A;3844|Bright Turquoise - DK|1F7FA0;3817|Celadon Green - LT|81C6A4;3845|Bright Turquoise - MED|2BADD1;3818|Emerald Green - ULT VY DK|005D2E;3846|Bright Turquoise - LT|5ECCEC;3819|Moss Green - LT|CCC959;3847|Teal Green - DK|186358;3820|Straw - DK|DBA53E;3848|Teal Green - MED|207E72;3821|Straw|EBBB52;3849|Teal Green - LT|35B193;3822|Straw - LT|F7D169;3850|Bright Green - DK|208B46;3823|Yellow - ULT PALE|FEF5CD;3851|Bright Green - LT|61BB84;3824|Apricot - LT|FCAE99;3852|Straw - VY DK|E3A730;3825|Pumpkin - PALE|FEA370;3853|Autumn Gold - DK|EF8125;3826|Golden Brown|B16633;3854|Autumn Gold - MED|FBAC56;3827|Golden Brown - PALE|EAA664;3855|Autumn Gold - LT|FDDFA0;3828|Hazelnut Brown|AA7C43;3856|Mahogany - ULT VY LT|FDBE8E;3829|Old Gold - VY DK|A7671D;3857|Rosewood - DK|6A2F26;3830|Terra Cotta|A94138;3858|Rosewood - MED|803A32;3831|Raspberry - DK|C12B52;3859|Rosewood - LT|BA7A6C;3832|Raspberry - MED|E36370;3860|Cocoa|896362;3833|Raspberry - LT|EA8B96;3861|Cocoa - LT|AC8583;3834|Grape - DK|6A2258;3862|Mocha Beige - DK|6E492A;3835|Grape - MED|924D78;3863|Mocha Beige - MED|94725D;3836|Grape - LT|C597B9;3864|Mocha Beige - LT|C9AA92;3837|Lavender - ULT DK|8A2A8F;3865|Winter White|FFFDF9;3838|Lavender Blue - DK|606BAD;3866|Mocha Brown - ULT VY LT|F0E6D7";
+var DMC = DMC_RAW.split(';').filter(Boolean).map(function(s){
+  var p = s.split('|');
+  return { code: p[0], name: p[1], hex: p[2],
+           r: parseInt(p[2].slice(0,2),16), g: parseInt(p[2].slice(2,4),16), b: parseInt(p[2].slice(4,6),16) };
+});
+
+function srgb2lin(c){ c/=255; return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); }
+function rgb2lab(r,g,b){
+  var R=srgb2lin(r),G=srgb2lin(g),B=srgb2lin(b);
+  var X=(R*0.4124+G*0.3576+B*0.1805)/0.95047, Y=R*0.2126+G*0.7152+B*0.0722, Z=(R*0.0193+G*0.1192+B*0.9505)/1.08883;
+  function f(t){ return t>0.008856 ? Math.cbrt(t) : (7.787*t+16/116); }
+  var fx=f(X), fy=f(Y), fz=f(Z);
+  return [116*fy-16, 500*(fx-fy), 200*(fy-fz)];
+}
+/* precompute Lab for palette */
+var DMC_LAB = DMC.map(function(c){ return rgb2lab(c.r,c.g,c.b); });
+function nearestDMC(r,g,b){
+  if(!DMC.length) return null;
+  var L=rgb2lab(r,g,b), best=-1, bd=Infinity;
+  for(var i=0;i<DMC_LAB.length;i++){
+    var l=DMC_LAB[i], d=(L[0]-l[0])*(L[0]-l[0])+(L[1]-l[1])*(L[1]-l[1])+(L[2]-l[2])*(L[2]-l[2]);
+    if(d<bd){ bd=d; best=i; }
+  }
+  return best;
+}
+/* downsample pixel data (RGBA, srcW×srcH) to gridW×gridH box average */
+function downsample(data, srcW, srcH, gW, gH){
+  var out = new Float64Array(gW*gH*3), cnt = new Float64Array(gW*gH);
+  for(var y=0;y<srcH;y++){
+    var gy = Math.min(gH-1, Math.floor(y*gH/srcH));
+    for(var x=0;x<srcW;x++){
+      var gx = Math.min(gW-1, Math.floor(x*gW/srcW));
+      var i=(y*srcW+x)*4;
+      if(data[i+3]<24) continue;
+      var o=(gy*gW+gx)*3;
+      out[o]+=data[i]; out[o+1]+=data[i+1]; out[o+2]+=data[i+2]; cnt[gy*gW+gx]++;
+    }
+  }
+  var cells=[];
+  for(var k=0;k<gW*gH;k++){
+    if(cnt[k]<1) cells.push(null);
+    else cells.push([out[k*3]/cnt[k], out[k*3+1]/cnt[k], out[k*3+2]/cnt[k]]);
+  }
+  return cells;
+}
+/* build palette: map cells→DMC, keep top-N by count, remap leftovers to kept set */
+function buildPalette(cells, maxN){
+  var tally={}, cellIdx=[], i;
+  for(i=0;i<cells.length;i++){
+    var c=cells[i];
+    if(!c){ cellIdx.push(-1); continue; }
+    var di=nearestDMC(Math.round(c[0]),Math.round(c[1]),Math.round(c[2]));
+    cellIdx.push(di);
+    tally[di]=(tally[di]||0)+1;
+  }
+  var keys=Object.keys(tally).map(Number).sort(function(a,b){return tally[b]-tally[a];});
+  if(keys.length>maxN) keys=keys.slice(0,maxN);
+  var kept=keys, pos={};
+  keys.forEach(function(k,j){ pos[k]=j; });
+  var total=0, counts=[];
+  for(i=0;i<cellIdx.length;i++){
+    var d=cellIdx[i];
+    if(d===-1){ total++; continue; }             /* transparent → count as skip */
+    if(pos[d]===undefined){                       /* remap to nearest kept DMC */
+      var L=DMC_LAB[d], best=0, bd=Infinity;
+      for(var j=0;j<kept.length;j++){
+        var l=DMC_LAB[kept[j]];
+        var dd=(L[0]-l[0])*(L[0]-l[0])+(L[1]-l[1])*(L[1]-l[1])+(L[2]-l[2])*(L[2]-l[2]);
+        if(dd<bd){ bd=dd; best=j; }
+      }
+      cellIdx[i]=kept[best];
+    }
+    total++;
+  }
+  kept.forEach(function(k){
+    counts.push({ dmc:k, n:tally[k]||0 });
+  });
+  /* recount after remap for accurate shopping list */
+  counts.forEach(function(c){ c.n=0; });
+  for(i=0;i<cellIdx.length;i++){
+    var e=cellIdx[i];
+    if(e!==-1){
+      var pi=pos[e]; counts[pi].n++;
+    }
+  }
+  counts.sort(function(a,b){return b.n-a.n;});
+  var order={};
+  counts.forEach(function(c,j){ order[c.dmc]=j; });
+  return { cellIdx:cellIdx, palette:counts, order:order, total:total };
+}
+var SYMS = ['●','▲','■','★','✚','◆','▼','○','□','△','▽','☆','✕','⊕','⊙','♥','♠','♣','♦',
+            '#','@','*','+','%','=','~','^','&','$','!','?','/','\\','|','<','>',
+            'A','B','C','D','E','F','G','H','J','K','L','M','N','P','R','S'];
+function symFor(j){ return SYMS[j % SYMS.length]; }
+/* finished size + skein estimate (shown transparently in UI) */
+function skeinsFor(stitches, ct){
+  var cellMM = 25.4/ct;                 /* aida cell pitch */
+  var perStitchMM = 2*cellMM*Math.SQRT2*1.6;   /* full cross = 2 diagonals + tension waste */
+  var usable = 4000;                    /* 8 m skein ÷ 2 strands folded */
+  return Math.ceil(stitches*perStitchMM/usable*10)/10;
+}
+function lum(hex){ return 0.2126*parseInt(hex.slice(0,2),16)+0.7152*parseInt(hex.slice(2,4),16)+0.0722*parseInt(hex.slice(4,6),16); }
+/*==ENDCORE==*/
+
+var $ = function(id){ return document.getElementById(id); };
+var state = { img:null, gW:90, nCol:16, ct:14, view:'fill', model:null, gridH:0, gWc:0 };
+
+function toast(msg){
+  var t=$('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._h); t._h=setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+function showErr(msg){ toast(msg); }
+
+/* ---------- image intake ---------- */
+function loadBlob(blob, name){
+  if(!blob || blob.type.indexOf('image')!==0){ showErr('这不是图片文件，换一张 PNG / JPG 试试'); return; }
+  var url=URL.createObjectURL(blob), im=new Image();
+  im.onload=function(){
+    URL.revokeObjectURL(url);
+    state.img=im; rebuild(); toast('已载入 '+(name||'图片'));
+  };
+  im.onerror=function(){ URL.revokeObjectURL(url); showErr('图片解码失败，换一张试试'); };
+  im.src=url;
+}
+$('drop').addEventListener('click', function(){ $('file').click(); });
+$('file').addEventListener('change', function(e){
+  if(e.target.files && e.target.files[0]) loadBlob(e.target.files[0], e.target.files[0].name);
+  e.target.value='';
+});
+['dragover','dragenter'].forEach(function(ev){
+  $('drop').addEventListener(ev, function(e){ e.preventDefault(); $('drop').classList.add('on'); });
+});
+['dragleave','drop'].forEach(function(ev){
+  $('drop').addEventListener(ev, function(e){ e.preventDefault(); $('drop').classList.remove('on'); });
+});
+$('drop').addEventListener('drop', function(e){
+  var f=e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f) loadBlob(f, f.name);
+});
+window.addEventListener('paste', function(e){
+  var items=e.clipboardData && e.clipboardData.items; if(!items) return;
+  for(var i=0;i<items.length;i++){
+    if(items[i].type.indexOf('image')===0){ loadBlob(items[i].getAsFile(), '剪贴板图片'); break; }
+  }
+});
+
+/* ---------- demo image (canvas-drawn sunset) ---------- */
+function demoBlob(){
+  var w=320,h=240,c=document.createElement('canvas'); c.width=w; c.height=h;
+  var x=c.getContext('2d'), g=x.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,'#2c3e70'); g.addColorStop(.45,'#7a4f8c'); g.addColorStop(.72,'#e9705a'); g.addColorStop(1,'#f7b267');
+  x.fillStyle=g; x.fillRect(0,0,w,h);
+  x.fillStyle='#ffd166'; x.beginPath(); x.arc(210,150,34,0,7); x.fill();
+  x.fillStyle='#4a3b5c'; x.beginPath(); x.moveTo(0,190);
+  x.lineTo(70,140); x.lineTo(130,195); x.lineTo(200,150); x.lineTo(260,205); x.lineTo(320,170); x.lineTo(320,240); x.lineTo(0,240); x.closePath(); x.fill();
+  x.fillStyle='#33283f'; x.fillRect(0,215,320,25);
+  x.fillStyle='#fff'; x.globalAlpha=.85; x.font='16px sans-serif';
+  x.globalAlpha=1;
+  return new Promise(function(res){ c.toBlob(function(b){ res(b); },'image/png'); });
+}
+$('btnDemo').addEventListener('click', function(){
+  demoBlob().then(function(b){ loadBlob(b,'示例图'); });
+});
+$('btnClear').addEventListener('click', function(){
+  state.img=null; state.model=null;
+  $('empty').style.display='flex';
+  $('statCard').style.display='none';
+  $('topStats').style.display='none';
+  $('formulaNote').textContent='';
+  var cv=$('chart'); cv.width=800; cv.height=600;
+  var x=cv.getContext('2d'); x.clearRect(0,0,cv.width,cv.height);
+  toast('已清空');
+});
+
+/* ---------- controls ---------- */
+function bindRange(id, key, fmt){
+  var el=$(id), lab=$(id+'V');
+  el.addEventListener('input', function(){
+    lab.textContent=fmt(el.value);
+    state[key]=+el.value; rebuild();
+  });
+}
+bindRange('wGrid','gW', function(v){ return v+'格'; });
+bindRange('nCol','nCol', function(v){ return v+'色'; });
+$('ct').addEventListener('change', function(){ state.ct=+$('ct').value; rebuild(); });
+$('views').addEventListener('click', function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  [].forEach.call($('views').children, function(x){ x.classList.remove('on'); });
+  b.classList.add('on'); state.view=b.dataset.v; renderChart();
+});
+
+/* ---------- pipeline ---------- */
+function rebuild(){
+  if(!state.img){ return; }
+  var gW=state.gW;
+  var im=state.img, ratio=im.naturalHeight/im.naturalWidth;
+  var gH=Math.max(6, Math.round(gW*ratio));
+  var oc=document.createElement('canvas'); oc.width=gW; oc.height=gH;
+  var ox=oc.getContext('2d');
+  ox.imageSmoothingEnabled=true; ox.imageSmoothingQuality='high';
+  ox.drawImage(im,0,0,gW,gH);
+  var data;
+  try{ data=ox.getImageData(0,0,gW,gH).data; }
+  catch(err){ showErr('图片读取失败：' + err.message); return; }
+  var cells=downsample(data,gW,gH,gW,gH);
+  var model=buildPalette(cells,state.nCol);
+  state.model=model; state.gridH=gH; state.gWc=gW;
+  renderAll();
+}
+function renderAll(){
+  $('empty').style.display='none';
+  renderChart(); renderStats(); renderLegend();
+}
+function renderChart(){
+  var cv=$('chart'), m=state.model; if(!m) return;
+  var W=Math.min(1400, Math.max(560, state.gWc*9));
+  var cell=Math.max(4, Math.floor(W/state.gWc));
+  var w=cell*state.gWc, h=cell*state.gridH;
+  cv.width=w; cv.height=h;
+  var x=cv.getContext('2d');
+  x.fillStyle='#11161c'; x.fillRect(0,0,w,h);
+  for(var gy=0;gy<state.gridH;gy++){
+    for(var gx=0;gx<state.gWc;gx++){
+      var d=m.cellIdx[gy*state.gWc+gx];
+      if(d===-1) continue;
+      var c=DMC[d], px=gx*cell, py=gy*cell;
+      if(state.view!=='sym'){ x.fillStyle='#'+c.hex; x.fillRect(px,py,cell,cell); }
+      if(state.view!=='fill'){
+        var fg = (state.view==='sym') ? '#'+c.hex : (lum(c.hex)>140 ? 'rgba(0,0,0,.75)' : 'rgba(255,255,255,.85)');
+        x.fillStyle=fg;
+        x.font='bold '+Math.max(7,cell-2)+'px sans-serif';
+        x.textAlign='center'; x.textBaseline='middle';
+        x.fillText(symFor(m.order[d]), px+cell/2, py+cell/2+0.5);
+      }
+    }
+  }
+  /* grid lines */
+  x.strokeStyle='rgba(255,255,255,.08)'; x.lineWidth=1;
+  for(var i=0;i<=state.gWc;i++){ x.beginPath(); x.moveTo(i*cell+.5,0); x.lineTo(i*cell+.5,h); x.stroke(); }
+  for(var j=0;j<=state.gridH;j++){ x.beginPath(); x.moveTo(0,j*cell+.5); x.lineTo(w,j*cell+.5); x.stroke(); }
+  /* bold every 10 */
+  x.strokeStyle='rgba(255,255,255,.22)';
+  for(i=0;i<=state.gWc;i+=10){ x.beginPath(); x.moveTo(i*cell+.5,0); x.lineTo(i*cell+.5,h); x.stroke(); }
+  for(j=0;j<=state.gridH;j+=10){ x.beginPath(); x.moveTo(0,j*cell+.5); x.lineTo(w,j*cell+.5); x.stroke(); }
+}
+function statHtml(arr){
+  return arr.map(function(s){ return '<div class="stat"><b>'+s[1]+'</b><span>'+s[0]+'</span></div>'; }).join('');
+}
+function renderStats(){
+  var m=state.model;
+  var wcm=(state.gWc/state.ct*2.54), hcm=(state.gridH/state.ct*2.54);
+  var skein=0, i; for(i=0;i<m.palette.length;i++) skein+=Math.ceil(skeinsFor(m.palette[i].n,state.ct));
+  var h1=[['图纸格数', state.gWc+' × '+state.gridH], ['成品尺寸', wcm.toFixed(1)+' × '+hcm.toFixed(1)+' cm'],
+          ['总针数', m.total], ['用线约', skein+' 支']];
+  $('topStats').style.display='grid'; $('topStats').innerHTML=statHtml(h1);
+  $('statCard').style.display='block';
+  $('formulaNote').innerHTML='<b>用线估算口径：</b>14ct 每格 1.8mm，一针全针 ≈ 2×对角线×1.6 张力余量；8m 一支对折成 2 股可用 4m。估出来是「备线量」，实际因松紧±30% 都正常，贵色先买 1 支试绣。';
+}
+function renderLegend(){
+  var m=state.model, el=$('legend'), h='';
+  m.palette.forEach(function(p,j){
+    var c=DMC[p.dmc];
+    h+='<div class="lrow"><div class="sw '+(lum(c.hex)>140?'light':'dark')+'" style="background:#'+c.hex+'">'+symFor(j)+'</div>'
+      +'<div class="code">'+c.code+'</div><div class="nm">'+c.name+'</div>'
+      +'<div class="ct">'+p.n+' 针</div><div class="sk">'+skeinsFor(p.n,state.ct)+' 支</div></div>';
+  });
+  el.innerHTML=h;
+}
+/* ---------- export ---------- */
+$('btnPng').addEventListener('click', function(){
+  if(!state.model){ showErr('先载入一张图'); return; }
+  var cv=$('chart');
+  /* white-backed export at 2× for legibility */
+  var e=document.createElement('canvas'); e.width=cv.width*2; e.height=cv.height*2;
+  var x=e.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,e.width,e.height);
+  x.imageSmoothingEnabled=false; x.drawImage(cv,0,0,e.width,e.height);
+  e.toBlob(function(b){
+    var a=document.createElement('a'); a.href=URL.createObjectURL(b);
+    a.download='stitchmap-'+state.gWc+'x'+state.gridH+'.png'; a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); },4000);
+    toast('图纸 PNG 已下载');
+  },'image/png');
+});
+$('btnCopy').addEventListener('click', function(){
+  if(!state.model){ showErr('先载入一张图'); return; }
+  var m=state.model, lines=[];
+  lines.push('STITCHMAP 十字绣配线清单');
+  lines.push('图纸：'+state.gWc+'×'+state.gridH+' 格 · '+state.ct+'ct 布 · 成品 '+(state.gWc/state.ct*2.54).toFixed(1)+'×'+(state.gridH/state.ct*2.54).toFixed(1)+' cm');
+  lines.push('---');
+  m.palette.forEach(function(p,j){
+    var c=DMC[p.dmc];
+    lines.push('DMC '+c.code+' | '+c.name+' | '+p.n+' 针 | 约 '+skeinsFor(p.n,state.ct)+' 支 | 符号 '+symFor(j));
+  });
+  var txt=lines.join('\n');
+  function fallback(){
+    var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta);
+    ta.select(); var ok=document.execCommand('copy'); ta.remove();
+    if(ok) toast('配线清单已复制 ✓'); else toast('复制失败，请手动选择文本复制');
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){ toast('配线清单已复制 ✓'); }, fallback);
+  } else fallback();
+});
+
+/* init demo values */
+$('wGridV').textContent='90格'; $('nColV').textContent='16色';
+</script>
+</body>
+</html>
