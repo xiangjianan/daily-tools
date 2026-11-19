@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RMBWORDS · 开票字码台</title>
+<meta name="description" content="人民币金额小写↔财务大写双向转换，手写大写合规体检防退票，全程本地处理。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>
+">
+<style>
+:root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--line:#21262d;--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--card:#161b22}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+padding:max(20px,env(safe-area-inset-top)) 16px max(40px,env(safe-area-inset-bottom))}
+main{max-width:760px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.5px}
+h1 small{color:var(--mut);font-size:13px;font-weight:400;margin-left:8px}
+.sub{color:var(--mut);font-size:13px;margin:4px 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.card h2{font-size:15px;margin-bottom:10px}
+.card h2 .no{color:var(--acc);font-variant-numeric:tabular-nums;margin-right:6px}
+textarea,input[type=text]{width:100%;background:#0d1117;color:var(--fg);border:1px solid #30363d;border-radius:8px;
+padding:10px 12px;font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;outline:none}
+textarea:focus,input[type=text]:focus{border-color:var(--acc)}
+textarea{min-height:64px;resize:vertical}
+.hint{color:var(--mut);font-size:12px;margin-top:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{border:1px solid #30363d;background:#0d1117;color:var(--mut);border-radius:999px;padding:2px 10px;font-size:12px;cursor:pointer}
+.chip:hover{border-color:var(--acc);color:var(--acc)}
+.btn{border:1px solid #30363d;background:#21262d;color:var(--fg);border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer}
+.btn:hover{border-color:var(--acc);color:var(--acc)}
+.btn.primary{background:#1f6feb;border-color:#1f6feb;color:#fff}
+.btn.primary:hover{background:#388bfd;color:#fff}
+.row{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.out{margin-top:12px;background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:12px;
+font:16px/1.8 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all;white-space:pre-wrap;min-height:20px}
+.out.big{font-size:18px;letter-spacing:1px;color:#ffd66e}
+.out .muted{color:var(--mut);font-size:13px}
+.badge{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;border:1px solid}
+.badge.ok{color:var(--ok);border-color:var(--ok)}
+.badge.warn{color:var(--warn);border-color:var(--warn)}
+.badge.bad{color:var(--bad);border-color:var(--bad)}
+/* 直尺 */
+.ruler{margin-top:14px;overflow-x:auto;padding-bottom:4px}
+.rline{display:flex;align-items:stretch;gap:6px;min-width:max-content}
+.gbox{border:1px solid #30363d;border-radius:8px;padding:6px 9px;background:#0d1117;min-width:64px}
+.gbox .glab{font-size:11px;color:var(--acc);margin-bottom:3px}
+.gbox .gdigits{font:16px/1.4 ui-monospace,monospace;letter-spacing:2px}
+.gbox .gdigits .z{color:#484f58}
+.gbox .gwords{font-size:13px;color:#ffd66e;margin-top:3px;letter-spacing:1px}
+.gbox.dec{border-color:#3d2e00;background:#161208}
+.gbox.dec .glab{color:var(--warn)}
+.zmark{display:flex;align-items:center;justify-content:center;color:var(--warn);font-size:13px;min-width:20px}
+.plus{display:flex;align-items:center;color:var(--mut)}
+/* 体检报告 */
+.checks{margin-top:12px;display:grid;gap:8px;grid-template-columns:minmax(0,1fr)}
+.check{border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:13px;background:#0d1117}
+.check .t{font-weight:600;margin-right:6px}
+.check.ok .t{color:var(--ok)}.check.warn .t{color:var(--warn)}.check.bad .t{color:var(--bad)}
+.check code{font-family:ui-monospace,monospace;color:#ffd66e}
+details{margin-top:6px;color:var(--mut);font-size:13px}
+details summary{cursor:pointer;color:var(--mut)}
+details p{margin:8px 0}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+background:#1f6feb;color:#fff;border-radius:8px;padding:8px 16px;font-size:13px;opacity:0;pointer-events:none;transition:all .25s;z-index:9}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+footer{color:var(--mut);font-size:12.5px;margin-top:8px}
+footer a{color:var(--acc);text-decoration:none}
+@media(max-width:560px){
+  .out.big{font-size:16px}
+  .gbox{padding:5px 7px;min-width:56px}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>🧾 RMBWORDS<small>开票字码台</small></h1>
+<p class="sub">人民币金额 小写 ↔ 财务大写 双向转换，手写大写「回程对拍」体检——漏零多零一目了然，防银行退票。全部本地处理，零上传。</p>
+
+<div class="card">
+  <h2><span class="no">①</span>金额 → 财务大写</h2>
+  <input id="amtIn" type="text" inputmode="decimal" placeholder="如 1409.50 或 ￥1,070,000.53" autocomplete="off">
+  <p class="hint">支持 ￥/¥ 前缀、千分位逗号；最多两位小数，整数部分最长 16 位。</p>
+  <div class="chips" id="amtChips"></div>
+  <div class="ruler" id="ruler" hidden></div>
+  <div class="out big" id="cnOut"><span class="muted">输入金额，即出标准财务大写。</span></div>
+  <div class="row">
+    <button class="btn primary" id="copyCn">复制大写</button>
+    <span id="amtMsg" class="hint"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="no">②</span>大写 → 数字 + 合规体检</h2>
+  <textarea id="cnIn" placeholder="如 壹仟肆佰零玖元伍角（粘贴报销单上的手写大写）"></textarea>
+  <div class="chips" id="cnChips"></div>
+  <div class="out" id="numOut"><span class="muted">粘贴大写，即回数字并体检。</span></div>
+  <div class="checks" id="checks" hidden></div>
+  <div class="row">
+    <button class="btn primary" id="copyNum">复制数字</button>
+    <span id="cnMsg" class="hint"></span>
+  </div>
+</div>
+
+<details>
+<summary>口径与诚实说明</summary>
+<p>· 零规则采用银行/财务通行口径：段内零合并成一个「零」（3007 → 叁仟零柒）、段间补零（1,0001,0000 → 壹亿零壹万）、整段为零的段略去单位；无角无分收「整」，有角无分不收（如 壹仟肆佰零玖元伍角）。</p>
+<p>· 角位为 0、分位非 0 时在「元」后补「零」（如 壹仟伍佰元零捌分）。各机构手工书写习惯略有差异，以你开户行的要求为准。</p>
+<p>· 体检只对照本工具采用的标准式：解析成功但写法与标准式不同（漏零/多零/单位冗余）会给改写建议；解析失败（单位重复、数字悬空等）会指出首错位置。工具不验证金额与小写是否相符——那是另一件事，请人工核对。</p>
+<p>· 金额与小写互转全部在你的浏览器内完成，无任何网络请求。</p>
+</details>
+
+<footer>RMBWORDS · 每日创意小工具 #69 · <a href="../">← 返回目录</a></footer>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+/*==CORE==*/
+'use strict';
+var DIG_CN='零壹贰叁肆伍陆柒捌玖';
+var PLACE_CN=['仟','佰','拾','']; // 组内位：千/百/十/个
+var GROUP_UNIT=['','万','亿','兆','京']; // 4位一段
+
+function cleanAmount(raw){
+  if(typeof raw!=='string') return {ok:false,err:'请输入金额'};
+  var s=raw.trim().replace(/^[¥￥$]/,'').replace(/[,，\s_]/g,'').replace(/[元圆]$/,'');
+  if(!s) return {ok:false,err:'请输入金额'};
+  if(!/^\d+(\.\d+)?$/.test(s)) return {ok:false,err:'金额格式不对：只认数字和一个小数点，如 1409.50'};
+  var dot=s.indexOf('.');
+  if(dot>=0 && s.length-dot-1>2) return {ok:false,err:'最多两位小数（角、分），请先自行取整到分'};
+  var intStr=dot>=0?s.slice(0,dot):s;
+  var dec=dot>=0?s.slice(dot+1):'';
+  if(intStr.length>16) return {ok:false,err:'超出支持范围：整数部分最长 16 位'};
+  if(intStr.length>1) intStr=intStr.replace(/^0+/,'')||'0';
+  return {ok:true,int:intStr,jiao:dec.length>=1?+dec[0]:0,fen:dec.length>=2?+dec[1]:0};
+}
+
+function groupWords(g){ // 4 位数字串 → 组内中文（'' 当组为 0）
+  var out='',zeroFlag=false,i,d;
+  for(i=0;i<4;i++){
+    d=+g[i];
+    if(d===0){ if(out!=='') zeroFlag=true; }
+    else{
+      if(zeroFlag){out+='零';zeroFlag=false;}
+      out+=DIG_CN[d]+PLACE_CN[i];
+    }
+  }
+  return out;
+}
+
+function intToGroups(intStr){ // → [{label,g,words,zeroBefore}]
+  var n=intStr.length, groups=[], i;
+  var nG=Math.ceil(n/4);
+  var padded=Array(nG*4-n+1).join('0')+intStr; // 补齐 4 倍数
+  for(i=0;i<nG;i++){
+    var g=padded.slice(i*4,(i+1)*4);
+    var label=GROUP_UNIT[nG-1-i];
+    groups.push({label:label,g:g});
+  }
+  // 从高位往低算 zeroBefore 与 words
+  var parts=[],pendingZero=false;
+  for(i=0;i<groups.length;i++){
+    var grp=groups[i], w=groupWords(grp.g);
+    var zb=false;
+    if(w===''){ if(parts.length>0) pendingZero=true; }
+    else{
+      if(parts.length>0 && (pendingZero||grp.g[0]==='0')) zb=true;
+      pendingZero=false;
+      parts.push({label:grp.label,g:grp.g,words:w,zeroBefore:zb});
+    }
+  }
+  return parts;
+}
+
+function amountToCn(raw){
+  var c=cleanAmount(raw);
+  if(!c.ok) return c;
+  var text='',isZero=(c.int==='0'&&c.jiao===0&&c.fen===0);
+  var parts=intToGroups(c.int);
+  var segs=[];
+  if(c.int!=='0'){
+    for(var i=0;i<parts.length;i++){
+      var p=parts[i];
+      var chunk=(p.zeroBefore?'零':'')+p.words;
+      text+=chunk+p.label;
+      segs.push({label:p.label||'元',g:p.g,words:p.words,zeroBefore:p.zeroBefore});
+    }
+    text+='元';
+  }
+  if(c.jiao>0) text+=DIG_CN[c.jiao]+'角';
+  if(c.fen>0){
+    if(c.jiao===0 && c.int!=='0') text+='零';
+    text+=DIG_CN[c.fen]+'分';
+  }
+  if(c.jiao===0&&c.fen===0) text+='整';
+  if(isZero) text='零元整';
+  var jiaoSeg={label:'角分',g:(c.jiao?String(c.jiao):'0')+(c.fen?String(c.fen):'0'),words:(c.jiao>0?DIG_CN[c.jiao]+'角':'')+(c.fen>0?(c.jiao===0&&c.int!=='0'?'零':'')+DIG_CN[c.fen]+'分':''),dec:true};
+  return {ok:true,text:text,parts:parts,jiao:c.jiao,fen:c.fen,segs:segs.concat(c.jiao||c.fen?[jiaoSeg]:[]),isZero:isZero};
+}
+
+var CN_NUM={'零':0,'壹':1,'贰':2,'叁':3,'肆':4,'伍':5,'陆':6,'柒':7,'捌':8,'玖':9};
+var CN_UNIT={'拾':10,'佰':100,'仟':1000,'万':1e4,'亿':1e8,'兆':1e12};
+var CN_YUAN={'元':1,'圆':1};
+
+function cleanCn(raw){
+  if(typeof raw!=='string') return {ok:false,err:'请粘贴大写金额'};
+  var s=raw.trim().replace(/\s+/g,'').replace(/人民币/g,'');
+  if(!s) return {ok:false,err:'请粘贴大写金额'};
+  return {ok:true,s:s};
+}
+
+function parseCn(raw){
+  var c=cleanCn(raw);
+  if(!c.ok) return c;
+  var s=c.s;
+  var yuan=0,sec={q:0,b:0,s:0,g:0},pending=null,err=null,lastScale=0;
+  var hasYuan=false,jiao=null,fen=null,seenUnit=false,zeroSeen=false;
+  var total=0;
+  function flushSec(){ return sec.q*1000+sec.b*100+sec.s*10+sec.g; }
+  for(var i=0;i<s.length;i++){
+    var ch=s[i];
+    if(ch==='整'){ if(i!==s.length-1){err={i:i,m:'「整」应在末尾'};break;} seenUnit=true; continue; }
+    if(CN_NUM[ch]!==undefined){
+      var d=CN_NUM[ch];
+      if(d===0){ zeroSeen=true; continue; }
+      if(pending!==null){err={i:i,m:'数字连写（大写里每个数字后应跟单位）'};break;}
+      pending=d; sec.g=d;
+      continue;
+    }
+    if(ch==='拾'||ch==='佰'||ch==='仟'){
+      var v=(pending===null?1:pending);
+      if(ch==='拾'){ if(sec.s){err={i:i,m:'「拾」重复或位置不对'};break;} sec.s=v; }
+      if(ch==='佰'){ if(sec.b){err={i:i,m:'「佰」重复或位置不对'};break;} sec.b=v; }
+      if(ch==='仟'){ if(sec.q||sec.b||sec.s){err={i:i,m:'「仟」位置不对（应在最前）'};break;} sec.q=v; }
+      pending=null; sec.g=0; seenUnit=true;
+      continue;
+    }
+    if(ch==='万'||ch==='亿'||ch==='兆'){
+      var scale=CN_UNIT[ch];
+      var secVal=flushSec();
+      if(scale>=1e4&&secVal===0&&total===0){err={i:i,m:'「'+ch+'」之前缺数字'};break;}
+      if(total!==0&&total%scale!==0){err={i:i,m:'「'+ch+'」位置不对（出现在更低位之后）'};break;}
+      if(lastScale===scale&&(total>0||secVal>0)){err={i:i,m:'「'+ch+'」重复'};break;}
+      if(total>=scale){
+        if(secVal===0){err={i:i,m:'「'+ch+'」重复或悬空'};break;}
+        total+=secVal*scale;
+      }else{
+        total=(total+secVal)*scale;
+      }
+      lastScale=scale;
+      sec={q:0,b:0,s:0,g:0}; pending=null; seenUnit=true;
+      continue;
+    }
+    if(CN_YUAN[ch]){
+      if(hasYuan){err={i:i,m:'「元」重复'};break;}
+      if(jiao!==null){err={i:i,m:'「元」不能在角分之后'};break;}
+      yuan=total+flushSec(); total=0; sec={q:0,b:0,s:0,g:0}; pending=null; hasYuan=true; seenUnit=true;
+      continue;
+    }
+    if(ch==='角'){
+      if(jiao!==null){err={i:i,m:'「角」重复'};break;}
+      if(pending===null){err={i:i,m:'「角」之前缺数字'};break;}
+      jiao=pending; pending=null; sec.g=0; seenUnit=true;
+      continue;
+    }
+    if(ch==='分'){
+      if(fen!==null){err={i:i,m:'「分」重复'};break;}
+      if(jiao!==null&&pending===null){err={i:i,m:'「分」之前缺数字'};break;}
+      if(jiao===null&&hasYuan&&!zeroSeen){err={i:i,m:'角位为 0 时应写「零」再写分，或省略「元」'};break;}
+      if(jiao===null&&!hasYuan){ if(pending===null){err={i:i,m:'「分」之前缺数字'};break;} }
+      fen=(pending===null?0:pending); pending=null; sec.g=0; seenUnit=true;
+      continue;
+    }
+    err={i:i,m:'认不得的字：「'+ch+'」（财务大写应为 壹贰叁肆伍陆柒捌玖零）'};
+    break;
+  }
+  if(err) return {ok:false,err:err.m+'（第 '+(err.i+1)+' 个字附近）',raw:s};
+  if(!seenUnit&&!zeroSeen) return {ok:false,err:'没有可识别的数字或单位',raw:s};
+  var left=total+flushSec();
+  var cents;
+  if(hasYuan){
+    if(left!==0) return {ok:false,err:'「元」之后有多余数字（可能缺「分」或位置写错）',raw:s};
+    cents=yuan*100+(jiao||0)*10+(fen||0);
+  }else{
+    cents=left*100+(jiao||0)*10+(fen||0);
+  }
+  var intStr=String(Math.floor(cents/100));
+  var dec=String(cents%100).padStart(2,'0');
+  var back=amountToCn(intStr+'.'+dec);
+  if(!back.ok) return {ok:false,err:'解析出的数字转回大写失败：'+back.err,raw:s};
+  return {ok:true,cents:cents,numText:intStr+'.'+dec,canon:back.text,raw:s};
+}
+/*==ENDCORE==*/
+
+/* ===== UI ===== */
+function $(id){return document.getElementById(id)}
+var toastTimer=null;
+function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show')},1800);}
+
+function copyText(text,btn){
+  function done(){toast('已复制 ✓');}
+  function fail(){toast('复制失败，请手动选取');}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done,function(){fallback();});
+  }else fallback();
+  function fallback(){
+    var ta=document.createElement('textarea');ta.value=text;
+    ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);
+    ta.select();var ok=false;try{ok=document.execCommand('copy');}catch(e){}
+    document.body.removeChild(ta);
+    if(ok)done();else fail();
+  }
+}
+
+var AMT_SAMPLES=['1409.50','6007.14','107000.53','100000001','20500.00','0.53','￥1,070,000.53'];
+var CN_SAMPLES=['壹仟肆佰零玖元伍角','壹佰万柒仟元伍角叁分','壹亿零壹元','贰拾伍元','陆仟零柒元壹角肆分'];
+(function initChips(){
+  var ac=$('amtChips');
+  AMT_SAMPLES.forEach(function(s){
+    var b=document.createElement('button');b.className='chip';b.textContent=s;
+    b.addEventListener('click',function(){$('amtIn').value=s;$('amtIn').dispatchEvent(new Event('input'));});
+    ac.appendChild(b);
+  });
+  var cc=$('cnChips');
+  CN_SAMPLES.forEach(function(s){
+    var b=document.createElement('button');b.className='chip';b.textContent=s;
+    b.addEventListener('click',function(){$('cnIn').value=s;$('cnIn').dispatchEvent(new Event('input'));});
+    cc.appendChild(b);
+  });
+})();
+
+var lastCnText='';
+
+function renderRuler(res){
+  var r=$('ruler');
+  if(!res.ok||!res.segs||res.isZero){r.hidden=true;return;}
+  r.hidden=false;
+  var html='<div class="rline">';
+  res.segs.forEach(function(p,idx){
+    if(idx>0&&p.zeroBefore) html+='<span class="zmark" title="段间补零">零</span>';
+    var digits='';
+    for(var i=0;i<p.g.length;i++){digits+='<span'+(p.g[i]==='0'?' class="z"':'')+'>'+p.g[i]+'</span>';}
+    html+='<div class="gbox'+(p.dec?' dec':'')+'"><div class="glab">'+(p.label||'元')+'</div>'+
+      '<div class="gdigits">'+digits+'</div><div class="gwords">'+(p.words||'—')+'</div></div>';
+  });
+  html+='</div>';
+  r.innerHTML=html;
+}
+
+function doAmt(){
+  var raw=$('amtIn').value;
+  var res=amountToCn(raw);
+  var out=$('cnOut'),msg=$('amtMsg');
+  if(!res.ok){
+    out.innerHTML='<span class="muted">'+res.err+'</span>';
+    renderRuler({ok:false});lastCnText='';msg.textContent='';
+    return;
+  }
+  lastCnText=res.text;
+  out.textContent=res.text;
+  renderRuler(res);
+  var notes=[];
+  if(res.isZero)notes.push('零元一般不开票，确认是否要写');
+  msg.textContent=notes.join('；');
+}
+
+function doCn(){
+  var raw=$('cnIn').value;
+  var res=parseCn(raw);
+  var out=$('numOut'),checks=$('checks'),msg=$('cnMsg');
+  if(!res.ok){
+    out.innerHTML='<span class="muted">'+res.err+'</span>';
+    checks.hidden=true;msg.textContent='';window.__lastNum='';
+    return;
+  }
+  window.__lastNum=res.numText;
+  var exact=(res.raw===res.canon);
+  out.innerHTML='<span class="badge '+(exact?'ok':'warn')+'">'+(exact?'✓ 与标准式逐字一致':'⚠ 写法与标准式有出入')+'</span> '+
+    '<b>'+res.numText+'</b>';
+  var items=[];
+  items.push({cls:exact?'ok':'warn',t:exact?'回程对拍一致':'回程对拍不一致',
+    d:exact?'你写的大写正是标准写法，放心交单。':'标准式应为：<code>'+res.canon+'</code>'});
+  if(!exact){
+    if(res.raw.indexOf('零')<0&&res.canon.indexOf('零')>=0) items.push({cls:'warn',t:'疑似漏零',d:'财务大写的零不能省——银行按零的位置核对，漏零易被退票。'});
+    else if(res.raw.length!==res.canon.length) items.push({cls:'warn',t:'字数不同',d:'与标准式长度差 '+(res.canon.length-res.raw.length)+' 字，多为漏写或多写了零/单位。'});
+  }
+  if(res.cents>9999999999999999) items.push({cls:'bad',t:'超出支持范围',d:'整数部分过长'});
+  checks.innerHTML=items.map(function(x){return '<div class="check '+x.cls+'"><span class="t">'+x.t+'</span>'+x.d+'</div>';}).join('');
+  checks.hidden=false;
+  msg.textContent='';
+}
+
+$('amtIn').addEventListener('input',doAmt);
+$('cnIn').addEventListener('input',doCn);
+$('copyCn').addEventListener('click',function(){
+  if(!lastCnText){toast('还没有可复制的大写');return;}
+  copyText(lastCnText,$('copyCn'));
+});
+$('copyNum').addEventListener('click',function(){
+  if(!window.__lastNum){toast('还没有可复制的数字');return;}
+  copyText(window.__lastNum,$('copyNum'));
+});
+
+doAmt();
+</script>
+</body>
+</html>
