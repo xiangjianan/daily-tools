@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>册页拼版台 BookletPress · 小册子对折打印拼版计算器</title>
+<meta name="description" content="输入页数，立即算出对折小册子的拼版页序：每张纸正反面该印哪几页、自动/手动双面打印顺序，全部本地计算，支持拖入 PDF 自动读取页数。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
+<style>
+:root{--bg:#0d1117;--card:#161b22;--fg:#e6edf3;--mut:#8b949e;--line:#21262d;--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--blank:#30363d}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC",sans-serif;
+padding:max(20px,env(safe-area-inset-top)) 14px max(40px,env(safe-area-inset-bottom))}
+.wrap{max-width:720px;margin:0 auto}
+h1{font-size:21px;letter-spacing:.3px}
+h1 i{font-style:normal;color:var(--mut);font-weight:400;font-size:13px;margin-left:8px}
+.sub{color:var(--mut);font-size:13px;margin:6px 0 22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+.card h2{font-size:14px;color:var(--mut);font-weight:600;margin-bottom:10px;letter-spacing:.5px}
+.inrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.inrow label{font-size:13px;color:var(--mut)}
+input[type=number],select{background:#0d1117;border:1px solid var(--line);border-radius:8px;color:var(--fg);
+padding:9px 12px;font-size:15px;width:120px}
+select{width:auto}
+input:focus,select:focus{outline:none;border-color:var(--acc)}
+.btn{background:var(--acc);color:#04121f;border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer}
+.btn:hover{filter:brightness(1.1)}
+.btn.ghost{background:#21262d;color:var(--fg);font-weight:500}
+.drop{margin-top:12px;border:1.5px dashed var(--line);border-radius:8px;padding:14px;text-align:center;color:var(--mut);font-size:13px;cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--acc);background:#10161f}
+.drop b{color:var(--fg);font-weight:600}
+.err{display:none;background:#2d1216;border:1px solid #672731;border-radius:8px;color:#f85149;padding:10px 12px;font-size:13.5px;margin-top:12px}
+.err.show{display:block}
+.hint{display:none;color:var(--mut);font-size:13px;margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#0d1117}
+.hint.show{display:block}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.chip{background:#0d1117;border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:13px}
+.chip b{color:var(--acc);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums}
+.chip span{color:var(--mut)}
+.seqrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--line)}
+.seqrow:first-of-type{border-top:none}
+.seqname{font-size:13px;color:var(--mut);min-width:118px}
+.seqcode{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;color:var(--fg);
+background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:6px 10px;word-break:break-all;flex:1;min-width:180px}
+.copy{background:#21262d;border:1px solid var(--line);color:var(--acc);border-radius:6px;padding:6px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.copy:hover{border-color:var(--acc)}
+.sheet{margin-bottom:6px;border-top:1px solid var(--line);padding-top:12px}
+.sheetlab{font-size:13px;color:var(--mut);margin-bottom:6px}
+.sheetlab b{color:var(--fg)}
+.sheet svg{width:100%;max-width:520px;display:block;height:auto}
+.note{color:var(--mut);font-size:12.5px;margin-top:10px;line-height:1.7}
+.note b{color:var(--warn);font-weight:600}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+background:#1f6feb;color:#fff;padding:9px 18px;border-radius:20px;font-size:13.5px;opacity:0;pointer-events:none;transition:all .25s;max-width:86vw;z-index:9}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+details{margin-top:12px;font-size:13px;color:var(--mut)}
+summary{cursor:pointer;color:var(--acc)}
+details p{margin-top:8px;line-height:1.8}
+@media (max-width:560px){
+  .seqname{min-width:100%}
+  .seqcode{min-width:0}
+  .inrow label{width:100%}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📖 册页拼版台<i>BookletPress</i></h1>
+  <p class="sub">把一堆 A4 对折订成小册子，页码该怎么排？输入总页数，立刻得到每张纸正反面的拼版页序——自动双面、手动双面两套打印顺序，附带逐张纸图解。全程本地计算，可拖入 PDF 自动读页数，文件不出浏览器。</p>
+
+  <div class="card">
+    <h2>① 告诉我页数</h2>
+    <div class="inrow">
+      <label for="pg">小册子总页数（含封面封底）</label>
+      <input id="pg" type="number" inputmode="numeric" min="4" max="2000" placeholder="如 20" aria-label="总页数">
+      <button class="btn" id="go">拼版</button>
+      <button class="btn ghost" id="sample">试一试：8 页</button>
+    </div>
+    <div class="drop" id="drop" role="button" tabindex="0" aria-label="拖入或点击选择 PDF 文件">
+      📄 拖一个 <b>PDF</b> 到这里（或点击选择）——自动读取页数，仅在本机解析，不会上传
+    </div>
+    <input type="file" id="file" accept="application/pdf,.pdf" hidden>
+    <div class="err" id="err" role="alert"></div>
+    <div class="hint show" id="hint">输入页数（≥4，会自动补空白页到 4 的倍数），或拖入 PDF 让我帮你数。下面就会给出拼版顺序。</div>
+  </div>
+
+  <div id="result"></div>
+
+  <div class="card" id="how" hidden>
+    <h2>② 拼版结果</h2>
+    <div class="chips" id="chips"></div>
+    <div id="seqs"></div>
+    <div id="sheets"></div>
+    <p class="note" id="noteout"></p>
+    <details>
+      <summary>为什么页序看起来是乱的？（拼版原理 30 秒）</summary>
+      <p>对折装订的小册子，印出来时第 1 页和最后一页要共用同一张纸的同一面—— folded 之后它们才正好挨着封面封底。所以打印机拿到的顺序是「倒着配对」的：第 1 张纸正面印 <b>最后一页 + 第 1 页</b>，背面印 <b>第 2 页 + 倒数第 2 页</b>，往内一层层配对。总页数不是 4 的倍数时，末尾会自动补空白页凑整。所有配对都满足「两页页码之和 = 总页数 + 1」。</p>
+    </details>
+  </div>
+
+  <p class="note" style="margin-top:4px">💡 双面打印提示：横向纸张对折装订，请选打印机里的<b>「短边翻页 / Short-edge flip」</b>；若背面印反了就换「长边翻页」。手动双面（打印机不支持自动双面）时，先印完所有正面，整叠重新放进纸盒再印背面——回纸方向因打印机而异，<b>建议先拿 2 张纸试印</b>确认方向。</p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/*==CORE==*/
+// 纯函数核心：无 DOM 依赖，可在 node 中独立测试
+function buildPlan(n){
+  n = Number(n);
+  if(!Number.isInteger(n) || isNaN(n)) return {error:'请输入一个整数页数，比如 20'};
+  if(n < 4) return {error:'至少要 4 页才能对折成册（封面、内页、封底都算页）'};
+  if(n > 2000) return {error:'页数太大啦，2000 页以内比较现实'};
+  var M = Math.ceil(n/4)*4;
+  var blanks = M - n;
+  var sheets = [];
+  for(var i=1;i<=M/4;i++){
+    var a = M - 2*(i-1);
+    sheets.push({
+      i: i,
+      front: [a, 2*i-1],      // 正面：左、右
+      back:  [2*i, a-1]       // 背面：左、右
+    });
+  }
+  var seqDuplex=[], seqFront=[], seqBack=[];
+  sheets.forEach(function(s){
+    seqDuplex.push(s.front[0], s.front[1], s.back[0], s.back[1]);
+    seqFront.push(s.front[0], s.front[1]);
+    seqBack.push(s.back[0], s.back[1]);
+  });
+  return {pages:n, total:M, blanks:blanks, sheets:sheets,
+          seqDuplex:seqDuplex, seqFront:seqFront, seqBack:seqBack};
+}
+
+// 尽力而为的 PDF 页数探测（纯字节扫描，本地完成）
+// 返回 {pages, how} 或 null（识别不了时让用户手填）
+function pdfPageCount(u8){
+  if(!u8 || u8.length < 50) return null;
+  var s = '';
+  var CH = 0x8000;
+  for(var o=0;o<u8.length;o+=CH){
+    s += String.fromCharCode.apply(null, u8.subarray(o, Math.min(o+CH, u8.length)));
+  }
+  var m = s.match(/\/Type\s*\/Page[^s]/g);
+  var tp = m ? m.length : 0;
+  var mx = 0, mm = s.match(/\/Count\s+(\d+)/g);
+  if(mm){ for(var j=0;j<mm.length;j++){ var v = parseInt(mm[j].replace(/\D+/g,''),10); if(v>mx) mx=v; } }
+  if(tp > 0) return {pages: tp, how: 'page 对象计数'};
+  if(mx > 0 && mx < 100000) return {pages: mx, how: '页面树 Count'};
+  return null;
+}
+/*==ENDCORE==*/
+if(typeof window!=='undefined'){ window.CORE = {buildPlan:buildPlan, pdfPageCount:pdfPageCount}; }
+
+// ---------- DOM ----------
+function $(id){ return document.getElementById(id); }
+var PAPER = {
+  a4:{name:'A4', w:210, h:297, half:'≈ A5（148×210mm）'},
+  a3:{name:'A3', w:297, h:420, half:'≈ A4（210×297mm）'},
+  a5:{name:'A5', w:148, h:210, half:'≈ A6（105×148mm）'},
+  letter:{name:'Letter', w:216, h:279, half:'5.5×8.5 英寸'}
+};
+var paperSel = 'a4';
+var lastPlan = null;
+
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+
+function showErr(msg){
+  var e = $('err');
+  if(!msg){ e.classList.remove('show'); e.textContent=''; return; }
+  e.textContent = msg;
+  e.classList.add('show');
+}
+
+function pgLabel(v, n){
+  return v <= n ? String(v) : '空白';
+}
+
+function sheetSvg(sh, n, outermost){
+  var W=520, H=190, pad=6, paperW=W-2*pad, paperH=H-2*pad;
+  var halfW=paperW/2;
+  function pageBox(x, val, side){
+    var blank = val > n;
+    var bw=halfW-14, bh=paperH/2-18;
+    var bx=x+7, by= side===0 ? pad+8 : pad+paperH/2+6;
+    var fill = blank ? 'var(--blank)' : 'none';
+    var stroke = blank ? '#3d444d' : 'var(--acc)';
+    var txtcol = blank ? '#6e7681' : 'var(--fg)';
+    var label = blank ? '空白' : String(val);
+    var big = label.length>2 ? 30 : 40;
+    return '<rect x="'+bx+'" y="'+by+'" width="'+bw+'" height="'+bh+'" rx="6" fill="'+fill+'" stroke="'+stroke+'" stroke-width="1.5" stroke-dasharray="'+(blank?'4 3':'none')+'"/>' +
+      '<text x="'+(bx+bw/2)+'" y="'+(by+bh/2+big/3)+'" text-anchor="middle" font-size="'+big+'" font-weight="700" fill="'+txtcol+'" font-family="ui-monospace,Menlo,monospace">'+label+'</text>';
+  }
+  var s = '<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="第'+sh.i+'张纸拼版图">';
+  // 正面纸张
+  s += '<g>';
+  s += '<rect x="'+pad+'" y="'+pad+'" width="'+paperW+'" height="'+(paperH/2-2)+'" rx="8" fill="#0d1117" stroke="var(--line)" stroke-width="1.5"/>';
+  s += pageBox(pad, sh.front[0], 0) + pageBox(pad+halfW, sh.front[1], 0);
+  s += '<line x1="'+(pad+halfW)+'" y1="'+(pad+4)+'" x2="'+(pad+halfW)+'" y2="'+(pad+paperH/2-6)+'" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="6 4"/>';
+  s += '<text x="'+(pad+8)+'" y="'+(pad+paperH/2-8)+'" font-size="11" fill="var(--mut)">正面 · 先印</text>';
+  s += '</g>';
+  // 背面纸张
+  s += '<g transform="translate(0,'+(paperH/2+2)+')">';
+  s += '<rect x="'+pad+'" y="'+(pad+2)+'" width="'+paperW+'" height="'+(paperH/2-2)+'" rx="8" fill="#0d1117" stroke="var(--line)" stroke-width="1.5"/>';
+  s += pageBox(pad, sh.back[0], 1) + pageBox(pad+halfW, sh.back[1], 1);
+  s += '<line x1="'+(pad+halfW)+'" y1="'+(pad+6)+'" x2="'+(pad+halfW)+'" y2="'+(pad+paperH/2-4)+'" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="6 4"/>';
+  s += '<text x="'+(pad+8)+'" y="'+(pad+paperH/2-6)+'" font-size="11" fill="var(--mut)">背面 · 翻面后</text>';
+  s += '</g>';
+  s += '</svg>';
+  return s;
+}
+
+function render(plan){
+  var res = $('how');
+  if(!plan || plan.error){
+    res.hidden = true;
+    $('result').innerHTML = '';
+    return;
+  }
+  res.hidden = false;
+  var P = PAPER[paperSel];
+  $('chips').innerHTML =
+    '<span class="chip">纸张 <b>'+plan.sheets.length+'</b> <span>张 '+P.name+'（横向）</span></span>' +
+    '<span class="chip">成品 <b>'+plan.sheets.length+'</b> <span>叠对折后 '+P.half+'</span></span>' +
+    '<span class="chip">页数 <b>'+plan.pages+'</b>'+(plan.blanks?' <span>+补 '+plan.blanks+' 空白 = '+plan.total+'</span>':'')+'</span>' +
+    '<span class="chip">对折 <b>1</b> <span>次 · 中线装订</span></span>';
+  function seqRow(name, code, id){
+    return '<div class="seqrow"><span class="seqname">'+name+'</span>' +
+      '<code class="seqcode" id="'+id+'">'+code+'</code>' +
+      '<button class="copy" data-seq="'+id+'">复制</button></div>';
+  }
+  function fmt(arr){ return arr.join(','); }
+  $('seqs').innerHTML =
+    seqRow('🖨 自动双面', fmt(plan.seqDuplex), 'sq1') +
+    seqRow('手动·先印正面', fmt(plan.seqFront), 'sq2') +
+    seqRow('手动·再印背面', fmt(plan.seqBack), 'sq3');
+  var sh = '';
+  plan.sheets.forEach(function(s, idx){
+    sh += '<div class="sheet"><div class="sheetlab">第 <b>'+s.i+'</b> 张纸（'+(idx===0?'最外层，包住所有纸':idx===plan.sheets.length-1?'最内层，中心页所在':'由外向内第 '+(idx+1)+' 层')+'）</div>' + sheetSvg(s, plan.pages) + '</div>';
+  });
+  $('sheets').innerHTML = sh;
+  var nn = '<b>提醒：</b>横向纸张对折装订，双面打印选「短边翻页」。' +
+    (plan.blanks ? '末尾自动补了 '+plan.blanks+' 页空白（图中灰色「空白」），装订后撕掉或留着写笔记都行。' : '页数正好是 4 的倍数，无需补空白页。');
+  $('noteout').innerHTML = nn;
+}
+
+function doCompute(){
+  var raw = $('pg').value.trim();
+  showErr('');
+  $('hint').classList.remove('show');
+  if(raw === ''){
+    lastPlan = null;
+    render(null);
+    $('hint').classList.add('show');
+    return;
+  }
+  var plan = buildPlan(raw);
+  if(plan.error){
+    lastPlan = null;
+    render(null);
+    showErr(plan.error);
+    return;
+  }
+  lastPlan = plan;
+  render(plan);
+}
+
+// 复制：clipboard 优先，execCommand 兜底；兜底失败也要给反馈
+function copySeq(id){
+  var txt = $(id).textContent;
+  function fallback(){
+    var ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try{ ok = document.execCommand('copy'); }catch(e){ ok = false; }
+    document.body.removeChild(ta);
+    if(ok) toast('已复制 ✓'); else toast('复制失败，请长按文本手动复制');
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){ toast('已复制 ✓'); }, fallback);
+  } else fallback();
+}
+
+// ---------- 事件 ----------
+$('go').addEventListener('click', doCompute);
+$('sample').addEventListener('click', function(){
+  $('pg').value = '8';
+  doCompute();
+});
+$('pg').addEventListener('input', doCompute);
+$('how').addEventListener('click', function(ev){
+  var b = ev.target.closest('.copy');
+  if(b) copySeq(b.getAttribute('data-seq'));
+});
+$('drop').addEventListener('click', function(){ $('file').click(); });
+$('drop').addEventListener('keydown', function(ev){ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); $('file').click(); } });
+$('file').addEventListener('change', function(){
+  if(this.files && this.files[0]) readPdf(this.files[0]);
+});
+var dropEl = $('drop');
+['dragover','dragenter'].forEach(function(ev){
+  dropEl.addEventListener(ev, function(e){ e.preventDefault(); dropEl.classList.add('over'); });
+});
+['dragleave','drop'].forEach(function(ev){
+  dropEl.addEventListener(ev, function(e){ e.preventDefault(); dropEl.classList.remove('over'); });
+});
+dropEl.addEventListener('drop', function(e){
+  var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f) readPdf(f);
+});
+
+function readPdf(f){
+  if(!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf'){
+    showErr('这不是 PDF 文件——拖 PDF 进来，或者直接手填页数');
+    return;
+  }
+  var fr = new FileReader();
+  fr.onload = function(){
+    var u8 = new Uint8Array(fr.result);
+    var r = window.CORE.pdfPageCount(u8);
+    if(r && r.pages >= 1){
+      $('pg').value = r.pages;
+      doCompute();
+      toast('读到 '+r.pages+' 页（'+r.how+'）✓');
+    } else {
+      showErr('这个 PDF 的页数没能自动识别（可能用了压缩对象流）——直接在上面的输入框手填页数就好');
+    }
+  };
+  fr.onerror = function(){ showErr('文件读取失败，试试直接手填页数'); };
+  fr.readAsArrayBuffer(f);
+}
+
+window.addEventListener('error', function(ev){ (window.__errs = window.__errs || []).push(String(ev.message)); });
+window.addEventListener('unhandledrejection', function(ev){ (window.__errs = window.__errs || []).push(String(ev.reason)); });
+</script>
+</body>
+</html>
