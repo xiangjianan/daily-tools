@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DIMWEIGHT 抛重预判台 · 寄之前先算计费重</title>
+<meta name="description" content="输入长宽高与实重，即时算体积重与计费重，反推预算内最大尺寸，多件拼单合计。纯本地，不上传。">
+<style>
+:root{
+  --bg:#0f1420; --panel:#171e2e; --panel2:#1d2638; --line:#2a3550;
+  --fg:#e8edf7; --mut:#8b96ad; --acc:#5ab8ff; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171;
+  --mono:ui-monospace,'SF Mono',Consolas,'Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,'PingFang SC','Microsoft YaHei',sans-serif;min-height:100vh}
+.wrap{max-width:1060px;margin:0 auto;padding:20px 16px 60px}
+header h1{font-size:1.5rem;letter-spacing:.5px}
+header h1 .en{color:var(--acc)}
+header p{color:var(--mut);font-size:.9rem;margin-top:2px}
+.hint-priv{display:inline-block;margin-top:6px;font-size:.78rem;color:var(--mut);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:2px 12px}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
+.panel h2{font-size:.95rem;color:var(--acc);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.panel h2 .tag{font-size:.7rem;color:var(--mut);border:1px solid var(--line);border-radius:4px;padding:0 6px;font-weight:normal}
+.row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.field{display:flex;flex-direction:column;gap:2px;min-width:0}
+.field label{font-size:.75rem;color:var(--mut)}
+.field input,.field select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--fg);padding:8px 10px;font-size:1.05rem;font-family:var(--mono)}
+.field input:focus,.field select:focus{outline:none;border-color:var(--acc)}
+.field input.bad{border-color:var(--bad)}
+.unit{display:flex;gap:4px;margin:10px 0 2px}
+.unit button{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:5px 0;cursor:pointer;font-size:.8rem}
+.unit button.on{color:var(--acc);border-color:var(--acc);background:rgba(90,184,255,.08)}
+.divisor{margin-top:12px}
+.divisor .lbl{font-size:.75rem;color:var(--mut);margin-bottom:4px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{background:var(--panel2);border:1px solid var(--line);color:var(--fg);border-radius:999px;padding:3px 12px;cursor:pointer;font-size:.8rem;font-family:var(--mono)}
+.chips button.on{border-color:var(--acc);color:var(--acc);background:rgba(90,184,255,.1)}
+.res{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px}
+.res .cell{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 8px;text-align:center}
+.res .num{font:1.6rem/1.2 var(--mono);color:var(--fg)}
+.res .num.big{color:var(--acc)}
+.res .cap{font-size:.72rem;color:var(--mut);margin-top:2px}
+.billnote{font-size:.78rem;color:var(--mut);margin-top:8px}
+.billnote b{color:var(--warn)}
+.modebar{display:flex;gap:6px;margin-bottom:12px}
+.modebar button{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:6px 0;cursor:pointer;font-size:.85rem}
+.modebar button.on{color:var(--acc);border-color:var(--acc);background:rgba(90,184,255,.08)}
+#revArea{margin-top:4px}
+#revArea .budget{font-size:.85rem;color:var(--mut)}
+#revArea .budget b{color:var(--acc);font-family:var(--mono);font-size:1.1rem}
+input[type=range]{width:100%;accent-color:var(--acc);margin-top:6px}
+.revgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.revgrid .cell{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+.revgrid .num{font:1.25rem/1.3 var(--mono);color:var(--ok)}
+.revgrid .cap{font-size:.72rem;color:var(--mut)}
+svg box{display:block}
+.boxviz{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:12px}
+.boxviz svg{display:block;width:100%;height:auto}
+.boxviz .cap{text-align:center;font-size:.75rem;color:var(--mut);margin-top:4px}
+.items{display:flex;flex-direction:column;gap:8px}
+.item{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:.85rem;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 10px;align-items:center}
+.item .nm{color:var(--fg)}
+.item .dims{color:var(--mut);font-family:var(--mono);font-size:.78rem;grid-column:1}
+.item .wt{font-family:var(--mono);color:var(--acc);text-align:right;grid-column:2/4}
+.item button.del{background:none;border:none;color:var(--bad);cursor:pointer;font-size:1rem;padding:2px 6px}
+.item .copyone{grid-column:1/4;text-align:left}
+.mini{font-size:.75rem;color:var(--mut);background:none;border:1px dashed var(--line);border-radius:6px;padding:2px 8px;cursor:pointer}
+.mini:hover{color:var(--acc);border-color:var(--acc)}
+.totalbar{display:flex;justify-content:space-between;align-items:center;background:rgba(90,184,255,.07);border:1px solid var(--acc);border-radius:10px;padding:10px 14px;margin-top:10px}
+.totalbar .tt{font-size:.85rem;color:var(--mut)}
+.totalbar .tv{font:1.3rem/1.2 var(--mono);color:var(--acc)}
+.btnrow{display:flex;gap:8px;margin-top:10px}
+.btn{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:8px;cursor:pointer;font-size:.85rem}
+.btn:hover{border-color:var(--acc);color:var(--acc)}
+.btn.pri{background:rgba(90,184,255,.12);border-color:var(--acc);color:var(--acc)}
+.empty{color:var(--mut);font-size:.85rem;text-align:center;padding:18px 0}
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:#2b3a55;color:var(--fg);border:1px solid var(--acc);border-radius:8px;padding:8px 18px;font-size:.85rem;opacity:0;pointer-events:none;transition:all .25s;z-index:9}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.err{color:var(--bad);font-size:.8rem;margin-top:8px;min-height:1.2em}
+footer{margin-top:22px;color:var(--mut);font-size:.75rem;line-height:1.8;border-top:1px solid var(--line);padding-top:12px}
+footer a{color:var(--acc);text-decoration:none}
+@media(max-width:760px){
+  main{grid-template-columns:1fr}
+  .res{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .revgrid{grid-template-columns:1fr 1fr}
+  .item{grid-template-columns:minmax(0,1fr) auto}
+  .item .wt{grid-column:1;grid-row:3;text-align:left}
+  .item button.del{grid-column:2;grid-row:2/4}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1><span class="en">DIMWEIGHT</span> 抛重预判台</h1>
+  <p>寄之前先算「计费重」——体积重 × 实重取大，反推预算内最大尺寸，多件拼单一目了然</p>
+  <span class="hint-priv">🔒 纯浏览器本地计算 · 不上传任何数据 · 双击即用</span>
+</header>
+<main>
+  <section class="panel" id="panelCalc">
+    <h2>📦 单件计算 <span class="tag">即输即算</span></h2>
+    <div class="row3">
+      <div class="field"><label>长 (cm)</label><input id="inL" type="number" inputmode="decimal" min="0" step="0.1" placeholder="40"></div>
+      <div class="field"><label>宽 (cm)</label><input id="inW" type="number" inputmode="decimal" min="0" step="0.1" placeholder="30"></div>
+      <div class="field"><label>高 (cm)</label><input id="inH" type="number" inputmode="decimal" min="0" step="0.1" placeholder="25"></div>
+    </div>
+    <div class="row2" style="margin-top:8px">
+      <div class="field"><label id="lblW">实重 (kg)</label><input id="inWeight" type="number" inputmode="decimal" min="0" step="0.1" placeholder="3.5"></div>
+      <div class="field"><label>件数名称（可选）</label><input id="inName" type="text" maxlength="12" placeholder="如：被子/行李箱"></div>
+    </div>
+    <div class="unit">
+      <button class="on" data-u="cm" type="button">厘米 cm</button>
+      <button data-u="inch" type="button">英寸 inch</button>
+      <button data-u="jin" type="button">重量: 斤</button>
+    </div>
+    <div class="divisor">
+      <div class="lbl">体积重除数口径（长宽高 cm 之积 ÷ 除数；承运商各有差异，以实际为准）</div>
+      <div class="chips" id="divChips">
+        <button data-d="6000" class="on" type="button">6000 常见快递</button>
+        <button data-d="8000" type="button">8000 部分陆运</button>
+        <button data-d="12000" type="button">12000 经济件</button>
+        <button data-d="5000" type="button">5000 跨境/航空</button>
+      </div>
+    </div>
+    <div class="res">
+      <div class="cell"><div class="num" id="rVol">—</div><div class="cap">体积重</div></div>
+      <div class="cell"><div class="num" id="rAct">—</div><div class="cap" id="capAct">实重</div></div>
+      <div class="cell"><div class="num big" id="rBill">—</div><div class="cap">计费重（取大进位）</div></div>
+    </div>
+    <div class="billnote" id="billNote"></div>
+    <div class="err" id="err1"></div>
+    <div class="boxviz" id="boxViz"></div>
+    <div class="btnrow">
+      <button class="btn pri" id="btnAdd" type="button">➕ 加入拼单列表</button>
+      <button class="btn" id="btnSwapRev" type="button">🔄 反推最大尺寸</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>🔮 反推 &amp; 拼单 <span class="tag">预算倒推</span></h2>
+    <div class="modebar">
+      <button id="mRev" class="on" type="button">预算反推尺寸</button>
+      <button id="mList" type="button">拼单合计 <span id="cntBadge"></span></button>
+    </div>
+    <div id="revArea">
+      <div class="budget">计费重预算：<b id="budgetVal">10</b> kg（含除数口径联动）</div>
+      <input id="budget" type="range" min="1" max="100" step="0.5" value="10">
+      <div class="revgrid">
+        <div class="cell"><div class="num" id="revCube">—</div><div class="cap">最优正方体边长 (cm³ 根)</div></div>
+        <div class="cell"><div class="num" id="revKeep">—</div><div class="cap">保持当前比例最大边</div></div>
+      </div>
+      <div class="billnote" id="revNote"></div>
+    </div>
+    <div id="listArea" style="display:none">
+      <div class="items" id="items"><div class="empty">还没有加入的件。左侧填好尺寸重量后点「加入拼单列表」。</div></div>
+      <div class="totalbar"><span class="tt">合计（体积重总和 / 实重总和 → 计费重）</span><span class="tv" id="totalV">—</span></div>
+      <div class="btnrow">
+        <button class="btn pri" id="btnCopy" type="button">📋 复制拼单清单</button>
+        <button class="btn" id="btnClear" type="button">🗑 清空列表</button>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>
+  计费重 = max(实重, 体积重)，常规按 1kg 向上进位（部分承运商按 0.5kg 进位续重）。除数口径仅为常见参考：主流快递多用 6000，部分陆运/经济件用 8000–12000，跨境与航空常用 5000。<br>
+  英寸输入自动按 2.54cm、斤按 0.5kg 折算成公制计算。<br>
+  DIMWEIGHT · <a href="https://github.com/xiangjianan/daily-tools/tree/main/dimweight-20261123">GitHub 源码</a> · daily-tools #71 · 数据全程不离开本机
+</footer>
+</div>
+<div id="toast"></div>
+<script>
+'use strict';
+/* ---------- 状态 ---------- */
+var S = {
+  unit: 'cm',          // cm | inch
+  wunit: 'kg',         // kg | jin
+  divisor: 6000,
+  budget: 10,
+  mode: 'rev',         // rev | list
+  items: [],           // {name,L,W,H,weight} 已折算为 cm/kg
+  seq: 0
+};
+var $ = function(id){ return document.getElementById(id); };
+
+/* ---------- 工具 ---------- */
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ t.classList.remove('show'); }, 1800);
+}
+function fmt(n, d){
+  if(!isFinite(n)) return '—';
+  var s = n.toFixed(d === undefined ? 2 : d);
+  s = s.replace(/\.?0+$/, '');
+  return s === '' ? '0' : s;
+}
+function ceilKg(n){ return Math.max(1, Math.ceil(n - 1e-9)); }
+/* 读输入：单位折算成 cm/kg，非法返回 null */
+function readDims(){
+  var L = parseFloat($('inL').value), W = parseFloat($('inW').value), H = parseFloat($('inH').value);
+  var w = parseFloat($('inWeight').value);
+  var bad = [];
+  [[$('inL'),L],[$('inW'),W],[$('inH'),H],[$('inWeight'),w]].forEach(function(p){
+    if(!isFinite(p[1]) || p[1] < 0){ p[0].classList.add('bad'); } else { p[0].classList.remove('bad'); }
+  });
+  if(!isFinite(L) || !isFinite(W) || !isFinite(H) || !isFinite(w)) return null;
+  if(L <= 0 || W <= 0 || H <= 0 || w < 0){ return { warn: '长宽高需大于 0，重量不能为负' }; }
+  if(L > 500 || W > 500 || H > 500 || w > 5000){ return { warn: '数值超出常见寄件范围（边 ≤ 500cm、重 ≤ 5000kg）' }; }
+  var k = S.unit === 'inch' ? 2.54 : 1;
+  return { L: L * k, W: W * k, H: H * k, weight: S.wunit === 'jin' ? w * 0.5 : w };
+}
+/* ---------- 单件计算 ---------- */
+function calc(){
+  var errEl = $('err1');
+  var d = readDims();
+  var vol = $('rVol'), act = $('rAct'), bill = $('rBill'), note = $('billNote');
+  if(d === null){
+    vol.textContent = act.textContent = bill.textContent = '—';
+    note.textContent = '';
+    errEl.textContent = '填写长宽高与实重后即时计算';
+    $('boxViz').innerHTML = vizEmpty();
+    return null;
+  }
+  if(d.warn){
+    vol.textContent = act.textContent = bill.textContent = '—';
+    note.textContent = '';
+    errEl.textContent = d.warn;
+    $('boxViz').innerHTML = vizEmpty();
+    return null;
+  }
+  errEl.textContent = '';
+  var vWeight = d.L * d.W * d.H / S.divisor;
+  var billKg = ceilKg(Math.max(vWeight, d.weight));
+  vol.textContent = fmt(vWeight);
+  act.textContent = fmt(d.weight);
+  bill.textContent = fmt(billKg, 0) + ' kg';
+  var which = vWeight > d.weight ? '体积重' : '实重';
+  var overVol = vWeight > d.weight;
+  note.innerHTML = '按 <b>' + which + '</b> 计费' +
+    (overVol ? ' —— 这件是「抛货」，装箱越松越亏' : ' —— 实重主导，抛重不触发') +
+    '；体积 ' + fmt(d.L/100 * d.W/100 * d.H/100, 4) + ' m³';
+  $('boxViz').innerHTML = vizBox(d);
+  return d;
+}
+/* ---------- 箱体可视化（等比例 SVG 等轴测） ---------- */
+function vizEmpty(){
+  return '<svg viewBox="0 0 300 170">' +
+    '<rect x="90" y="50" width="120" height="80" fill="none" stroke="#2a3550" stroke-dasharray="5 4" rx="6"/>' +
+    '<text x="150" y="95" text-anchor="middle" fill="#8b96ad" font-size="12">填入尺寸后显示等比例箱体</text></svg>';
+}
+function vizBox(d){
+  var m = Math.max(d.L, d.W, d.H);
+  var u = 110 / m;                 // 最长边画 110px
+  var L = d.L * u, W = d.W * u, H = d.H * u;
+  var ox = 150 - (W - L) / 2, oy = 135;
+  var dx = W * 0.35, dy = W * 0.18;
+  function p(x, y){ return (ox + x) + ',' + (oy - y); }
+  var fill = (d.L*d.W*d.H/S.divisor > d.weight) ? 'rgba(251,191,36,.25)' : 'rgba(90,184,255,.22)';
+  var edge = (d.L*d.W*d.H/S.divisor > d.weight) ? '#fbbf24' : '#5ab8ff';
+  var s = '<svg viewBox="0 0 300 170">';
+  // 三个可见面：正、顶、侧
+  s += '<polygon points="' + p(0,0) + ' ' + p(L,0) + ' ' + p(L,H) + ' ' + p(0,H) + '" fill="' + fill + '" stroke="' + edge + '"/>';
+  s += '<polygon points="' + p(0,H) + ' ' + p(dx,H+dy) + ' ' + p(L+dx,H+dy) + ' ' + p(L,H) + '" fill="' + fill + '" stroke="' + edge + '" opacity=".8"/>';
+  s += '<polygon points="' + p(L,0) + ' ' + p(L+dx,dy) + ' ' + p(L+dx,H+dy) + ' ' + p(L,H) + '" fill="' + fill + '" stroke="' + edge + '" opacity=".6"/>';
+  s += '<text x="' + (ox+L/2) + '" y="' + (oy+16) + '" text-anchor="middle" fill="#8b96ad" font-size="11" font-family="monospace">' + fmt(d.L,1) + '×' + fmt(d.W,1) + '×' + fmt(d.H,1) + ' cm</text>';
+  s += '</svg><div class="cap">' + (d.L*d.W*d.H/S.divisor > d.weight ? '🟡 抛货箱：塞太满空气也在计费' : '🔵 实重主导：尺寸还有余量') + '</div>';
+  return s;
+}
+/* ---------- 反推 ---------- */
+function calcRev(){
+  var d = readDims();
+  var volBudget = S.budget * S.divisor;            // 允许的最大 cm³（体积重口径）
+  var cube = Math.cbrt(volBudget);
+  $('budgetVal').textContent = fmt(S.budget, 1);
+  $('revCube').textContent = fmt(cube, 1) + ' cm';
+  var keepTxt = '—', note = '先在左侧输入一个箱子，这里给出保持该比例的最大尺寸。';
+  if(d && d.L && d.W && d.H){
+    var curV = d.L * d.W * d.H;
+    var s = Math.cbrt(volBudget / curV);
+    if(s >= 1){
+      keepTxt = fmt(d.H * s, 1) + ' cm';
+      note = '当前比例 ×' + fmt(s, 2) + ' → ' + fmt(d.L*s,1) + '×' + fmt(d.W*s,1) + '×' + fmt(d.H*s,1) + ' cm，正好用满 ' + fmt(S.budget,1) + 'kg 预算';
+    } else {
+      keepTxt = fmt(d.H, 1) + ' cm（已超）';
+      note = '当前箱体积重 ' + fmt(curV / S.divisor, 2) + 'kg 已超预算，需缩小至 ×' + fmt(s, 2);
+    }
+  }
+  $('revKeep').textContent = keepTxt;
+  $('revNote').textContent = note;
+}
+/* ---------- 拼单列表 ---------- */
+function renderList(){
+  var box = $('items');
+  var n = S.items.length;
+  $('cntBadge').textContent = n ? '(' + n + ')' : '';
+  if(!n){ box.innerHTML = '<div class="empty">还没有加入的件。左侧填好尺寸重量后点「加入拼单列表」。</div>'; $('totalV').textContent = '—'; return; }
+  var html = '';
+  var sumVolW = 0, sumW = 0;
+  S.items.forEach(function(it, i){
+    var vw = it.L * it.W * it.H / S.divisor;
+    sumVolW += vw; sumW += it.weight;
+    html += '<div class="item">' +
+      '<span class="nm">' + (it.name ? '🏷 ' + it.name : '件 ' + (i+1)) + '</span>' +
+      '<button class="del" data-i="' + i + '" title="删除">✕</button>' +
+      '<span class="dims">' + fmt(it.L,1) + '×' + fmt(it.W,1) + '×' + fmt(it.H,1) + ' cm</span>' +
+      '<span class="wt">抛 ' + fmt(vw,1) + ' / 实 ' + fmt(it.weight,1) + ' → 计费 ' + ceilKg(Math.max(vw, it.weight)) + 'kg</span>' +
+      '</div>';
+  });
+  box.innerHTML = html;
+  var billTotal = Math.max(ceilKg(sumVolW), ceilKg(sumW));
+  $('totalV').textContent = billTotal + ' kg';
+  box.querySelectorAll('.del').forEach(function(b){
+    b.addEventListener('click', function(){
+      S.items.splice(parseInt(b.dataset.i, 10), 1);
+      renderList();
+    });
+  });
+}
+function buildCopyText(){
+  var sumVolW = 0, sumW = 0, lines = [];
+  lines.push('DIMWEIGHT 拼单清单 · 除数口径 ' + S.divisor);
+  S.items.forEach(function(it, i){
+    var vw = it.L * it.W * it.H / S.divisor;
+    sumVolW += vw; sumW += it.weight;
+    lines.push((i+1) + '. ' + (it.name || '件' + (i+1)) + ' ' +
+      fmt(it.L,1) + '×' + fmt(it.W,1) + '×' + fmt(it.H,1) + 'cm 实重' + fmt(it.weight,1) + 'kg' +
+      ' 体积重' + fmt(vw,1) + 'kg 计费' + ceilKg(Math.max(vw, it.weight)) + 'kg');
+  });
+  lines.push('合计体积重 ' + fmt(sumVolW,1) + 'kg · 合计实重 ' + fmt(sumW,1) + 'kg → 合合计费重 ' + Math.max(ceilKg(sumVolW), ceilKg(sumW)) + 'kg');
+  return lines.join('\n');
+}
+function copyText(txt, okMsg){
+  function fallback(){
+    var ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
+    document.body.removeChild(ta);
+    toast(ok ? okMsg : '复制失败，请手动选择文本');
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){ toast(okMsg); }, fallback);
+  } else fallback();
+}
+/* ---------- 事件绑定 ---------- */
+['inL','inW','inH','inWeight'].forEach(function(id){
+  $(id).addEventListener('input', function(){ calc(); if(S.mode === 'rev') calcRev(); });
+});
+document.querySelectorAll('.unit button').forEach(function(b){
+  b.addEventListener('click', function(){
+    var u = b.dataset.u;
+    if(u === 'inch'){ S.unit = S.unit === 'inch' ? 'cm' : 'inch'; }
+    else { S.wunit = S.wunit === 'jin' ? 'kg' : 'jin'; }
+    document.querySelectorAll('.unit button').forEach(function(x){
+      if(x.dataset.u === 'cm') x.classList.toggle('on', S.unit === 'cm');
+      if(x.dataset.u === 'inch') x.classList.toggle('on', S.unit === 'inch');
+      if(x.dataset.u === 'jin') x.classList.toggle('on', S.wunit === 'jin');
+    });
+    $('lblW').textContent = S.wunit === 'jin' ? '实重 (斤)' : '实重 (kg)';
+    calc(); if(S.mode === 'rev') calcRev();
+  });
+});
+document.querySelectorAll('#divChips button').forEach(function(b){
+  b.addEventListener('click', function(){
+    S.divisor = parseInt(b.dataset.d, 10);
+    document.querySelectorAll('#divChips button').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on');
+    calc(); if(S.mode === 'rev') calcRev(); renderList();
+  });
+});
+$('budget').addEventListener('input', function(){
+  S.budget = parseFloat(this.value) || 1;
+  calcRev();
+});
+$('btnSwapRev').addEventListener('click', function(){
+  setMode('rev');
+});
+function setMode(m){
+  S.mode = m;
+  $('mRev').classList.toggle('on', m === 'rev');
+  $('mList').classList.toggle('on', m === 'list');
+  $('revArea').style.display = m === 'rev' ? '' : 'none';
+  $('listArea').style.display = m === 'list' ? '' : 'none';
+  if(m === 'rev') calcRev(); else renderList();
+}
+$('mRev').addEventListener('click', function(){ setMode('rev'); });
+$('mList').addEventListener('click', function(){ setMode('list'); });
+$('btnAdd').addEventListener('click', function(){
+  var d = calc();
+  if(!d){ toast('先填好有效的尺寸和重量'); return; }
+  S.items.push({
+    name: $('inName').value.trim(),
+    L: d.L, W: d.W, H: d.H, weight: d.weight
+  });
+  S.seq++;
+  renderList();
+  setMode('list');
+  toast('已加入拼单列表');
+});
+$('btnCopy').addEventListener('click', function(){
+  if(!S.items.length){ toast('列表为空'); return; }
+  copyText(buildCopyText(), '拼单清单已复制');
+});
+$('btnClear').addEventListener('click', function(){
+  if(!S.items.length){ toast('列表已为空'); return; }
+  S.items = [];
+  renderList();
+  toast('已清空');
+});
+/* ---------- 初始化 ---------- */
+calc();
+calcRev();
+
+/* ---------- 内置自测（仅 #selftest 哈希触发，正常使用不可见） ---------- */
+function _st(id2){ return document.getElementById(id2); }
+function _set(id2, v){ _st(id2).value = v; _st(id2).dispatchEvent(new Event('input')); }
+function _txt(id2){ return _st(id2).textContent; }
+function _runSelfTest(){
+  var out = [], fail = 0;
+  function A(name, cond){ out.push((cond ? 'PASS' : 'FAIL') + ':' + name); if(!cond) fail++; }
+  try{
+    // 空态
+    _set('inL',''); _set('inW',''); _set('inH',''); _set('inWeight','');
+    A('empty-hint', _txt('err1').indexOf('填写') >= 0 && _txt('rBill') === '—');
+    // 常规 40x30x25 / 3.5kg / 6000 -> 体积重5 计费5
+    _set('inL','40'); _set('inW','30'); _set('inH','25'); _set('inWeight','3.5');
+    A('vol5', parseFloat(_txt('rVol')) === 5);
+    A('act3.5', parseFloat(_txt('rAct')) === 3.5);
+    A('bill5', _txt('rBill') === '5 kg');
+    A('note-pao', _txt('billNote').indexOf('抛货') >= 0);
+    A('svg-box', $('boxViz').innerHTML.indexOf('<svg') >= 0);
+    // 实重主导 20x15x10 / 8kg -> 0.5 vs 8 -> 8
+    _set('inL','20'); _set('inW','15'); _set('inH','10'); _set('inWeight','8');
+    A('bill8', _txt('rBill') === '8 kg');
+    A('note-act', _txt('billNote').indexOf('实重主导') >= 0);
+    // 进位 0.9 -> 1
+    _set('inWeight','0.9');
+    A('bill1', _txt('rBill') === '1 kg');
+    // 非法输入
+    _set('inWeight','-5');
+    A('neg-hint', _txt('err1').indexOf('大于') >= 0 || _txt('err1').indexOf('填写') >= 0);
+    _set('inWeight','8');
+    // 斤折算 14斤 -> 7kg -> bill 8? no: 0.5 vs 7 -> 7
+    document.querySelector('.unit button[data-u=jin]').click();
+    A('jin-lbl', _txt('lblW').indexOf('斤') >= 0);
+    _set('inWeight','14');
+    A('jin7', _txt('rBill') === '7 kg');
+    document.querySelector('.unit button[data-u=jin]').click(); // 回 kg
+    _set('inWeight','3.5'); _set('inL','40'); _set('inW','30'); _set('inH','25');
+    // 反推: 预算10 / 除数6000 -> cube ~39.15
+    $('budget').value = '10'; $('budget').dispatchEvent(new Event('input'));
+    var cube = parseFloat(_txt('revCube'));
+    A('cube39', Math.abs(cube - 39.148) < 0.05);
+    var keep = parseFloat(_txt('revKeep'));
+    A('keep-scaled', keep > 25 && keep < 60);   // 40x30x25 scale cbrt(2)=1.26 -> H=31.5
+    // 加入拼单
+    document.getElementById('btnAdd').click();
+    A('mode-list', _st('listArea').style.display === '');
+    A('item1', document.querySelectorAll('.item').length === 1);
+    A('total5', _txt('totalV') === '5 kg');   // 体积重5 vs 实重3.5 -> 计费5
+    // 清空 -> 空态提示
+    document.getElementById('btnClear').click();
+    A('cleared', document.querySelectorAll('.item').length === 0 && _txt('totalV') === '—');
+    // 空列表复制提示
+    document.getElementById('btnCopy').click();
+    // 复制清单（有内容）——无头无剪贴板权限应走兜底不抛错
+    document.getElementById('btnAdd').click();
+    document.getElementById('btnCopy').click();
+    document.getElementById('btnClear').click();
+    // 反推模式切回
+    document.getElementById('mRev').click();
+    A('mode-rev', _st('revArea').style.display === '');
+    // 溢出扫描：横向滚动 / 元素出视口
+    var ov = document.scrollingElement.scrollWidth > document.scrollingElement.clientWidth + 1;
+    var wide = 0;
+    document.querySelectorAll('body *').forEach(function(el){
+      var r2 = el.getBoundingClientRect();
+      if(r2.right > window.innerWidth + 1 && r2.width > 0) wide++;
+    });
+    A('no-overflow@' + window.innerWidth, !ov && wide === 0);
+  }catch(e){ out.push('EXC:' + e.message); fail++; }
+  var el = document.createElement('div');
+  el.id = 'stResult';
+  el.textContent = (fail === 0 ? 'ST-ALL-PASS ' : 'ST-FAIL ' + fail + ' ') + out.join(' | ');
+  document.body.appendChild(el);
+  document.title = fail === 0 ? 'ST-ALL-PASS' : 'ST-FAIL';
+}
+if(location.hash === '#selftest'){ window.addEventListener('load', _runSelfTest); }
+</script>
+</body>
+</html>
