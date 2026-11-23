@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>fuelgauge · 油耗台账解剖 — 粘贴加油记录，看懂真实油耗</title>
+<meta name="description" content="粘贴你的加油记录，本地计算每箱真实油耗、每公里成本与异常解读。纯浏览器，数据不上传。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f141b'/%3E%3Cpath d='M7 22 L7 12 M11 22 L11 16 M15 22 L15 10 M19 22 L19 14 M23 22 L23 8' stroke='%23ffb454' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0f141b; --bg2:#161d27; --bg3:#1d2634; --line:#2a3646;
+  --tx:#e6edf3; --tx2:#8b98a9; --tx3:#5c6a7d;
+  --acc:#ffb454; --acc2:#4cc38a; --bad:#ff6b6b; --info:#6cb6ff;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--tx);
+  font:15px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  min-height:100vh;
+}
+.wrap{max-width:960px;margin:0 auto;padding:20px 16px calc(30px + env(safe-area-inset-bottom))}
+header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+h1{font-size:22px;letter-spacing:.5px}
+h1 .g{color:var(--acc)}
+.tagline{color:var(--tx2);font-size:13px}
+.priv{margin:4px 0 18px;font-size:12px;color:var(--tx3)}
+.priv b{color:var(--acc2);font-weight:600}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+label{display:block;font-size:13px;color:var(--tx2);margin-bottom:8px}
+label .hint{color:var(--tx3)}
+textarea{
+  width:100%;min-height:150px;resize:vertical;
+  background:var(--bg);color:var(--tx);border:1px solid var(--line);border-radius:8px;
+  padding:10px 12px;font:13px/1.7 var(--mono);outline:none;
+}
+textarea:focus{border-color:var(--acc)}
+textarea::placeholder{color:var(--tx3)}
+.btnrow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+button{
+  background:var(--bg3);color:var(--tx);border:1px solid var(--line);border-radius:8px;
+  padding:7px 14px;font-size:13px;cursor:pointer;font-family:inherit;
+}
+button:hover{border-color:var(--acc);color:var(--acc)}
+button.primary{background:var(--acc);color:#20180a;border-color:var(--acc);font-weight:600}
+button.primary:hover{filter:brightness(1.1);color:#20180a}
+.msg{margin-top:10px;font-size:13px;border-radius:8px;padding:8px 12px;display:none}
+.msg.show{display:block}
+.msg.warn{background:rgba(255,180,84,.1);color:var(--acc);border:1px solid rgba(255,180,84,.3)}
+.msg.bad{background:rgba(255,107,107,.1);color:var(--bad);border:1px solid rgba(255,107,107,.3)}
+.msg.ok{background:rgba(76,195,138,.1);color:var(--acc2);border:1px solid rgba(76,195,138,.3)}
+.empty-hint{color:var(--tx3);font-size:13px;padding:14px 4px}
+#out{display:none}
+#out.show{display:block}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.stat .k{font-size:12px;color:var(--tx2)}
+.stat .v{font-size:22px;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;margin-top:2px}
+.stat .v small{font-size:12px;color:var(--tx2);font-weight:400}
+.stat.g .v{color:var(--acc2)}
+.chartcard{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.chartcard h2{font-size:14px;color:var(--tx2);font-weight:600;margin-bottom:6px}
+svg{display:block;width:100%;height:auto}
+.tbl{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.tbl th{color:var(--tx2);font-weight:500;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:6px 8px;border-bottom:1px solid rgba(42,54,70,.5);white-space:nowrap}
+.tbl tr.abnormal td{background:rgba(255,107,107,.07)}
+.tbl .bar{display:inline-block;height:8px;border-radius:4px;vertical-align:middle;margin-right:6px}
+.chip{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;background:var(--bg3);color:var(--tx2);border:1px solid var(--line);white-space:nowrap}
+.chip.bad{color:var(--bad);border-color:rgba(255,107,107,.4)}
+.chip.best{color:var(--acc2);border-color:rgba(76,195,138,.4)}
+.note{font-size:12px;color:var(--tx2);margin-top:10px;line-height:1.7}
+.note b{color:var(--tx)}
+details{margin-top:10px;font-size:13px;color:var(--tx2)}
+details summary{cursor:pointer;color:var(--info)}
+details p{margin-top:8px;line-height:1.8}
+footer{margin-top:20px;font-size:12px;color:var(--tx3);text-align:center}
+footer a{color:var(--tx2)}
+@media (max-width:560px){
+  h1{font-size:19px}
+  .stat .v{font-size:18px}
+  .tbl{font-size:12px}
+  .tbl th,.tbl td{padding:5px 5px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>⛽ fuel<span class="g">gauge</span> 油耗台账解剖</h1>
+    <span class="tagline">粘贴加油记录 · 看懂真实油耗</span>
+  </header>
+  <p class="priv"><b>隐私优先</b>：所有计算在你的浏览器本地完成，记录不离开这台设备。</p>
+
+  <div class="card">
+    <label>加油记录（每行一次加油）<span class="hint"> —— 顺序随意，工具按里程自动排序。日期可省略，满箱记录行尾加 <b style="color:var(--acc)">full</b></span></label>
+    <textarea id="in" placeholder="2026-01-05 8321 km 45.2 L ¥350 full
+2026-01-20 8652 km 42.8 L ¥338
+2026-02-03 8979 km 44.5 L ¥351 full" spellcheck="false"></textarea>
+    <div class="btnrow">
+      <button class="primary" id="btn-run">解剖油耗</button>
+      <button id="btn-sample">载入示例</button>
+      <button id="btn-clear">清空</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div id="out">
+    <div class="stats" id="stats"></div>
+    <div class="chartcard">
+      <h2>箱油耗标尺 · 横轴=里程表读数，竖条=该箱百公里油耗，虚线=均值</h2>
+      <svg id="chart" viewBox="0 0 900 240" role="img" aria-label="每箱油耗柱状图"></svg>
+      <div class="note" id="chart-note"></div>
+    </div>
+    <div class="chartcard">
+      <h2>每箱明细</h2>
+      <div style="overflow-x:auto">
+      <table class="tbl"><thead><tr>
+        <th>箱</th><th>区间(里程)</th><th>天数</th><th>加油量</th><th>金额</th><th style="min-width:130px">L/100km</th><th>元/km</th><th>评价</th>
+      </tr></thead><tbody id="tbody"></tbody></table>
+      </div>
+      <details>
+        <summary>异常箱是怎么判定的？</summary>
+        <p>只有「满箱 → 满箱」之间的区间才是可计算的<b>真实整箱油耗</b>（非满箱加油只计金额与天数，不参与油耗计算）。某箱油耗偏离均值超过 ±18%，标红并给出可能原因提示——轮胎胎压、空调季节、市区拥堵、驾驶习惯变化、油品差异都可能造成一个箱的波动，单箱异常不必焦虑，连续 2 箱同向偏离才值得检查车况。</p>
+      </details>
+    </div>
+    <div class="btnrow">
+      <button id="btn-copy">📋 复制摘要</button>
+      <button id="btn-csv">⬇ 导出 CSV</button>
+    </div>
+    <div class="msg" id="msg2"></div>
+  </div>
+
+  <div class="empty-hint" id="empty-hint">↑ 粘贴加油记录开始。不知道格式？点「载入示例」看一眼。</div>
+
+  <footer>fuelgauge · <a href="https://github.com/xiangjianan/daily-tools">daily-tools #72</a> · 2026-11-24 · 满箱分段法，与加油 App 同款算法</footer>
+</div>
+
+<script>
+"use strict";
+/*==CORE==*/
+// ---------- 解析 ----------
+var RE_DATE = /(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/;
+var RE_DATE2 = /(\d{1,2})[-/.](\d{1,2})[-/.](\d{1,2})/; // MM-DD-YY 或 DD.MM.YY 欧式——按 MM DD YY 解
+var RE_ODOM = /(\d+(?:\.\d+)?)\s*(?:km|公里|千米)/i;
+var RE_LIT = /(\d+(?:\.\d+)?)\s*(?:l|升|L)(?![a-z])/;
+var RE_MONEY = /(?:[¥￥$€£]\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:元|块))/;
+var RE_FULL = /full|满箱|加满|满/i;
+
+// 提取一行的数字池（去掉日期后剩余串里的所有数字），用于兜底推断
+function numPool(rest){
+  var m, pool = [], re = /(\d+(?:\.\d+)?)/g;
+  while((m = re.exec(rest)) !== null) pool.push(parseFloat(m[1]));
+  return pool;
+}
+
+function parseLine(line, defaultYear){
+  var s = line.trim();
+  if(!s || /^#/.test(s)) return null; // 空行/注释行
+  var rec = {raw: s, date: null, odom: null, lit: null, money: null, full: RE_FULL.test(s), warnings: []};
+  var rest = s;
+
+  var md = RE_DATE.exec(s);
+  if(md){
+    rec.date = new Date(parseInt(md[1],10), parseInt(md[2],10)-1, parseInt(md[3],10));
+    rest = rest.replace(md[0], ' ');
+  } else {
+    var md2 = RE_DATE2.exec(s);
+    if(md2){
+      // 无年份：默认年（MM-DD 视为 月-日）
+      rec.date = new Date(defaultYear, parseInt(md2[1],10)-1, parseInt(md2[2],10));
+      rest = rest.replace(md2[0], ' ');
+    }
+  }
+
+  var mo = RE_ODOM.exec(rest);
+  if(mo){ rec.odom = parseFloat(mo[1]); rest = rest.replace(mo[0], ' '); }
+
+  var ml = RE_LIT.exec(rest);
+  if(ml){ rec.lit = parseFloat(ml[1]); rest = rest.replace(ml[0], ' '); }
+
+  var mm = RE_MONEY.exec(rest);
+  if(mm){
+    rec.money = parseFloat(mm[1] || mm[2]);
+    rest = rest.replace(mm[0], ' ');
+  }
+
+  // 兜底：km/L 都缺失时按位置猜（日期后第 1 个数=里程，第 2 个=升，第 3 个=金额）
+  var pool = numPool(rest);
+  if(rec.odom === null && pool.length){ rec.odom = pool.shift(); rec.warnings.push('里程无 km 后缀，按位置推断'); }
+  if(rec.lit === null && pool.length){ rec.lit = pool.shift(); rec.warnings.push('升数无 L 后缀，按位置推断'); }
+  if(rec.money === null && pool.length){ rec.money = pool.shift(); }
+
+  if(rec.odom === null) return {bad: true, raw: s, why: '缺里程读数'};
+  if(rec.lit === null && !rec.full) return {bad: true, raw: s, why: '缺加油升数'};
+  return rec;
+}
+
+function parseAll(text){
+  var lines = text.split(/\n/);
+  var defaultYear = new Date().getFullYear();
+  var recs = [], bads = [];
+  for(var i = 0; i < lines.length; i++){
+    var r = parseLine(lines[i], defaultYear);
+    if(!r) continue;
+    if(r.bad) bads.push(r); else recs.push(r);
+  }
+  recs.sort(function(a,b){
+    if(a.odom !== b.odom) return a.odom - b.odom;
+    var da = a.date ? a.date.getTime() : 0, db = b.date ? b.date.getTime() : 0;
+    return da - db;
+  });
+  return {recs: recs, bads: bads};
+}
+
+// ---------- 分箱统计：满箱→满箱 = 一个真实整箱 ----------
+function computeTanks(recs){
+  var tanks = [];
+  var start = null; // 箱起点（上一次满箱）
+  var pendingMoney = 0, pendingLits = 0, nStops = 0;
+  for(var i = 0; i < recs.length; i++){
+    var r = recs[i];
+    if(start !== null){
+      // 区间内的一次（非首箱的）加油：计钱/升
+      pendingMoney += (r.money || 0);
+      pendingLits += (r.lit || 0);
+      nStops++;
+    }
+    if(r.full){
+      if(start !== null){
+        var dist = r.odom - start.odom;
+        var lits = pendingLits; // 满箱→满箱区间内加进去的油 = 该箱消耗（起点加的油支撑上一箱）
+        var days = (r.date && start.date) ? Math.max(1, Math.round((r.date - start.date)/86400000)) : null;
+        tanks.push({
+          from: start, to: r, dist: dist, lits: lits,
+          money: pendingMoney, stops: nStops, days: days,
+          per100: dist > 0 && lits > 0 ? lits / dist * 100 : null,
+          perKmCost: dist > 0 && pendingMoney > 0 ? pendingMoney / dist : null,
+          valid: dist > 5 && lits > 0
+        });
+      }
+      start = r; pendingMoney = 0; pendingLits = 0; nStops = 0;
+    } else if(start === null){
+      // 第一条不是满箱：从它开始攒（此段不能算箱，但金额累计到下一个满箱段——不可算，只累计展示）
+      start = null;
+      pendingMoney = 0;
+    }
+  }
+  return tanks;
+}
+
+// ---------- 全局指标 + 异常判定 ----------
+function summarize(tanks){
+  var valid = tanks.filter(function(t){ return t.valid && t.per100 !== null; });
+  var out = {tanks: tanks, valid: valid, avg: null, best: null, worst: null, costKm: null, totalDist: 0, totalMoney: 0, days: null, anomalies: []};
+  if(!valid.length) return out;
+  var sum = 0;
+  for(var i = 0; i < valid.length; i++) sum += valid[i].per100;
+  out.avg = sum / valid.length;
+  var perKmSum = 0, perKmN = 0, moneySum = 0, distSum = 0;
+  var minD = null, maxD = null;
+  for(var j = 0; j < valid.length; j++){
+    var t = valid[j];
+    distSum += t.dist; moneySum += t.money;
+    if(t.perKmCost !== null){ perKmSum += t.perKmCost * t.dist; perKmN += t.dist; }
+    if(t.days !== null){
+      if(minD === null || t.days < minD) minD = t.days;
+    }
+    if(out.best === null || t.per100 < out.best.per100) out.best = t;
+    if(out.worst === null || t.per100 > out.worst.per100) out.worst = t;
+  }
+  out.totalDist = distSum;
+  out.totalMoney = moneySum;
+  out.costKm = perKmN > 0 ? perKmSum / perKmN : null;
+  // 异常：偏离均值 ±18%
+  for(var k = 0; k < valid.length; k++){
+    var tk = valid[k];
+    var dev = (tk.per100 - out.avg) / out.avg;
+    if(Math.abs(dev) > 0.18){
+      tk.dev = dev;
+      out.anomalies.push(tk);
+    }
+  }
+  return out;
+}
+/*==ENDCORE==*/
+
+// ---------- UI ----------
+var $ = function(id){ return document.getElementById(id); };
+var state = {text: ''};
+
+function showMsg(id, cls, text){
+  var el = $(id);
+  el.className = 'msg show ' + cls;
+  el.textContent = text;
+}
+function hideMsg(id){ $(id).className = 'msg'; }
+
+var SAMPLE = [
+  '2026-08-03 12050 km 42.5 L ¥352 full',
+  '2026-08-24 12621 km 42.5 L ¥353 full',
+  '2026-09-12 13180 km 40.0 L ¥332',
+  '2026-09-30 13746 km 40.0 L ¥333 full',
+  '2026-10-18 14311 km 55.0 L ¥456 full',
+  '2026-11-05 14857 km 41.0 L ¥341 full',
+  '2026-11-21 15421 km 44.0 L ¥366 full'
+].join('\n');
+
+function fmt(n, d){
+  if(n === null || n === undefined || !isFinite(n)) return '—';
+  return Number(n).toFixed(d === undefined ? 1 : d);
+}
+function fmtMoney(n){ return n === null || !isFinite(n) ? '—' : '¥' + fmt(n, 0); }
+function dateStr(d){ return d ? (d.getMonth()+1) + '/' + d.getDate() : ''; }
+
+function render(res, summary){
+  var tanks = summary.tanks, valid = summary.valid;
+  // ---- stats ----
+  var avgDev = summary.worst && summary.avg ? ((summary.worst.per100 - summary.best.per100) / summary.avg * 100) : null;
+  var html = '';
+  html += '<div class="stat"><div class="k">平均油耗</div><div class="v">' + fmt(summary.avg) + '<small> L/100km</small></div></div>';
+  html += '<div class="stat g"><div class="k">每公里成本</div><div class="v">' + (summary.costKm !== null ? '¥' + fmt(summary.costKm, 2) : '—') + '</div></div>';
+  html += '<div class="stat"><div class="k">统计里程 / 箱数</div><div class="v">' + fmt(summary.totalDist, 0) + '<small> km · ' + valid.length + ' 箱</small></div></div>';
+  html += '<div class="stat"><div class="k">最好 / 最差箱</div><div class="v" style="font-size:17px">' + fmt(summary.best ? summary.best.per100 : null) + ' <small>vs</small> ' + fmt(summary.worst ? summary.worst.per100 : null) + '</div></div>';
+  $('stats').innerHTML = html;
+
+  // ---- chart: 里程轴分段标尺 ----
+  renderChart(summary);
+
+  // ---- table ----
+  var rows = '';
+  var avg = summary.avg;
+  for(var i = 0; i < tanks.length; i++){
+    var t = tanks[i];
+    var isAbn = summary.anomalies.indexOf(t) >= 0;
+    var cls = isAbn ? ' class="abnormal"' : '';
+    var pct = avg ? Math.max(6, Math.min(100, t.per100 / (avg * 1.6) * 100)) : 0;
+    var barColor = isAbn ? 'var(--bad)' : (t.per100 <= avg ? 'var(--acc2)' : 'var(--acc)');
+    var tag = '';
+    if(isAbn) tag = '<span class="chip bad">' + (t.dev > 0 ? '偏高 +' : '偏低 ') + fmt(t.dev * 100, 0) + '%</span>';
+    else if(summary.best === t) tag = '<span class="chip best">最佳</span>';
+    else if(t.per100 > avg) tag = '<span class="chip">略高</span>';
+    rows += '<tr' + cls + '><td>' + (i+1) + '</td>'
+      + '<td>' + fmt(t.from.odom,0) + ' → ' + fmt(t.to.odom,0) + (t.to.date ? '<br><span style="color:var(--tx3)">' + dateStr(t.from.date) + '–' + dateStr(t.to.date) + '</span>' : '') + '</td>'
+      + '<td>' + (t.days !== null ? t.days + ' 天' : '—') + '</td>'
+      + '<td>' + fmt(t.lits) + ' L</td>'
+      + '<td>' + fmtMoney(t.money || null) + '</td>'
+      + '<td><span class="bar" style="width:' + Math.round(pct*0.9) + 'px;background:' + barColor + '"></span>' + fmt(t.per100, 2) + '</td>'
+      + '<td>' + (t.perKmCost !== null ? fmt(t.perKmCost, 2) + ' 元' : '—') + '</td>'
+      + '<td>' + tag + '</td></tr>';
+  }
+  $('tbody').innerHTML = rows || '<tr><td colspan="8" style="color:var(--tx3)">暂无可计算的整箱区间——需要至少两次满箱(full)记录</td></tr>';
+
+  // ---- chart note / anomalies ----
+  var notes = [];
+  for(var a = 0; a < summary.anomalies.length; a++){
+    var at = summary.anomalies[a];
+    var idx = tanks.indexOf(at) + 1;
+    notes.push('第 ' + idx + ' 箱（' + fmt(at.per100,1) + ' L/100km）比均值' + (at.dev > 0 ? '高' : '低') + fmt(Math.abs(at.dev)*100,0) + '%'
+      + (at.dev > 0 ? '——回想一下这箱：空调开得多？市区拥堵？胎压偏低？' : '——跑了几趟高速？这箱很省。'));
+  }
+  $('chart-note').innerHTML = notes.length ? notes.map(function(n){ return '🔴 ' + n; }).join('<br>') : (valid.length ? '✅ 所有整箱油耗都在均值 ±18% 内，车况平稳。' : '');
+
+  $('out').classList.add('show');
+  $('empty-hint').style.display = 'none';
+}
+
+function renderChart(summary){
+  var svg = $('chart');
+  var valid = summary.valid;
+  var W = 900, H = 240, padL = 46, padR = 16, padT = 22, padB = 40;
+  var iw = W - padL - padR, ih = H - padT - padB;
+  var parts = [];
+  if(!valid.length){
+    svg.innerHTML = '<text x="450" y="120" text-anchor="middle" fill="#5c6a7d" font-size="14">暂无整箱数据：把满箱记录行尾加上 full 再试</text>';
+    return;
+  }
+  var maxO = valid[valid.length-1].to.odom, minO = valid[0].from.odom;
+  var span = Math.max(1, maxO - minO);
+  var maxY = Math.max.apply(null, valid.map(function(t){ return t.per100; })) * 1.15;
+  var avg = summary.avg;
+  var x = function(o){ return padL + (o - minO) / span * iw; };
+  var y = function(v){ return padT + ih - v / maxY * ih; };
+
+    // gridlines
+  var gi, gstep = maxY > 12 ? 4 : (maxY > 6 ? 2 : 1);
+  for(gi = 0; gi*gstep <= maxY; gi++){
+    var gv = gi * gstep;
+    parts.push('<line x1="'+padL+'" y1="'+y(gv).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y(gv).toFixed(1)+'" stroke="#2a3646" stroke-width="1" stroke-dasharray="'+(gv===0?'':'3 4')+'"/>');
+    parts.push('<text x="'+(padL-6)+'" y="'+(y(gv)+4).toFixed(1)+'" text-anchor="end" fill="#5c6a7d" font-size="10">'+gv+'</text>');
+  }
+  // avg line
+  if(avg){
+    parts.push('<line x1="'+padL+'" y1="'+y(avg).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y(avg).toFixed(1)+'" stroke="#6cb6ff" stroke-width="1.5" stroke-dasharray="6 4"/>');
+    parts.push('<text x="'+(W-padR-4)+'" y="'+(y(avg)-6).toFixed(1)+'" text-anchor="end" fill="#6cb6ff" font-size="11">均值 '+fmt(avg,2)+'</text>');
+  }
+  // bars: 每箱在里程轴上占 [from, to] 区间，留 3px 缝
+  for(var i = 0; i < valid.length; i++){
+    var t = valid[i];
+    var x1 = x(t.from.odom) + 2, x2 = x(t.to.odom) - 2;
+    var bw = Math.max(8, x2 - x1);
+    var isAbn = summary.anomalies.indexOf(t) >= 0;
+    var fill = isAbn ? '#ff6b6b' : (t.per100 <= avg ? '#4cc38a' : '#ffb454');
+    parts.push('<rect x="'+x1.toFixed(1)+'" y="'+y(t.per100).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+(padT+ih-y(t.per100)).toFixed(1)+'" rx="3" fill="'+fill+'" opacity="0.85"><title>第'+(valid.indexOf(t)+1)+'箱: '+fmt(t.per100,2)+' L/100km · '+fmt(t.dist,0)+' km</title></rect>');
+    parts.push('<text x="'+(x1+bw/2).toFixed(1)+'" y="'+(y(t.per100)-5).toFixed(1)+'" text-anchor="middle" fill="'+fill+'" font-size="11" font-weight="600">'+fmt(t.per100,1)+'</text>');
+  }
+  // odometer axis ticks
+  var nTick = Math.min(6, Math.max(2, Math.round(iw/150)));
+  for(var k = 0; k <= nTick; k++){
+    var ov = minO + span * k / nTick;
+    parts.push('<text x="'+x(ov).toFixed(1)+'" y="'+(H-14)+'" text-anchor="middle" fill="#5c6a7d" font-size="10">'+fmt(ov,0)+' km</text>');
+  }
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  svg.innerHTML = parts.join('');
+}
+
+function run(){
+  var text = $('in').value;
+  state.text = text;
+  if(!text.trim()){
+    hideMsg('msg');
+    $('out').classList.remove('show');
+    $('empty-hint').style.display = '';
+    return;
+  }
+  var res = parseAll(text);
+  if(res.bads.length){
+    showMsg('msg', 'warn', '有 ' + res.bads.length + ' 行没看懂已跳过（如「' + res.bads[0].raw.slice(0, 30) + '」' + (res.bads[0].why || '') + '）');
+  } else {
+    hideMsg('msg');
+  }
+  if(!res.recs.length){
+    showMsg('msg', 'bad', '没有解析出任何记录。每行至少需要：里程(km) 和 加油量(L)，满箱行尾加 full。');
+    $('out').classList.remove('show');
+    return;
+  }
+  if(res.recs.length === 1){
+    showMsg('msg', 'warn', '只解析出 1 条记录。要算整箱油耗至少需要 2 次「满箱(full)」记录。');
+  }
+  var fullCount = res.recs.filter(function(r){ return r.full; }).length;
+  if(res.recs.length >= 2 && fullCount < 2){
+    showMsg('msg', 'warn', '检测到满箱标记只有 ' + fullCount + ' 个——整箱油耗需要「满箱→满箱」。记得在加满的那几行行尾加 full。');
+  }
+  var tanks = computeTanks(res.recs);
+  var summary = summarize(tanks);
+  render(res, summary);
+}
+
+// copy / export
+function summaryText(summary){
+  var L = [];
+  L.push('⛽ fuelgauge 油耗摘要');
+  L.push('平均油耗：' + fmt(summary.avg, 2) + ' L/100km');
+  if(summary.costKm !== null) L.push('每公里成本：¥' + fmt(summary.costKm, 2));
+  L.push('统计：' + fmt(summary.totalDist, 0) + ' km · ' + summary.valid.length + ' 箱 · 总加油 ' + fmt(summary.totalMoney, 0) + ' 元');
+  if(summary.best && summary.worst && summary.best !== summary.worst)
+    L.push('最好箱 ' + fmt(summary.best.per100,2) + ' / 最差箱 ' + fmt(summary.worst.per100,2));
+  if(summary.anomalies.length) L.push('异常箱：' + summary.anomalies.length + ' 个（详见页面）');
+  return L.join('\n');
+}
+function fallbackCopy(text, okId){
+  var done = function(){ showMsg(okId, 'ok', '已复制到剪贴板 ✓'); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done, function(){ legacyCopy(text) ? done() : showMsg(okId, 'bad', '复制失败，请手动选择文本复制'); });
+  } else {
+    legacyCopy(text) ? done() : showMsg(okId, 'bad', '复制失败，请手动选择文本复制');
+  }
+}
+function legacyCopy(text){
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
+function download(name, text){
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type: 'text/csv;charset=utf-8'}));
+  a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 400);
+}
+
+$('btn-run').addEventListener('click', run);
+$('in').addEventListener('input', function(){ run(); });
+$('btn-sample').addEventListener('click', function(){ $('in').value = SAMPLE; run(); });
+$('btn-clear').addEventListener('click', function(){ $('in').value = ''; run(); $('in').focus(); });
+$('btn-copy').addEventListener('click', function(){
+  var text = $('in').value.trim();
+  if(!text){ showMsg('msg2','warn','先粘贴记录再复制摘要'); return; }
+  var tanks = computeTanks(parseAll(text).recs);
+  var s = summarize(tanks);
+  if(!s.valid.length){ showMsg('msg2','warn','还没有可统计的整箱数据'); return; }
+  fallbackCopy(summaryText(s), 'msg2');
+});
+$('btn-csv').addEventListener('click', function(){
+  var text = $('in').value.trim();
+  if(!text){ showMsg('msg2','warn','先粘贴记录再导出'); return; }
+  var tanks = computeTanks(parseAll(text).recs);
+  var s = summarize(tanks);
+  if(!s.valid.length){ showMsg('msg2','warn','还没有可统计的整箱数据'); return; }
+  var csv = '箱,起里程,止里程,距离km,天数,加油L,金额,L/100km,元/km,异常\n';
+  s.tanks.forEach(function(t, i){
+    csv += [(i+1), t.from.odom, t.to.odom, fmt(t.dist,0), t.days !== null ? t.days : '', fmt(t.lits,2),
+      t.money ? fmt(t.money,0) : '', t.per100 !== null ? fmt(t.per100,2) : '',
+      t.perKmCost !== null ? fmt(t.perKmCost,2) : '', s.anomalies.indexOf(t) >= 0 ? '是' : ''].join(',') + '\n';
+  });
+  download('fuelgauge.csv', csv);
+  showMsg('msg2', 'ok', 'CSV 已生成 ✓');
+});
+</script>
+</body>
+</html>
