@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FLYWATT · 充电宝飞行安检台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='8' y='5' width='16' height='23' rx='3' fill='%23ffb454'/%3E%3Crect x='12' y='2' width='8' height='4' rx='1.5' fill='%23ffb454'/%3E%3Cpath d='M17.5 10 12 18h4l-1.5 6L20 15h-4z' fill='%231a160f'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#12151c; --panel:#1a1f2a; --panel2:#202736; --line:#2c3546;
+  --fg:#e8ecf3; --dim:#9aa7ba; --faint:#5f6d82;
+  --green:#3ecf8e; --amber:#ffb454; --red:#ff6b6b; --blue:#6ea8ff;
+  --radius:12px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg); color:var(--fg);
+  font:15px/1.65 -apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  padding:max(14px, env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
+  max-width:880px; margin:0 auto;
+}
+h1{font-size:22px; margin:6px 0 2px; letter-spacing:.5px;}
+h1 .en{color:var(--amber);}
+.sub{color:var(--dim); font-size:13px; margin:0 0 16px;}
+.panel{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; margin-bottom:14px;}
+.panel h2{font-size:13px; color:var(--dim); font-weight:600; margin:0 0 10px; letter-spacing:1px; text-transform:uppercase;}
+label{display:block; font-size:13px; color:var(--dim); margin:10px 0 4px;}
+input[type=number], input[type=text], select{
+  width:100%; background:var(--panel2); color:var(--fg);
+  border:1px solid var(--line); border-radius:8px; padding:9px 11px; font-size:15px; outline:none;
+}
+input:focus, select:focus{border-color:var(--blue);}
+.grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(min(200px,100%),1fr)); gap:0 14px;}
+.seg{display:flex; gap:0; border:1px solid var(--line); border-radius:8px; overflow:hidden;}
+.seg button{
+  flex:1; background:var(--panel2); color:var(--dim); border:0; padding:9px 6px;
+  font-size:14px; cursor:pointer; transition:background .15s,color .15s;
+}
+.seg button + button{border-left:1px solid var(--line);}
+.seg button.on{background:var(--amber); color:#1a160f; font-weight:600;}
+.hint{font-size:12px; color:var(--faint); margin-top:4px;}
+/* 结果区 */
+.hero{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px;}
+.wh-big{font-size:44px; font-weight:700; letter-spacing:-1px; font-variant-numeric:tabular-nums;}
+.wh-unit{color:var(--dim); font-size:15px;}
+.badge{font-size:14px; font-weight:700; padding:4px 12px; border-radius:999px; border:1px solid;}
+.badge.ok{color:var(--green); border-color:var(--green); background:rgba(62,207,142,.08);}
+.badge.approve{color:var(--amber); border-color:var(--amber); background:rgba(255,180,84,.08);}
+.badge.ban{color:var(--red); border-color:var(--red); background:rgba(255,107,107,.08);}
+.gauge{width:100%; height:56px; display:block; margin:4px 0 2px;}
+.rules{list-style:none; margin:10px 0 0; padding:0;}
+.rules li{display:flex; gap:8px; padding:7px 0; border-top:1px dashed var(--line); font-size:14px;}
+.rules .dot{flex:0 0 auto; width:9px; height:9px; border-radius:50%; margin-top:7px;}
+.dot.ok{background:var(--green);} .dot.approve{background:var(--amber);} .dot.ban{background:var(--red);}
+.rules .who{color:var(--faint); font-size:12px;}
+.charges{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;}
+.chip{
+  background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+  padding:7px 11px; font-size:13px; color:var(--dim);
+}
+.chip b{color:var(--fg); font-size:15px; font-variant-numeric:tabular-nums;}
+.msg{border-radius:8px; padding:9px 12px; font-size:14px; margin-top:10px; display:none;}
+.msg.show{display:block;}
+.msg.err{background:rgba(255,107,107,.1); color:var(--red); border:1px solid rgba(255,107,107,.35);}
+.msg.info{background:rgba(110,168,255,.1); color:var(--blue); border:1px solid rgba(110,168,255,.35);}
+button.act{
+  background:var(--amber); color:#1a160f; border:0; border-radius:8px;
+  padding:10px 16px; font-size:14px; font-weight:600; cursor:pointer;
+}
+button.act.ghost{background:var(--panel2); color:var(--dim); border:1px solid var(--line); font-weight:400;}
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+.tips{margin:8px 0 0; padding-left:18px; color:var(--dim); font-size:13px;}
+.tips li{margin:3px 0;}
+footer{color:var(--faint); font-size:12px; margin-top:4px; text-align:center;}
+@media (max-width:640px){
+  .grid{grid-template-columns:minmax(0,1fr);}
+  .wh-big{font-size:36px;}
+}
+</style>
+</head>
+<body>
+<h1><span class="en">FLYWATT</span> 充电宝飞行安检台</h1>
+<p class="sub">过安检前 30 秒自查：Wh 换算 · 100/160Wh 三色标尺 · 3C 与数量规则体检 · 纯本地计算，数据不出浏览器</p>
+
+<div class="panel">
+  <h2>铭牌快速录入</h2>
+  <label for="paste">粘贴充电宝铭牌文字（含容量与电压即自动识别）</label>
+  <input type="text" id="paste" placeholder="例：20000mAh 3.85V 或 74Wh" autocomplete="off">
+  <div class="hint">支持「20000mAh 3.85V」「74Wh」「20000 毫安 3.7 伏」等常见写法；铭牌上若直接印了 Wh，以 Wh 为准。</div>
+</div>
+
+<div class="panel">
+  <h2>参数</h2>
+  <div class="grid">
+    <div>
+      <label for="mah">容量 mAh</label>
+      <input type="number" id="mah" placeholder="20000" min="0" step="100" inputmode="decimal">
+    </div>
+    <div>
+      <label for="volt">标称电压 V（以铭牌为准）</label>
+      <input type="number" id="volt" placeholder="3.7" min="0" step="0.05" inputmode="decimal">
+      <div class="hint">常见：3.6 / 3.7 / 3.85 / 5.0</div>
+    </div>
+    <div>
+      <label for="count">随身携带块数</label>
+      <input type="number" id="count" placeholder="1" min="1" step="1" inputmode="numeric">
+    </div>
+  </div>
+  <label style="margin-top:14px">3C 认证标识</label>
+  <div class="seg" id="segCcc">
+    <button type="button" data-v="yes" class="on">有且清晰</button>
+    <button type="button" data-v="no">无 / 模糊</button>
+  </div>
+  <label>外观状态</label>
+  <div class="seg" id="segBody">
+    <button type="button" data-v="yes" class="on">完好无鼓包</button>
+    <button type="button" data-v="no">鼓包 / 破损 / 曾被召回</button>
+  </div>
+</div>
+
+<div class="panel" id="result">
+  <h2>判定结果</h2>
+  <div class="msg info" id="empty">输入容量或粘贴铭牌文字，判定会即时更新。</div>
+  <div class="msg err" id="err"></div>
+  <div id="body" style="display:none">
+    <div class="hero">
+      <span class="wh-big" id="whBig">0</span><span class="wh-unit">Wh 额定能量</span>
+      <span class="badge" id="badge">—</span>
+    </div>
+    <svg class="gauge" id="gauge" viewBox="0 0 660 56" preserveAspectRatio="none" aria-hidden="true"></svg>
+    <ul class="rules" id="rules"></ul>
+    <div class="charges" id="charges"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="act" id="btnCopy">复制安检自述卡</button>
+      <button class="act ghost" id="btnSample">载入示例</button>
+    </div>
+    <div class="msg info" id="copyMsg"></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>规则依据与提示</h2>
+  <ul class="tips">
+    <li>额定能量 Wh = 容量 mAh × 标称电压 V ÷ 1000（铭牌直接印 Wh 的以铭牌为准）。</li>
+    <li>≤100Wh：无需航司批准，常见执行口径每人随身 ≤2 块；100–160Wh：需航司批准且 ≤2 块；&gt;160Wh：禁止携带。</li>
+    <li>自 2025-06-28 起，无 3C 认证或 3C 标识不清晰的充电宝禁止携带登机；鼓包、破损及官方已召回的型号同样禁带。</li>
+    <li>充电宝只能随身携带，<b>不能托运</b>；飞行中不得使用充电宝给设备充电。</li>
+    <li>各航司执行细则有差异，最终以值机柜台与安检现场为准。本页全部计算在你的浏览器本地完成。</li>
+  </ul>
+</div>
+
+<footer>FLYWATT · 每日创意小工具 #73 · 2026-11-25 · 规则参考：民航局旅客携带锂电池乘机指南</footer>
+
+<script>
+/*==CORE==*/
+'use strict';
+/* ---- 铭牌解析：宽容提取 mAh / V / Wh ---- */
+function parseLabel(text){
+  var s = String(text||'').trim();
+  if(!s) return {empty:true};
+  // 1) 直接印了 Wh
+  var mWh = s.match(/([\d.]+)\s*(?:wh|瓦时|瓦)/i);
+  var mah = null, volt = null, wh = null;
+  if(mWh){
+    var wv = parseFloat(mWh[1]);
+    if(isFinite(wv) && wv > 0) wh = wv;
+  }
+  // 2) mAh
+  var mM = s.match(/([\d.]+)\s*(?:mah|毫安时|毫安)/i);
+  if(mM){
+    var mv = parseFloat(mM[1]);
+    if(isFinite(mv) && mv > 0) mah = mv;
+  }
+  // 3) 裸数字 + 电压写法（V / 伏 / volt）
+  var mV = s.match(/([\d.]+)\s*(?:v\b|伏|volt)/i);
+  if(mV){
+    var vv = parseFloat(mV[1]);
+    if(isFinite(vv) && vv > 0 && vv <= 24) volt = vv;
+  }
+  if(wh != null && mah == null) return {mah:null, volt:volt, wh:wh, direct:true};
+  if(mah != null){
+    if(volt == null) volt = 3.7; // 缺电压按最常见 3.7V，提示确认
+    return {mah:mah, volt:volt, wh:mah*volt/1000, direct:wh != null, guessedVolt:volt===3.7 && !mV};
+  }
+  return {err:'没有认出容量（mAh/毫安）或能量（Wh/瓦时）'};
+}
+function whOf(mah, volt){
+  mah = Number(mah); volt = Number(volt);
+  if(!isFinite(mah) || !isFinite(volt) || mah <= 0 || volt <= 0) return null;
+  return mah*volt/1000;
+}
+/* ---- 规则引擎：三档 ok / approve / ban ---- */
+function verdict(r){
+  var rules = [];
+  var wh = r.wh, count = r.count || 1;
+  if(!(wh > 0)) rules.push({id:'wh', level:'ban', text:'额定能量未识别，无法判定'});
+  else if(wh <= 100) rules.push({id:'wh', level:'ok', text:'额定能量 ≤100Wh：无需航司批准'});
+  else if(wh <= 160) rules.push({id:'wh', level:'approve', text:'额定能量 100–160Wh：需事先获得航空公司批准'});
+  else rules.push({id:'wh', level:'ban', text:'额定能量 >160Wh：禁止携带乘机'});
+  if(wh > 0){
+    if(count <= 2) rules.push({id:'count', level:'ok', text:'携带 ' + count + ' 块：符合常见数量口径（≤2 块）'});
+    else rules.push({id:'count', level:'approve', text:'携带 ' + count + ' 块：超出常见 ≤2 块口径，需与航司确认'});
+  }
+  if(r.ccc !== 'yes') rules.push({id:'ccc', level:'ban', text:'无 3C 认证或标识不清晰：2025-06-28 起禁止携带'});
+  else rules.push({id:'ccc', level:'ok', text:'3C 标识清晰：满足民航新规'});
+  if(r.body !== 'yes') rules.push({id:'body', level:'ban', text:'鼓包 / 破损 / 被召回：锂电池禁带，请交回收渠道'});
+  else rules.push({id:'body', level:'ok', text:'外观完好：无鼓包破损'});
+  var order = {ok:0, approve:1, ban:2};
+  var level = 'ok';
+  rules.forEach(function(x){ if(order[x.level] > order[level]) level = x.level; });
+  var label = level==='ok' ? '可随身携带' : (level==='approve' ? '需航司批准' : '禁止携带');
+  return {rules:rules, level:level, label:label};
+}
+/* ---- 回充次数估算：85% 转换效率 ---- */
+function chargesOf(wh, deviceWh){
+  wh = Number(wh); deviceWh = Number(deviceWh);
+  if(!(wh > 0) || !(deviceWh > 0)) return null;
+  var n = wh*0.85/deviceWh;
+  return n >= 10 ? Math.round(n) : Math.round(n*10)/10;
+}
+var DEVICES = [
+  {id:'phone', name:'手机', wh:17},
+  {id:'tablet', name:'平板', wh:28},
+  {id:'handheld', name:'掌机', wh:16},
+  {id:'buds', name:'耳机盒', wh:2.5}
+];
+/* ---- 安检自述卡文本 ---- */
+function cardText(r){
+  var lines = [];
+  lines.push('【FLYWATT 安检自述卡】');
+  if(r.wh > 0) lines.push('额定能量：' + (Math.round(r.wh*10)/10) + ' Wh');
+  lines.push('携带数量：' + (r.count||1) + ' 块');
+  lines.push('3C 认证：' + (r.ccc==='yes' ? '有且清晰' : '无/模糊'));
+  lines.push('外观：' + (r.body==='yes' ? '完好' : '鼓包/破损'));
+  lines.push('判定：' + r.label);
+  r.rules.forEach(function(x){
+    if(x.level !== 'ok') lines.push('· ' + x.text);
+  });
+  lines.push('依据民航局旅客携带锂电池乘机指南，最终以现场安检为准。');
+  return lines.join('\n');
+}
+/*==ENDCORE==*/
+
+/* ---- UI 接线 ---- */
+function $(id){ return document.getElementById(id); }
+var state = {ccc:'yes', body:'yes', device:'phone'};
+var SAMPLE = '20000mAh 3.85V';
+
+function segBind(segId, key){
+  var seg = $(segId);
+  seg.addEventListener('click', function(e){
+    var b = e.target.closest('button'); if(!b) return;
+    seg.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on');
+    state[key] = b.getAttribute('data-v');
+    compute();
+  });
+}
+segBind('segCcc','ccc'); segBind('segBody','body');
+
+function fmt(n, d){ return (Math.round(n*Math.pow(10,d||0))/Math.pow(10,d||0)).toString(); }
+
+function gauge(wh){
+  var svg = $('gauge');
+  var max = 200, W = 660, H = 56, barH = 22, y = 8;
+  var px = function(v){ return Math.min(v, max)/max * W; };
+  var s = '';
+  // 三段色带
+  s += '<rect x="0" y="'+y+'" width="'+px(100)+'" height="'+barH+'" rx="3" fill="rgba(62,207,142,.45)"/>';
+  s += '<rect x="'+px(100)+'" y="'+y+'" width="'+(px(160)-px(100))+'" height="'+barH+'" fill="rgba(255,180,84,.45)"/>';
+  s += '<rect x="'+px(160)+'" y="'+y+'" width="'+(W-px(160))+'" height="'+barH+'" rx="3" fill="rgba(255,107,107,.45)"/>';
+  // 100/160 刻度
+  [100,160].forEach(function(v){
+    var x = px(v);
+    s += '<line x1="'+x+'" y1="'+(y-3)+'" x2="'+x+'" y2="'+(y+barH+3)+'" stroke="#e8ecf3" stroke-width="1.5"/>';
+    s += '<text x="'+x+'" y="'+(H-4)+'" fill="#9aa7ba" font-size="11" text-anchor="middle">'+v+'Wh</text>';
+  });
+  s += '<text x="2" y="'+(H-4)+'" fill="#5f6d82" font-size="11" text-anchor="start">0</text>';
+  s += '<text x="'+(W-2)+'" y="'+(H-4)+'" fill="#5f6d82" font-size="11" text-anchor="end">'+max+'Wh+</text>';
+  // 指针
+  if(wh > 0){
+    var mx = Math.min(px(wh), W);
+    var col = wh<=100 ? '#3ecf8e' : (wh<=160 ? '#ffb454' : '#ff6b6b');
+    s += '<path d="M'+(mx-7)+' '+(y+barH+4)+' L'+(mx+7)+' '+(y+barH+4)+' L'+mx+' '+(y+barH+14)+' Z" fill="'+col+'"/>';
+  }
+  svg.innerHTML = s;
+}
+
+function compute(){
+  var paste = $('paste').value;
+  var err = $('err'), empty = $('empty'), body = $('body');
+  var mah = parseFloat($('mah').value), volt = parseFloat($('volt').value), count = parseFloat($('count').value);
+  var wh = null, guessed = false, directWh = false;
+  if(paste.trim()){
+    var p = parseLabel(paste);
+    if(p.err){
+      showErr('铭牌没读懂：' + p.err + '。请直接在下方填容量与电压。');
+      return;
+    }
+    if(p.wh != null){ wh = p.wh; directWh = true; }
+    if(p.mah != null){ mah = p.mah; volt = p.volt; guessed = !!p.guessedVolt; }
+  }
+  if(wh == null){
+    wh = whOf(mah, volt);
+    if(wh == null){
+      if(($('mah').value !== '' && mah < 0) || ($('volt').value !== '' && volt < 0)){
+        showErr('容量与电压需要是正数，负值无效。'); return;
+      }
+      showEmpty(); return;
+    }
+    if(mah < 0 || volt < 0){ showErr('容量与电压需要是正数，负值无效。'); return; }
+  } else if(count < 0){ showErr('携带块数至少为 1。'); return; }
+  if(!(count >= 1)) count = 1;
+  var r = verdict({wh:wh, count:Math.round(count), ccc:state.ccc, body:state.body});
+  err.classList.remove('show'); empty.classList.remove('show');
+  body.style.display = 'block';
+  $('whBig').textContent = directWh ? fmt(wh,1) : fmt(wh,1);
+  var badge = $('badge');
+  badge.className = 'badge ' + r.level;
+  badge.textContent = r.label;
+  gauge(wh);
+  var html = '';
+  r.rules.forEach(function(x){
+    html += '<li><span class="dot '+x.level+'"></span><span>' + x.text +
+      ' <span class="who">[' + ({wh:'能量',count:'数量',ccc:'3C',body:'外观'}[x.id]||'') + ']</span></span></li>';
+  });
+  $('rules').innerHTML = html;
+  var dev = null;
+  DEVICES.forEach(function(d){ if(d.id === state.device) dev = d; });
+  var cHtml = '';
+  cHtml += '<div class="chip">估算可回充：</div>';
+  DEVICES.forEach(function(d){
+    var n = chargesOf(wh, d.wh);
+    cHtml += '<button type="button" class="chip" data-dev="'+d.id+'" style="cursor:pointer;'+(d.id===state.device?'border-color:var(--blue);color:var(--fg);':'')+'">'+d.name+' <b>'+(n==null?'—':'≈'+n+' 次')+'</b></button>';
+  });
+  $('charges').innerHTML = cHtml;
+  var g = guessed ? ' | 电压未从铭牌读出，按常见 3.7V 估算，请核对铭牌。' : '';
+  if(directWh) g = ' | 铭牌直接标注 Wh，已优先采用。';
+  $('copyMsg').textContent = '';
+  if(g) $('copyMsg').textContent = g.replace(' | ','');
+  $('copyMsg').className = 'msg info show';
+  window.__last = {r:r, wh:wh, count:Math.round(count), ccc:state.ccc, body:state.body};
+}
+function showErr(t){
+  $('err').textContent = t; $('err').className = 'msg err show';
+  $('empty').className = 'msg info'; $('body').style.display = 'none';
+}
+function showEmpty(){
+  $('err').className = 'msg err';
+  $('empty').className = 'msg info show';
+  $('body').style.display = 'none';
+}
+
+$('paste').addEventListener('input', compute);
+['mah','volt','count'].forEach(function(id){
+  $(id).addEventListener('input', compute);
+});
+$('charges').addEventListener('click', function(e){
+  var b = e.target.closest('button[data-dev]'); if(!b) return;
+  state.device = b.getAttribute('data-dev');
+  compute();
+});
+$('btnSample').addEventListener('click', function(){
+  $('paste').value = SAMPLE; $('mah').value=''; $('volt').value='';
+  compute();
+});
+$('btnCopy').addEventListener('click', function(){
+  var msg = $('copyMsg');
+  var last = window.__last;
+  if(!last){ msg.textContent = '还没有判定结果'; msg.className='msg err show'; return; }
+  var text = cardText(Object.assign({}, last.r, {wh:last.wh, count:last.count, ccc:last.ccc, body:last.body}));
+  function done(){ msg.textContent = '自述卡已复制 ✓'; msg.className='msg info show'; }
+  function fail(){ msg.textContent = '复制失败：请长按选择上方文本手动复制'; msg.className='msg err show'; }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done, function(){ legacy(); });
+  } else legacy();
+  function legacy(){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try{ ok = document.execCommand('copy'); }catch(e){ ok = false; }
+    document.body.removeChild(ta);
+    if(ok) done(); else fail();
+  }
+});
+
+showEmpty();
+</script>
+</body>
+</html>
