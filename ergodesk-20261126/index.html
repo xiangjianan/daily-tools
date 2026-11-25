@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ERGODESK · 工位人体工学尺</title>
+<meta name="description" content="输入身高与桌子实际高度，本地算出椅子/桌面/屏幕中心/视距黄金数值，实时侧视小人图标注，一键复制工位调整卡。纯本地零上传。">
+<style>
+:root{
+  --bg:#0f1216; --panel:#171c23; --panel2:#1d242e; --line:#2a3340;
+  --txt:#e6ebf2; --dim:#8a97a8; --acc:#4cc38a; --amber:#e5a158; --red:#e5645e; --blue:#5aa2e8;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font:15px/1.65 -apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;min-height:100vh}
+.wrap{max-width:1060px;margin:0 auto;padding:20px 16px 60px}
+header{margin-bottom:6px}
+h1{font-size:24px;letter-spacing:1px}
+h1 .en{color:var(--acc)}
+.sub{color:var(--dim);font-size:13.5px;margin-top:2px}
+.layout{display:grid;grid-template-columns:340px 1fr;gap:16px;margin-top:16px}
+@media(max-width:880px){.layout{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.panel h2{font-size:13px;color:var(--dim);font-weight:600;letter-spacing:.5px;margin-bottom:12px;text-transform:uppercase}
+.field{margin-bottom:18px}
+.field label{display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px;color:var(--dim);margin-bottom:6px}
+.field label b{color:var(--txt);font-size:15px}
+input[type=range]{width:100%;accent-color:var(--acc);height:34px;cursor:pointer}
+.numrow{display:flex;gap:8px;align-items:center}
+.numrow input[type=number]{width:110px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:15px}
+.unit{color:var(--dim);font-size:13px}
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{flex:1;background:transparent;border:none;color:var(--dim);padding:9px 0;font-size:14px;cursor:pointer;transition:.15s}
+.seg button.on{background:var(--acc);color:#08110c;font-weight:700}
+.results{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-top:4px}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:10px 12px;position:relative}
+.card .k{font-size:12px;color:var(--dim)}
+.card .v{font-family:var(--mono);font-size:22px;font-weight:700;margin-top:2px}
+.card .v small{font-size:12px;color:var(--dim);font-weight:400}
+.card .bar{position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:4px 0 0 4px;background:var(--dim)}
+.c-ok .bar{background:var(--acc)} .c-warn .bar{background:var(--amber)} .c-bad .bar{background:var(--red)}
+.advice{margin-top:14px;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:12px 14px;font-size:14px}
+.advice li{margin:6px 0 6px 18px}
+.advice .good{color:var(--acc)} .advice .warn{color:var(--amber)} .advice .bad{color:var(--red)}
+.svgbox{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:6px;margin-top:12px}
+.svgbox svg{width:100%;height:auto;display:block}
+.actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.btn{background:var(--acc);color:#08110c;border:none;border-radius:9px;padding:10px 18px;font-size:14.5px;font-weight:700;cursor:pointer;transition:.15s}
+.btn:hover{filter:brightness(1.1)}
+.btn.ghost{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:var(--acc);color:#08110c;padding:10px 20px;border-radius:10px;font-weight:700;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:9}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.err{color:var(--red);font-size:13px;margin-top:6px;min-height:18px}
+.foot{margin-top:18px;color:var(--dim);font-size:12.5px;text-align:center}
+.foot a{color:var(--blue);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="en">ERGODESK</span> 工位人体工学尺</h1>
+    <div class="sub">身高 + 桌子实高 → 椅子 / 桌面 / 屏幕 / 视距黄金数值 · 实时侧视标注 · 差值补偿建议 · 纯本地零上传</div>
+  </header>
+
+  <div class="layout">
+    <div class="panel">
+      <h2>输入</h2>
+      <div class="field">
+        <label>你的身高 <b><span id="hOut">170</span> cm</b></label>
+        <input type="range" id="hRange" min="130" max="210" step="1" value="170">
+        <div class="err" id="hErr"></div>
+      </div>
+      <div class="field">
+        <label>桌面姿势</label>
+        <div class="seg">
+          <button id="mSit" class="on">🪑 坐姿</button>
+          <button id="mStand">🧍 站姿</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>桌子实际高度 <b><input type="number" id="deskIn" value="75" min="55" max="130" step="0.5"> <span class="unit">cm（常见桌 75）</span></b></label>
+        <div class="err" id="deskErr"></div>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" id="sampleBtn">示例：170cm / 75cm 桌</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>黄金数值（按身高实时换算）</h2>
+      <div class="results" id="results"></div>
+      <div class="advice"><ul id="advice"></ul></div>
+      <div class="svgbox" id="svgBox"></div>
+      <div class="actions">
+        <button class="btn" id="copyBtn">📋 复制工位调整卡</button>
+        <button class="btn ghost" id="pngBtn">🖨️ 打印 / 存 PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">所有计算与绘图均在浏览器本地完成，不联网、不上传任何数据 ·
+    <a href="../index.html">← 返回目录</a>
+  </div>
+</div>
+<div class="toast" id="toast">已复制 ✓</div>
+
+<script>
+"use strict";
+/* ================= CORE：纯函数（可独立单测） ================= */
+const CORE = {};
+// 坐姿核心数值：座高、肘落差、黄金桌高、坐姿眼高、屏幕中心高、视距
+CORE.sitting = function(H){
+  H = clamp(H, 130, 210);
+  const seat = round5(0.25 * H);          // 腘窝高近似 → 座面高
+  const elbow = 0.18 * H;                  // 坐姿肘部高于座面的落差
+  const desk = round5(seat + elbow);       // 黄金桌高 ≈ 0.43H
+  const eye = round5(0.69 * H);            // 坐姿眼高（离地）
+  const screenC = round5(eye - 6);         // 屏幕中心 ≈ 视线略下
+  const dist = Math.round(Math.min(75, Math.max(50, 0.36 * H)));
+  return { seat, desk, eye, screenC, dist, elbow };
+};
+// 站姿核心数值
+CORE.standing = function(H){
+  H = clamp(H, 130, 210);
+  const desk = round5(0.615 * H);          // 站姿肘高近似
+  const eye = round5(0.936 * H);           // 站姿眼高
+  const screenC = round5(eye - 8);
+  const dist = Math.round(Math.min(80, Math.max(50, 0.38 * H)));
+  return { desk, eye, screenC, dist };
+};
+// 差值补偿引擎：actualDesk vs goldenDesk → 建议动作（含脚踏/垫高毫米级量化）
+CORE.compensate = function(mode, H, actualDesk){
+  const g = mode === "stand" ? CORE.standing(H).desk : CORE.sitting(H).desk;
+  const d = round5(actualDesk - g);        // >0 桌偏高，<0 桌偏低
+  const out = { diff: d, golden: g, items: [] };
+  if (Math.abs(d) <= 1.5){
+    out.items.push({ lvl:"good", txt:`桌子高度 ${fmt(g)}cm 与你身高的黄金值基本一致，无需调整 🎉` });
+    return out;
+  }
+  if (mode === "sit"){
+    if (d > 0){ // 桌偏高 → 升椅子，脚下悬空则加脚踏
+      const seatBase = CORE.sitting(H).seat;
+      const newSeat = round5(seatBase + d);
+      out.items.push({ lvl:"warn", txt:`桌子偏高 ${fmt(d)}cm：把座面升到 ${fmt(newSeat)}cm（肘与桌面齐平），前臂能自然搭上键盘` });
+      if (d > 2.5){
+        out.items.push({ lvl:"warn", txt:`脚会悬空约 ${fmt(d)}cm → 加一只 ${fmt(d)}cm 高的脚踏/纸箱垫脚，大腿与地面大致平行` });
+      }
+      out.items.push({ lvl:"good", txt:`升椅后屏幕中心跟着垫高：给显示器加 ${fmt(d)}cm 垫块或升降架，保持中心在视线略下方` });
+    } else { // 桌偏低
+      const lift = -d;
+      if (lift <= 4){
+        out.items.push({ lvl:"warn", txt:`桌子偏低 ${fmt(lift)}cm：小差距，垫 ${fmt(lift)}cm 桌脚垫即可，别降椅子（低于腘窝高会顶膝盖）` });
+      } else {
+        out.items.push({ lvl:"bad", txt:`桌子偏低 ${fmt(lift)}cm：超出椅面可下调的安全范围 → 建议桌腿加高或换桌，别靠压低座椅硬凑` });
+      }
+    }
+  } else { // 站姿
+    if (d > 0){
+      out.items.push({ lvl:"warn", txt:`站姿桌面偏高 ${fmt(d)}cm：多数升降桌可直接下调；固定桌则换矮桌，站姿硬抬肘会酸肩` });
+    } else {
+      out.items.push({ lvl:"warn", txt:`站姿桌面偏低 ${fmt(-d)}cm：桌腿垫高 ${fmt(-d)}cm 或上升降桌架，肘约 90° 自然垂放` });
+    }
+    out.items.push({ lvl:"good", txt:"久站组合：抗疲劳垫 + 单脚交替踩 10cm 踏凳，每 30 分钟轮换" });
+  }
+  return out;
+};
+function clamp(v,a,b){ v = Number(v); if (!isFinite(v)) return a; return Math.min(b, Math.max(a, v)); }
+function round5(x){ return Math.round(x*2)/2; }
+function fmt(x){ return (Math.round(x*10)/10).toString().replace(/\.0$/,""); }
+
+/* ================= 状态与渲染 ================= */
+const S = { H:170, mode:"sit", desk:75, lastGoodDesk:75 };
+const $ = id => document.getElementById(id);
+
+function verdictClass(golden, actual){
+  const d = Math.abs(actual - golden);
+  if (d <= 1.5) return "c-ok";
+  if (d <= 6) return "c-warn";
+  return "c-bad";
+}
+
+function render(){
+  const H = S.H, sit = CORE.sitting(H), stand = CORE.standing(H);
+  const g = S.mode === "stand" ? stand : sit;
+  const comp = CORE.compensate(S.mode, H, S.desk);
+  const cards = [];
+  if (S.mode === "sit"){
+    cards.push(["座面高度", fmt(sit.seat), "cm", verdictClass(sit.seat, S.desk - sit.elbow)]);
+    cards.push(["黄金桌高", fmt(sit.desk), "cm", verdictClass(sit.desk, S.desk)]);
+    cards.push(["屏幕中心高", fmt(sit.screenC), "cm", "c-ok"]);
+    cards.push(["视距", sit.dist, "cm", "c-ok"]);
+    cards.push(["肘部落差", fmt(sit.elbow), "cm", "c-ok"]);
+  } else {
+    cards.push(["站姿桌高", fmt(stand.desk), "cm", verdictClass(stand.desk, S.desk)]);
+    cards.push(["屏幕中心高", fmt(stand.screenC), "cm", "c-ok"]);
+    cards.push(["视距", stand.dist, "cm", "c-ok"]);
+  }
+  $("results").innerHTML = cards.map(c =>
+    `<div class="card ${c[3]}"><div class="bar"></div><div class="k">${c[0]}</div><div class="v">${c[1]}<small> ${c[2]}</small></div></div>`
+  ).join("");
+
+  const tips = [];
+  tips.push(`<li>黄金桌高 <b class="good">${fmt(comp.golden)}cm</b>，实际 ${fmt(S.desk)}cm，差值 <b class="${comp.diff>1.5?"bad":comp.diff<-1.5?"warn":"good"}">${comp.diff>0?"+":""}${fmt(comp.diff)}cm</b></li>`);
+  comp.items.forEach(i => tips.push(`<li class="${i.lvl}">${i.txt}</li>`));
+  tips.push(`<li>通用基准：显示器上缘齐眉、中心比视线低 5–10cm，视线自然下倾 15–20°；肘 90–110°，肩放松</li>`);
+  $("advice").innerHTML = tips.join("");
+
+  drawScene(H, S.mode, S.desk, g);
+}
+
+/* ---------- SVG 侧视小人场景（cm → 坐标） ---------- */
+function drawScene(H, mode, deskH, g){
+  const W=340, Hpx=292, FLOOR=276, S1=1.2; // 每厘米像素（站姿眼高最高 197cm×1.2=236 仍在画布内）
+  const y = cm => FLOOR - cm*S1;
+  const parts = [];
+  const deskTop = y(deskH);
+  const gd = mode==="stand" ? CORE.standing(H).desk : CORE.sitting(H).desk;
+  const sc = mode==="stand" ? CORE.standing(H).screenC : CORE.sitting(H).screenC;
+  const deskX=150, deskW=118;
+  // 地面
+  parts.push(`<line x1="8" y1="${FLOOR}" x2="${W-8}" y2="${FLOOR}" stroke="#2a3340" stroke-width="2"/>`);
+  // 桌子（实际高度）
+  parts.push(`<rect x="${deskX}" y="${deskTop}" width="${deskW}" height="5" rx="2" fill="#5aa2e8"/>`);
+  parts.push(`<rect x="${deskX+6}" y="${deskTop+5}" width="5" height="${FLOOR-deskTop-5}" fill="#39434f"/>`);
+  parts.push(`<rect x="${deskX+deskW-11}" y="${deskTop+5}" width="5" height="${FLOOR-deskTop-5}" fill="#39434f"/>`);
+  // 显示器（中心 = sc）
+  const mx=deskX+deskW-26, mh=34, mc=y(sc);
+  parts.push(`<rect x="${mx}" y="${mc-mh/2}" width="7" height="${mh}" rx="2" fill="#c8d3e0"/>`);
+  parts.push(`<rect x="${mx+7}" y="${mc-4}" width="10" height="3" fill="#5a6675"/>`);
+  // 键盘
+  parts.push(`<rect x="${deskX+22}" y="${deskTop-4}" width="46" height="4" rx="2" fill="#5a6675"/>`);
+  // 尺寸标注线（左侧：桌高）
+  const dx0=104;
+  parts.push(`<line x1="${dx0}" y1="${deskTop}" x2="${dx0}" y2="${FLOOR}" stroke="${Math.abs(S.desk-gd)<=1.5?"#4cc38a":"#e5a158"}" stroke-dasharray="4 3"/>`);
+  parts.push(`<text x="${dx0-4}" y="${(deskTop+FLOOR)/2}" fill="#8a97a8" font-size="11" text-anchor="end">桌 ${fmt(deskH)}</text>`);
+  // 人
+  if (mode==="sit"){
+    const seat = CORE.sitting(H).seat;
+    const seatY = y(seat);
+    const comp = CORE.compensate("sit", H, deskH);
+    const d = comp.diff;
+    // 椅子（虚影=黄金座高，实体=补偿后）
+    const goldenSeatY = y(CORE.sitting(H).seat);
+    parts.push(`<rect x="52" y="${goldenSeatY}" width="58" height="4" rx="2" fill="#4cc38a" opacity=".45"/>`);
+    parts.push(`<text x="46" y="${goldenSeatY-6}" fill="#4cc38a" font-size="10.5">建议座面 ${fmt(CORE.sitting(H).seat + Math.max(0,d))}</text>`);
+    parts.push(`<rect x="52" y="${seatY}" width="58" height="5" rx="2" fill="#e5a158"/>`);
+    parts.push(`<rect x="56" y="${seatY+5}" width="5" height="${FLOOR-seatY-5}" fill="#39434f"/>`);
+    parts.push(`<rect x="98" y="${seatY+5}" width="5" height="${FLOOR-seatY-5}" fill="#39434f"/>`);
+    parts.push(`<rect x="52" y="${seatY-72}" width="5" height="72" rx="2" fill="#e5a158"/>`); // 靠背
+    // 脚踏（悬空时）
+    if (d > 2.5){
+      parts.push(`<rect x="66" y="${FLOOR-d*S1}" width="46" height="${d*S1}" fill="#4cc38a" opacity=".55"/>`);
+    }
+    // 身体
+    const eyeCm = CORE.sitting(H).eye;
+    const eyeY = y(eyeCm);
+    const hipY = seatY, hipX=76;
+    const shY = eyeY + 22; // 肩在眼下方（固定像素比例）
+    const headR = 9.5;
+    parts.push(`<line x1="${hipX}" y1="${hipY-2}" x2="${hipX}" y2="${shY}" stroke="#e6ebf2" stroke-width="6" stroke-linecap="round"/>`); // 躯干
+    parts.push(`<circle cx="${hipX+2}" cy="${eyeY-headR-2}" r="${headR}" fill="#e6ebf2"/>`); // 头
+    // 大腿+小腿
+    parts.push(`<line x1="${hipX}" y1="${hipY}" x2="${hipX+42}" y2="${hipY+2}" stroke="#e6ebf2" stroke-width="6" stroke-linecap="round"/>`);
+    parts.push(`<line x1="${hipX+42}" y1="${hipY+2}" x2="${hipX+44}" y2="${FLOOR-4}" stroke="#e6ebf2" stroke-width="6" stroke-linecap="round"/>`);
+    // 手臂：肩→肘(桌沿)→键盘
+    parts.push(`<line x1="${hipX}" y1="${shY}" x2="${deskX+16}" y2="${deskTop-2}" stroke="#e6ebf2" stroke-width="5" stroke-linecap="round"/>`);
+    parts.push(`<line x1="${deskX+16}" y1="${deskTop-2}" x2="${deskX+40}" y2="${deskTop-6}" stroke="#e6ebf2" stroke-width="5" stroke-linecap="round"/>`);
+    // 视线（眼→屏幕中心）
+    parts.push(`<line x1="${hipX+8}" y1="${eyeY}" x2="${mx}" y2="${mc}" stroke="#5aa2e8" stroke-dasharray="3 4" stroke-width="1.5"/>`);
+    parts.push(`<text x="${hipX-2}" y="${eyeY-16}" fill="#8a97a8" font-size="10.5">眼 ${fmt(eyeCm)}</text>`);
+    parts.push(`<text x="${mx+14}" y="${mc+3}" fill="#8a97a8" font-size="10.5">屏心 ${fmt(sc)}</text>`);
+  } else {
+    const eyeCm = CORE.standing(H).eye;
+    const eyeY = y(eyeCm);
+    const px=96, headR=9.5;
+    parts.push(`<circle cx="${px}" cy="${eyeY-headR-2}" r="${headR}" fill="#e6ebf2"/>`);
+    parts.push(`<line x1="${px}" y1="${eyeY+8}" x2="${px}" y2="${y(0.53*H)}" stroke="#e6ebf2" stroke-width="6" stroke-linecap="round"/>`);
+    parts.push(`<line x1="${px}" y1="${y(0.53*H)}" x2="${px-8}" y2="${FLOOR-2}" stroke="#e6ebf2" stroke-width="6" stroke-linecap="round"/>`);
+    parts.push(`<line x1="${px}" y1="${y(0.53*H)}" x2="${px+8}" y2="${FLOOR-2}" stroke="#e6ebf2" stroke-width="6" stroke-linecap="round"/>`);
+    const shY = eyeY+18;
+    parts.push(`<line x1="${px}" y1="${shY}" x2="${deskX+16}" y2="${deskTop-2}" stroke="#e6ebf2" stroke-width="5" stroke-linecap="round"/>`);
+    parts.push(`<line x1="${deskX+16}" y1="${deskTop-2}" x2="${deskX+40}" y2="${deskTop-6}" stroke="#e6ebf2" stroke-width="5" stroke-linecap="round"/>`);
+    parts.push(`<line x1="${px+8}" y1="${eyeY}" x2="${mx}" y2="${mc}" stroke="#5aa2e8" stroke-dasharray="3 4" stroke-width="1.5"/>`);
+    parts.push(`<text x="${mx+14}" y="${mc+3}" fill="#8a97a8" font-size="10.5">屏心 ${fmt(sc)}</text>`);
+  }
+  // 黄金桌高参考虚线
+  parts.push(`<line x1="12" y1="${y(gd)}" x2="${deskX+deskW}" y2="${y(gd)}" stroke="#4cc38a" stroke-dasharray="5 4" opacity=".6"/>`);
+  parts.push(`<text x="12" y="${y(gd)-5}" fill="#4cc38a" font-size="10.5">黄金桌高 ${fmt(gd)}</text>`);
+  $("svgBox").innerHTML = `<svg viewBox="0 0 ${W} ${Hpx}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="工位侧视标注图">${parts.join("")}</svg>`;
+}
+
+/* ---------- 调整卡 ---------- */
+function buildCard(){
+  const H=S.H, g = S.mode==="stand"?CORE.standing(H):CORE.sitting(H);
+  const comp = CORE.compensate(S.mode, H, S.desk);
+  const L = [];
+  L.push("📐 ERGODESK 工位调整卡");
+  L.push(`身高 ${H}cm ｜ ${S.mode==="sit"?"坐姿":"站姿"} ｜ 桌子实际 ${fmt(S.desk)}cm`);
+  L.push(`黄金桌高 ${fmt(comp.golden)}cm（差 ${comp.diff>0?"+":""}${fmt(comp.diff)}cm）`);
+  if (S.mode==="sit"){
+    L.push(`座面高度 ${fmt(g.seat)}cm ｜ 屏幕中心 ${fmt(g.screenC)}cm ｜ 视距 ${g.dist}cm`);
+  } else {
+    L.push(`屏幕中心 ${fmt(g.screenC)}cm ｜ 视距 ${g.dist}cm`);
+  }
+  comp.items.forEach(i=>L.push(`· ${i.txt}`));
+  L.push("—— 纯本地计算 · ERGODESK");
+  return L.join("\n");
+}
+
+/* ---------- 交互 ---------- */
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1600); }
+
+$("hRange").addEventListener("input", e=>{
+  S.H = clamp(e.target.value,130,210);
+  $("hOut").textContent = S.H; $("hErr").textContent="";
+  render();
+});
+$("hRange").addEventListener("change", ()=>{ try{ navigator.vibrate && navigator.vibrate(8);}catch(_){} });
+$("deskIn").addEventListener("input", e=>{
+  const raw = e.target.value.trim();
+  if (raw === ""){ $("deskErr").textContent="留空将沿用上次有效值 "+fmt(S.lastGoodDesk)+"cm"; return; }
+  const v = Number(raw);
+  if (!isFinite(v) || v < 55 || v > 130){ $("deskErr").textContent="请输入 55–130 之间的桌子高度（cm）"; return; }
+  $("deskErr").textContent="";
+  S.desk = v; S.lastGoodDesk = v; render();
+});
+$("deskIn").addEventListener("blur", e=>{
+  const v = Number(e.target.value);
+  if (e.target.value.trim()==="" || !isFinite(v) || v<55 || v>130){
+    e.target.value = S.lastGoodDesk; $("deskErr").textContent="已恢复为 "+fmt(S.lastGoodDesk)+"cm";
+    S.desk = S.lastGoodDesk; render();
+  }
+});
+$("mSit").addEventListener("click", ()=>{ S.mode="sit"; $("mSit").classList.add("on"); $("mStand").classList.remove("on"); render(); });
+$("mStand").addEventListener("click", ()=>{ S.mode="stand"; $("mStand").classList.add("on"); $("mSit").classList.remove("on"); render(); });
+$("sampleBtn").addEventListener("click", ()=>{
+  S.H=170; S.desk=75; $("hRange").value=170; $("hOut").textContent=170; $("deskIn").value=75; $("deskErr").textContent=""; $("hErr").textContent="";
+  render(); toast("已载入示例");
+});
+$("copyBtn").addEventListener("click", async ()=>{
+  const txt = buildCard();
+  try{
+    await navigator.clipboard.writeText(txt);
+    toast("已复制 ✓");
+  }catch(_){
+    const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta);
+    ta.select(); const ok=document.execCommand("copy"); ta.remove();
+    toast(ok?"已复制 ✓":"复制失败，请手动选择文本");
+  }
+});
+$("pngBtn").addEventListener("click", ()=>{ window.print(); });
+
+render();
+</script>
+</body>
+</html>
