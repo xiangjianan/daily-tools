@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>plateload · 杠铃配重装配台</title>
+<meta name="description" content="输入目标重量,即时算出每侧杠铃片怎么挂,生成从空杆到目标的加载路线图。纯本地运行。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141619'/%3E%3Crect x='4' y='13' width='24' height='6' rx='3' fill='%236b7280'/%3E%3Crect x='2' y='9' width='6' height='14' rx='2' fill='%23e5484d'/%3E%3Crect x='24' y='9' width='6' height='14' rx='2' fill='%23e5484d'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0f1115; --panel:#171a20; --panel2:#1d212a; --line:#2a2f3a;
+  --tx:#e7eaf0; --tx2:#9aa3b2; --tx3:#6b7280;
+  --acc:#f5c542; --red:#e5484d; --blue:#4d8df5; --green:#3fb96f; --white:#e8e8e8;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg);color:var(--tx);font-family:var(--sans);line-height:1.55;
+  padding:max(14px,env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
+  max-width:640px;margin:0 auto;
+}
+header{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.logo{width:34px;height:34px;flex:none}
+h1{font-size:19px;letter-spacing:.2px}
+h1 small{display:block;font-size:12px;color:var(--tx2);font-weight:400;margin-top:1px}
+.tag{margin:10px 0 16px;color:var(--tx2);font-size:13px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.card h2{font-size:13px;color:var(--tx2);font-weight:600;letter-spacing:.5px;margin-bottom:10px;text-transform:uppercase}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.seg{display:inline-flex;background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{background:none;border:0;color:var(--tx2);font-size:13px;font-weight:600;padding:7px 16px;cursor:pointer;font-family:inherit}
+.seg button.on{background:var(--acc);color:#151515}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--tx2);font-size:12px;padding:5px 10px;cursor:pointer;font-family:var(--mono)}
+.chip:hover,.chip:active{border-color:var(--acc);color:var(--tx)}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#151515;font-weight:700}
+.inrow{display:flex;gap:10px;margin-top:12px}
+#in{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:12px;color:var(--tx);
+  font-size:26px;font-weight:700;font-family:var(--mono);padding:10px 14px;outline:none}
+#in:focus{border-color:var(--acc)}
+.unit-suffix{align-self:center;color:var(--tx3);font-family:var(--mono);font-size:15px;min-width:26px}
+#hint{color:var(--tx3);font-size:12.5px;margin-top:9px}
+#err{display:none;background:rgba(229,72,77,.1);border:1px solid rgba(229,72,77,.4);color:#f2a0a3;
+  border-radius:10px;padding:10px 13px;font-size:13.5px;margin-top:12px}
+#err.show{display:block}
+.barwrap{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 10px 8px;margin-bottom:14px;overflow:hidden}
+.barwrap h2{font-size:13px;color:var(--tx2);font-weight:600;letter-spacing:.5px;margin-bottom:6px;text-transform:uppercase;padding:0 6px}
+#svgbox{width:100%}
+#svgbox svg{display:block;width:100%;height:auto}
+#bigw{padding:0 6px 8px;display:flex;align-items:baseline;gap:8px}
+#bigw b{font-family:var(--mono);font-size:34px;color:var(--acc)}
+#bigw span{color:var(--tx2);font-size:13px}
+.steps{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.steps h2{font-size:13px;color:var(--tx2);font-weight:600;letter-spacing:.5px;margin-bottom:12px;text-transform:uppercase}
+.steplist{display:flex;flex-direction:column;gap:7px}
+.step{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.step .n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--line);color:var(--tx2);font-size:12px;
+  display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700}
+.step .add{flex:1;color:var(--tx);font-size:13.5px;font-family:var(--mono);word-break:break-all}
+.step .tot{flex:none;font-family:var(--mono);font-size:13px;color:var(--acc);font-weight:700}
+.step.first{border-color:rgba(245,197,66,.45)}
+.dots{color:var(--tx3);font-size:11px;text-align:center;margin:2px 0}
+.summary{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat b{display:block;font-family:var(--mono);font-size:22px;color:var(--tx)}
+.stat span{font-size:12px;color:var(--tx2)}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap}
+.btn{flex:1;min-width:130px;background:var(--panel2);border:1px solid var(--line);border-radius:11px;color:var(--tx);
+  font-size:14px;font-weight:600;padding:11px 14px;cursor:pointer;font-family:inherit;text-align:center;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:#151515}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+  background:#262b35;border:1px solid var(--line);color:var(--tx);border-radius:10px;padding:9px 16px;font-size:13px;
+  opacity:0;pointer-events:none;transition:all .25s;z-index:50;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+footer{color:var(--tx3);font-size:12px;text-align:center;margin-top:6px}
+footer a{color:var(--tx2)}
+#stResult{display:none}
+@media (max-width:420px){
+  .summary{grid-template-columns:1fr}
+  #in{font-size:22px}
+  #bigw b{font-size:28px}
+}
+</style>
+</head>
+<body>
+<header>
+  <svg class="logo" viewBox="0 0 34 34" aria-hidden="true">
+    <rect width="34" height="34" rx="8" fill="#171a20"/>
+    <rect x="7" y="14" width="20" height="6" rx="3" fill="#6b7280"/>
+    <rect x="3" y="9" width="6" height="16" rx="2" fill="#e5484d"/>
+    <rect x="25" y="9" width="6" height="16" rx="2" fill="#e5484d"/>
+  </svg>
+  <h1>plateload 杠铃配重装配台<small>Plate Loader — 每侧挂什么,一眼看清</small></h1>
+</header>
+<p class="tag">输入目标重量,立即算出每侧杠铃片怎么挂,并给出从空杆到目标重量的加载路线图。所有计算在浏览器本地完成。</p>
+
+<div class="card">
+  <h2>设置</h2>
+  <div class="row" style="justify-content:space-between">
+    <div class="seg" id="unitSeg" role="group" aria-label="单位">
+      <button data-u="kg" class="on">公斤 kg</button>
+      <button data-u="lb">磅 lb</button>
+    </div>
+    <div class="chips" id="barChips" aria-label="空杆重量"></div>
+  </div>
+  <div class="inrow">
+    <input id="in" type="number" inputmode="decimal" step="0.5" min="0" placeholder="目标总重量" aria-label="目标总重量">
+    <span class="unit-suffix" id="unitLbl">kg</span>
+  </div>
+  <div class="chips" style="margin-top:10px" id="quickChips" aria-label="快速输入"></div>
+  <div id="hint">提示:目标重量必须 ≥ 空杆重量。片组按常见商用套装(25/20/15/10/5/2.5/1.25 kg)计算,凑不齐时会自动就近装载并注明差额。</div>
+  <div id="err" role="alert"></div>
+</div>
+
+<div class="barwrap" id="barCard" style="display:none">
+  <h2>装配图 · 每侧</h2>
+  <div id="svgbox"></div>
+  <div id="bigw"><b>—</b><span id="bigwlbl"></span></div>
+</div>
+
+<div class="steps" id="stepsCard" style="display:none">
+  <h2>加载路线图 · 从空杆开始</h2>
+  <div class="steplist" id="steplist"></div>
+</div>
+
+<div class="summary" id="sumCard" style="display:none">
+  <div class="stat"><b id="stPer">—</b><span>每侧配重</span></div>
+  <div class="stat"><b id="stCnt">—</b><span>每侧片数</span></div>
+</div>
+
+<div class="btnrow">
+  <button class="btn primary" id="btnCopy">复制配重清单</button>
+  <button class="btn" id="btnSample">试试示例</button>
+</div>
+
+<div id="toast"></div>
+<div id="stResult"></div>
+
+<footer>plateload · issue #75 of <a href="https://github.com/xiangjianan/daily-tools" target="_blank" rel="noopener">daily-tools</a> · 纯前端 · 数据不出浏览器</footer>
+
+<script>
+/*==CORE==*/
+var PLATES = {
+  kg: [25, 20, 15, 10, 5, 2.5, 1.25],
+  lb: [45, 35, 25, 10, 5, 2.5]
+};
+var BARS = { kg: [20, 15, 10], lb: [45, 35] };
+var PLATE_COLOR = {
+  kg: {25:'#e5484d',20:'#4d8df5',15:'#f5c542',10:'#3fb96f',5:'#e8e8e8',2.5:'#5b6472',1.25:'#c9a86a'},
+  lb: {45:'#e5484d',35:'#4d8df5',25:'#f5c542',10:'#3fb96f',5:'#e8e8e8',2.5:'#5b6472'}
+};
+function w2(v){ return Math.round(v*1000)/1000; } /* 3 位:1.25 系片组差额是 0.125 的倍数,2 位会把 0.625 舍错 */
+function fmtW(v){ var r = w2(v); return (r%1===0) ? String(r) : String(r); }
+
+function calcPlates(target, unit, bar){
+  if (typeof target !== 'number' || !isFinite(target) || target <= 0) {
+    return { ok:false, reason:'empty' };
+  }
+  var plates = PLATES[unit];
+  var maxLoad = bar + plates.reduce(function(a,b){return a+b;},0)*2;
+  if (target < bar) return { ok:false, reason:'below_bar', bar:bar, min:bar };
+  if (target > maxLoad) return { ok:false, reason:'over_max', max: w2(maxLoad), bar: bar };
+  var perSide = (target - bar) / 2;
+  var rest = perSide;
+  var list = [];
+  for (var i=0;i<plates.length;i++){
+    var w = plates[i];
+    var c = Math.floor(w2(rest / w + 1e-9));
+    if (c > 0){ list.push({ w:w, count:c }); rest = w2(rest - c*w); }
+  }
+  var loaded = perSide - rest;
+  var exact = rest < 1e-6;
+  return {
+    ok:true, unit:unit, bar:bar, target:w2(target),
+    perSide: perSide, plates:list, remainder: w2(rest),
+    exact: exact, loaded: w2(bar + loaded*2),
+    count: list.reduce(function(a,p){return a+p.count;},0)
+  };
+}
+
+/* 加载路线图:从空杆开始,按装配顺序(大片先上)逐步累加,每步给杆上总重 */
+function roadmap(res){
+  if (!res || !res.ok) return [];
+  var steps = [{ add:'', w:res.bar, perW:0, perC:0, first:true }];
+  var tot = res.bar;
+  for (var i=0;i<res.plates.length;i++){
+    var p = res.plates[i];
+    tot = w2(tot + p.w*2*p.count);
+    steps.push({ add:p.w, w:tot, perW:p.w, perC:p.count });
+  }
+  return steps;
+}
+/*==ENDCORE==*/
+
+var state = { unit:'kg', bar:20 };
+
+function $(id){ return document.getElementById(id); }
+
+function renderBar(res){
+  var unit = res.unit;
+  var plates = res.plates.slice().reverse(); // 靠近杠铃内侧 = 最大片,SVG 从内向外画
+  var W = 640, H = 150, cx = W/2;
+  var shaftY = H/2;
+  var s = '<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="杠铃装配图">';
+  s += '<defs><linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">';
+  s += '<stop offset="0" stop-color="#9aa3b2"/><stop offset=".5" stop-color="#5b6472"/><stop offset="1" stop-color="#3a4150"/></linearGradient></defs>';
+  // 杆身
+  s += '<rect x="20" y="'+(shaftY-5)+'" width="'+(W-40)+'" height="10" rx="5" fill="url(#steel)"/>';
+  // 两端套筒
+  var sleeveW = 14;
+  s += '<rect x="'+(W-70)+'" y="'+(shaftY-11)+'" width="'+sleeveW+'" height="22" rx="6" fill="#454d5c"/>';
+  s += '<rect x="'+(W-70+sleeveW-4)+'" y="'+(shaftY-13)+'" width="4" height="26" rx="2" fill="#5b6472"/>';
+  s += '<rect x="'+(56-sleeveW)+'" y="'+(shaftY-11)+'" width="'+sleeveW+'" height="22" rx="6" fill="#454d5c"/>';
+  s += '<rect x="'+(56-1)+'" y="'+(shaftY-13)+'" width="4" height="26" rx="2" fill="#5b6472"/>';
+  // 画片:从内侧(靠近套筒)向外,max 片高最大
+  function side(x0, dir){
+    var x = x0;
+    for (var i=0;i<plates.length;i++){
+      var p = plates[i];
+      for (var c=0;c<p.count;c++){
+        var hMax = 118, hMin = 34;
+        var h = hMin + (hMax-hMin) * (p.w / plates[0].w);
+        var pw = 13 + p.count; // 片宽按重量略增
+        var y = shaftY - h/2;
+        var fill = PLATE_COLOR[unit][p.w] || '#888';
+        var edge = 'rgba(0,0,0,.35)';
+        s += '<rect x="'+(x.toFixed(1))+'" y="'+y.toFixed(1)+'" width="'+pw+'" height="'+h.toFixed(1)+'" rx="4" fill="'+fill+'" stroke="'+edge+'" stroke-width="1"/>';
+        if (p.w >= 10){
+          s += '<rect x="'+(x+pw/2-1).toFixed(1)+'" y="'+(shaftY-9).toFixed(1)+'" width="2" height="18" rx="1" fill="rgba(0,0,0,.25)"/>';
+        }
+        x += (pw + 2.5) * dir;
+      }
+    }
+    return x;
+  }
+  side(64, 1);
+  side(W-64, -1);
+  s += '</svg>';
+  $('svgbox').innerHTML = s;
+}
+
+function renderSteps(res){
+  var steps = roadmap(res);
+  var unit = res.unit;
+  var html = '';
+  for (var i=0;i<steps.length;i++){
+    var st = steps[i];
+    if (i>0){
+      var addTxt = '+' + fmtW(st.perW) + '×' + st.perC + '/侧';
+      html += '<div class="step'+(i===1?' first':'')+'"><span class="n">'+(i)+'</span>'+
+        '<span class="add">'+addTxt+'</span><span class="tot">'+fmtW(st.w)+' '+unit+'</span></div>';
+    } else {
+      html += '<div class="step first"><span class="n">0</span><span class="add">空杆(先装大片)</span><span class="tot">'+fmtW(st.w)+' '+unit+'</span></div>';
+    }
+  }
+  if (!res.exact){
+    html += '<div class="dots">···</div><div class="step"><span class="n">±</span><span class="add">差 '+fmtW(res.remainder*2)+' '+unit+',片组凑不齐——已就近装到 '+fmtW(res.loaded)+' '+unit+'</span><span class="tot">—</span></div>';
+  }
+  $('steplist').innerHTML = html;
+}
+
+function render(res){
+  if (!res.ok){
+    if (res.reason === 'empty'){ /* 空输入 = 首屏引导态,不弹红框,hint 文案已够 */
+      state.last = null;
+      $('err').className = '';
+      $('barCard').style.display = 'none';
+      $('stepsCard').style.display = 'none';
+      $('sumCard').style.display = 'none';
+      return;
+    }
+    renderErr(res); return;
+  }
+  $('err').className = '';
+  $('barCard').style.display = '';
+  $('stepsCard').style.display = '';
+  $('sumCard').style.display = '';
+  renderBar(res);
+  renderSteps(res);
+  if (res.exact){
+    $('bigw').firstChild.textContent = fmtW(res.target) + ' ' + res.unit;
+    $('bigwlbl').textContent = '空杆 ' + fmtW(res.bar) + ' + 每侧 ' + fmtW((res.loaded-res.bar)/2) + ' ×2';
+  } else {
+    $('bigw').firstChild.textContent = fmtW(res.loaded) + ' ' + res.unit;
+    $('bigwlbl').textContent = '实际就近装载(目标 ' + fmtW(res.target) + ' ' + res.unit + ',差 ' + fmtW(res.remainder*2) + ' ' + res.unit + ')';
+  }
+  $('stPer').textContent = fmtW((res.loaded-res.bar)/2) + ' ' + res.unit;
+  $('stCnt').textContent = res.count + ' 片';
+  state.last = res;
+}
+
+function renderErr(res){
+  state.last = null;
+  $('barCard').style.display = 'none';
+  $('stepsCard').style.display = 'none';
+  $('sumCard').style.display = 'none';
+  var msg;
+  if (res.reason === 'empty') msg = '输入一个目标重量吧——比如深蹲或卧推的今日组重。';
+  else if (res.reason === 'below_bar') msg = '目标重量低于空杆(' + fmtW(state.bar) + ' ' + state.unit + ')。空杆本身就是重量,试着输入 ≥ ' + fmtW(state.bar) + ' 的值。';
+  else if (res.reason === 'over_max') msg = '超出全套片上限(' + fmtW(res.max) + ' ' + state.unit + ',空杆 ' + fmtW(res.bar) + ' + 全部片×2)。普通套装装不到这么重。';
+  else msg = '输入有误,请检查。';
+  $('err').textContent = msg;
+  $('err').className = 'show';
+}
+
+function compute(){
+  var v = parseFloat($('in').value);
+  var res;
+  if ($('in').value.trim() === '') res = { ok:false, reason:'empty' };
+  else res = calcPlates(v, state.unit, state.bar);
+  render(res);
+}
+
+function renderBarChips(){
+  var bars = BARS[state.unit];
+  $('barChips').innerHTML = bars.map(function(b){
+    return '<button class="chip'+(b===state.bar?' on':'')+'" data-bar="'+b+'">'+fmtW(b)+' 杆</button>';
+  }).join('');
+}
+function renderQuickChips(){
+  var q = state.unit==='kg' ? [40,60,80,100,120,140] : [95,135,185,225,275,315];
+  $('quickChips').innerHTML = q.map(function(w){
+    return '<button class="chip" data-q="'+w+'">'+w+'</button>';
+  }).join('');
+}
+
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg;
+  t.className = 'show';
+  clearTimeout(state._tt);
+  state._tt = setTimeout(function(){ t.className=''; }, 2200);
+}
+
+function copyText(){
+  var res = state.last;
+  if (!res || !res.ok){ toast('先输入有效重量再复制'); return; }
+  var lines = [];
+  lines.push('plateload 配重清单');
+  lines.push('目标 ' + fmtW(res.target) + ' ' + res.unit + '(空杆 ' + fmtW(res.bar) + ')');
+  lines.push('每侧 ' + fmtW((res.loaded-res.bar)/2) + ' ' + res.unit + ':');
+  res.plates.forEach(function(p){ lines.push('  ' + fmtW(p.w) + ' ' + res.unit + ' × ' + p.count); });
+  if (!res.exact) lines.push('注:差 ' + fmtW(res.remainder*2) + ' ' + res.unit + ' 凑不齐,实际装到 ' + fmtW(res.loaded) + ' ' + res.unit);
+  var txt = lines.join('\n');
+  function done(){ toast('已复制 ✓'); }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done, function(){ fallbackCopy(txt) ? done() : toast('复制失败,请手动选择文本'); });
+  } else {
+    fallbackCopy(txt) ? done() : toast('复制失败,请手动选择文本');
+  }
+}
+function fallbackCopy(txt){
+  var ta = document.createElement('textarea');
+  ta.value = txt;
+  ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch(e){}
+  document.body.removeChild(ta);
+  return ok;
+}
+
+function setUnit(u){
+  state.unit = u;
+  state.bar = BARS[u][0];
+  Array.prototype.forEach.call($('unitSeg').children, function(b){
+    b.className = (b.dataset.u === u) ? 'on' : '';
+  });
+  $('unitLbl').textContent = u;
+  renderBarChips();
+  renderQuickChips();
+  compute();
+}
+function setBar(b){
+  state.bar = b;
+  renderBarChips();
+  compute();
+}
+
+function init(){
+  $('unitSeg').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    setUnit(b.dataset.u);
+  });
+  $('barChips').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    setBar(parseFloat(b.dataset.bar));
+  });
+  $('quickChips').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    $('in').value = b.dataset.q;
+    compute();
+  });
+  $('in').addEventListener('input', compute);
+  $('btnCopy').addEventListener('click', copyText);
+  $('btnSample').addEventListener('click', function(){
+    $('in').value = state.unit==='kg' ? '82.5' : '135';
+    compute();
+  });
+  renderBarChips();
+  renderQuickChips();
+  compute();
+  runSelftest();
+}
+
+/* #selftest:内置自测,无头冒烟用 */
+function runSelftest(){
+  if (location.hash !== '#selftest') return;
+  var out = [], fails = 0;
+  function A(name, cond){ out.push((cond?'PASS ':'FAIL ')+name); if(!cond) fails++; }
+  var r1 = calcPlates(82.5, 'kg', 20);
+  A('82.5kg 每侧 31.25', w2(r1.perSide) === 31.25);
+  A('82.5kg exact', r1.exact === true);
+  A('82.5kg 25×1', r1.plates.some(function(p){return p.w===25&&p.count===1;}));
+  var r2 = calcPlates(100, 'kg', 20);
+  A('100kg 贪心 25+15', r2.plates.length===2 && r2.plates[0].w===25 && r2.plates[1].w===15 && r2.exact);
+  var r3 = calcPlates(20, 'kg', 20);
+  A('空杆 exact 空', r3.ok===true && r3.count===0 && r3.exact);
+  var r4 = calcPlates(10, 'kg', 20);
+  A('低于空杆拒绝', r4.ok===false && r4.reason==='below_bar');
+  var r5 = calcPlates(300, 'kg', 20);
+  A('超上限拒绝', r5.ok===false && r5.reason==='over_max');
+  var r6 = calcPlates(81, 'kg', 20);
+  A('81kg 非整就近', r6.ok===true && r6.exact===false && w2(r6.remainder)>0);
+  var r7 = calcPlates(135, 'lb', 45);
+  A('135lb 每侧45', r7.plates.some(function(p){return p.w===45&&p.count===1;}));
+  var steps = roadmap(r1);
+  A('路线图含空杆步', steps.length>=2 && steps[0].first===true);
+  var last = steps[steps.length-1];
+  A('路线图终点=目标', w2(last.w) === 82.5);
+  A('82.3kg 非法小数就近', calcPlates(82.3,'kg',20).ok===true);
+  var el = $('stResult');
+  el.style.display='block';
+  el.textContent = out.join('\n');
+  document.title = (fails===0 ? 'SELFTEST PASS '+out.length : 'SELFTEST FAIL '+fails);
+}
+init();
+</script>
+</body>
+</html>
