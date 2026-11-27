@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SHUPAI 竖排排版台 — 横排文字一键排成右起竖排</title>
+<meta name="description" content="粘贴横排中文，即时排成右起竖排的古籍/请柬版式，句读朱点、宣纸与玄墨纸色，一键导出 PNG，纯本地处理不传数据。">
+<style>
+:root{
+  --bg:#191613; --panel:#211d19; --panel2:#2a251f; --line:#3a332b;
+  --ink:#e8e0d2; --ink2:#a89e8c; --accent:#c8452c; --accent2:#4f9a6d; --gold:#d8a656;
+  --mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;min-height:100vh}
+header{padding:22px 26px 14px;border-bottom:1px solid var(--line)}
+h1{font-size:21px;letter-spacing:1px}
+h1 b{color:var(--gold)}
+.tagline{color:var(--ink2);font-size:13px;margin-top:3px}
+.wrap{display:grid;grid-template-columns:400px 1fr;gap:0;min-height:calc(100vh - 76px)}
+.left{padding:18px;border-right:1px solid var(--line);overflow-y:auto}
+.right{padding:18px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;overflow:auto}
+label{display:block;font-size:12px;color:var(--ink2);letter-spacing:.5px;margin:14px 0 6px}
+textarea{width:100%;min-height:180px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:12px;font-size:14px;line-height:1.7;resize:vertical;font-family:inherit}
+textarea:focus{outline:none;border-color:var(--gold)}
+.hint{font-size:12px;color:var(--ink2);margin-top:6px}
+.hint.warn{color:var(--accent)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ctl{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px}
+.ctl input[type=range]{width:110px;accent-color:var(--gold)}
+.ctl .val{color:var(--gold);font-family:var(--mono);min-width:26px;text-align:right}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:5px 12px;border-radius:20px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);font-size:13px;cursor:pointer;user-select:none}
+.chip:hover{border-color:var(--gold)}
+.chip.on{background:var(--gold);border-color:var(--gold);color:#221c12;font-weight:600}
+.btns{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+button.act{padding:10px 18px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:1px}
+.b1{background:var(--gold);color:#221c12}
+.b1:hover{filter:brightness(1.08)}
+.b2{background:var(--panel2);color:var(--ink);border:1px solid var(--line)!important}
+.b2:hover{border-color:var(--gold)!important}
+.b3{background:transparent;color:var(--ink2);border:1px solid var(--line)!important}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--gold);color:#221c12;padding:9px 20px;border-radius:24px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s;z-index:99}
+.toast.show{opacity:1}
+/* ===== 竖排预览 ===== */
+.stage{background:#241f1a;padding:20px;border-radius:10px;max-width:100%}
+.paper{position:relative;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.45);border-radius:4px}
+.vtext{writing-mode:vertical-rl;text-orientation:upright;line-height:1;direction:rtl}
+.vtext .para{display:block}
+.vtext .gapcol{display:inline-block}
+.foot{margin-top:14px;font-size:12px;color:var(--ink2);text-align:center}
+.foot b{color:var(--gold);font-family:var(--mono)}
+/* 朱点 */
+.vtext .zhu{color:var(--accent)}
+.emp{border:1px solid var(--gold);border-radius:6px;padding:10px 14px;margin-top:14px;font-size:13px;color:var(--gold);display:none}
+@media(max-width:900px){
+  .wrap{grid-template-columns:1fr}
+  .left{border-right:none;border-bottom:1px solid var(--line)}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1><b>SHUPAI</b> 竖排排版台</h1>
+  <div class="tagline">粘贴横排文字 → 右起竖排古籍版式 · 句读朱点 · 宣纸/玄墨 · 一键导出 PNG · 纯本地处理</div>
+</header>
+
+<div class="wrap">
+  <div class="left">
+    <label>正文（支持多段，空行分段）</label>
+    <textarea id="src" placeholder="粘贴要竖排的文字…&#10;例如：山不在高，有仙则名。水不在深，有龙则灵。">山不在高，有仙则名。水不在深，有龙则灵。斯是陋室，惟吾德馨。苔痕上阶绿，草色入帘青。</textarea>
+    <div class="hint" id="warnBox"></div>
+
+    <label>字号 <span style="color:#6b6355">（预览与导出同步）</span></label>
+    <div class="row">
+      <div class="ctl"><input type="range" id="fs" min="16" max="64" value="30"><span class="val" id="fsV">30</span>px</div>
+    </div>
+
+    <label>列距</label>
+    <div class="row">
+      <div class="ctl"><input type="range" id="gap" min="10" max="60" value="26"><span class="val" id="gapV">26</span>px</div>
+    </div>
+
+    <label>版面高度</label>
+    <div class="row">
+      <div class="ctl"><input type="range" id="ph" min="240" max="640" step="10" value="420"><span class="val" id="phV">420</span>px</div>
+    </div>
+
+    <label>标点样式</label>
+    <div class="chips" id="punctChips">
+      <div class="chip on" data-v="normal">原样保留</div>
+      <div class="chip" data-v="zhu">句读朱点</div>
+      <div class="chip" data-v="none">古式无标点</div>
+    </div>
+
+    <label>纸色</label>
+    <div class="chips" id="paperChips">
+      <div class="chip on" data-v="xuan">宣纸白</div>
+      <div class="chip" data-v="xuan2">绢黄</div>
+      <div class="chip" data-v="hei">玄墨</div>
+    </div>
+
+    <label>装饰</label>
+    <div class="chips" id="decoChips">
+      <div class="chip on" data-v="on">界栏</div>
+      <div class="chip" data-v="off">素面</div>
+    </div>
+
+    <div class="btns">
+      <button class="act b1" id="dl">下载 PNG</button>
+      <button class="act b2" id="cp">复制文本</button>
+      <button class="act b3" id="ex">示例</button>
+    </div>
+    <div class="hint" style="margin-top:12px">下载为 canvas 逐字重绘的高清竖排图（2× 缩放），非截图；复制则按竖排列输出纯文本。所有处理均在你的浏览器内完成。</div>
+  </div>
+
+  <div class="right">
+    <div class="stage" id="stage">
+      <div class="paper" id="paper"><div class="vtext" id="vt"></div></div>
+    </div>
+    <div class="foot" id="foot"></div>
+    <div class="emp" id="emp">⚠ 请输入内容后再导出</div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ===== 状态 ===== */
+var S = {
+  punct: "normal",   // normal | zhu | none
+  paper: "xuan",     // xuan | xuan2 | hei
+  deco:  "on"        // on | off
+};
+var PAPERS = {
+  xuan:  {bg:"#f4efe3", ink:"#2c2620", zhu:"#b23a24", bar:"#c9bfae", name:"宣纸白"},
+  xuan2: {bg:"#e9dcbc", ink:"#33291e", zhu:"#a83220", bar:"#c2b294", name:"绢黄"},
+  hei:   {bg:"#191715", ink:"#d8cfbe", zhu:"#c8543c", bar:"#39352e", name:"玄墨"}
+};
+var ZHUDIAN = {"，":"︒","。":"︒","、":"︒","；":"︒","！":"︒","？":"︒"};
+/* 避头尾：这些标点不能出现在列首 */
+var NO_HEAD = "，。、；：！？）」』】》…—,.!?;:]})".split("");
+
+/* ===== 工具 ===== */
+function $(id){ return document.getElementById(id); }
+function toast(msg){
+  var t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._h);
+  t._h = setTimeout(function(){ t.classList.remove("show"); }, 1800);
+}
+
+/* ===== 核心：把文本切成「列 tokens」 =====
+ * 每个段切成若干列，每列是一个字符数组。
+ * 避头尾：换列时若下一列首字符是标点，把它并回上一列末尾（成组下移）。
+ */
+function buildCols(text, perCol){
+  var paras = text.replace(/\r/g,"").split(/\n+/).filter(function(p){ return p.trim().length > 0; });
+  var out = [];
+  for (var pi = 0; pi < paras.length; pi++){
+    var chars = paras[pi].replace(/\s+/g,"").split("");
+    var cols = [];
+    var i = 0;
+    while (i < chars.length){
+      var take = Math.min(perCol, chars.length - i);
+      var col = chars.slice(i, i + take);
+      i += take;
+      /* 避头尾：若本列吃满且下一个字符是禁首标点，则把它也带上（允许该列多 1 字符） */
+      if (take === perCol && i < chars.length && NO_HEAD.indexOf(chars[i]) !== -1){
+        col.push(chars[i]);
+        i++;
+      }
+      cols.push(col);
+    }
+    if (cols.length === 0) cols.push([""]);
+    out.push({ pi: pi, cols: cols });
+  }
+  return out;
+}
+
+/* ===== 预览渲染（CSS vertical-rl） ===== */
+function renderPreview(){
+  var text = $("src").value;
+  var warn = $("warnBox");
+  warn.className = "hint"; warn.textContent = "";
+  var fs = +$("fs").value, gap = +$("gap").value, ph = +$("ph").value;
+  var P = PAPERS[S.paper];
+
+  var vt = $("vt"), paper = $("paper");
+  if (!text.trim()){
+    vt.innerHTML = "<span style='color:#999'>（左侧输入文字即可竖排）</span>";
+    vt.style.fontSize = fs + "px";
+    paper.style.background = P.bg;
+    paper.style.width = Math.max(220, fs*6 + gap*4) + "px";
+    paper.style.height = ph + "px";
+    renderFoot(text);
+    return;
+  }
+
+  /* 每列字数：版高扣除上下留白 */
+  var padY = Math.round(fs * 0.8);
+  var perCol = Math.max(4, Math.floor((ph - padY*2) / (fs * 1.0)));
+  var paras = buildCols(text, perCol);
+  var totalCols = 0;
+  paras.forEach(function(p){ totalCols += p.cols.length; });
+
+  /* 估算版宽：列数 × (fs+gap) + 段间空列 + 左右留白 */
+  var gaps = paras.length - 1;
+  var width = Math.round(totalCols * (fs + gap) + gaps * gap + padY * 2);
+
+  var html = "";
+  paras.forEach(function(p, idx){
+    if (idx > 0) html += "<span class='gapcol' style='width:" + gap + "px'></span>";
+    p.cols.forEach(function(col){
+      var line = "";
+      for (var k = 0; k < col.length; k++){
+        var ch = col[k];
+        if (S.punct === "zhu" && ZHUDIAN[ch]){
+          line += "<span class='zhu'>" + ZHUDIAN[ch] + "</span>";
+        } else if (S.punct === "none"){
+          line += escapeHtml(/[，。、；：！？「」『』（）,.!?;:]/.test(ch) ? "" : ch);
+        } else {
+          line += escapeHtml(ch);
+        }
+      }
+      html += "<span class='para' style='margin:0 " + (gap/2) + "px;letter-spacing:0'>" + line + "</span>";
+    });
+  });
+  vt.innerHTML = html;
+  vt.style.fontSize = fs + "px";
+  paper.style.background = P.bg;
+  paper.style.width = Math.min(width, 1400) + "px";
+  paper.style.height = ph + "px";
+  paper.style.padding = padY + "px " + Math.round(fs*0.5) + "px";
+  applyDeco(paper, P);
+  applyInk(vt, P);
+
+  if (/[\u0000-\u00ff]/.test(text.replace(/[，。、；：！？「」『』（）,.!?;: \n]/g,""))){
+    warn.textContent = "提示：检测到英文/数字，竖排中它们将保持直立逐字排列，排版效果请以预览为准。";
+  }
+  renderFoot(text);
+}
+
+function applyDeco(paper, P){
+  var old = paper.querySelector(".deco");
+  if (old) old.remove();
+  if (S.deco !== "on") return;
+  var d = document.createElement("div");
+  d.className = "deco";
+  d.style.cssText = "position:absolute;inset:8px;border:1px solid " + P.bar + ";border-radius:2px;pointer-events:none";
+  paper.appendChild(d);
+}
+function applyInk(vt, P){
+  vt.style.color = P.ink;
+}
+
+function escapeHtml(s){
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function renderFoot(text){
+  var n = text.replace(/\s/g,"").length;
+  $("foot").innerHTML = n ? "共 <b>" + n + "</b> 字 · 纸色 <b>" + PAPERS[S.paper].name + "</b> · 导出为 2× 高清 PNG" : "";
+}
+
+/* ===== Canvas 导出：逐字自绘，与预览同一套切列数据 ===== */
+function drawColumn(ctx, col, x, y0, fs, P){
+  for (var k = 0; k < col.length; k++){
+    var ch = col[k];
+    var y = y0 + k * fs;
+    ctx.fillStyle = P.ink;
+    if (S.punct === "zhu" && ZHUDIAN[ch]){
+      ctx.fillStyle = P.zhu;
+      ctx.fillText(ZHUDIAN[ch], x, y);
+    } else if (S.punct === "none" && /[，。、；：！？「」『』（）,.!?;:]/.test(ch)){
+      continue;
+    } else {
+      ctx.fillText(ch, x, y);
+    }
+  }
+}
+
+function exportPNG(){
+  var text = $("src").value;
+  if (!text.trim()){
+    $("emp").style.display = "block";
+    setTimeout(function(){ $("emp").style.display = "none"; }, 2200);
+    return;
+  }
+  var fs = +$("fs").value, gap = +$("gap").value, ph = +$("ph").value;
+  var P = PAPERS[S.paper];
+  var padY = Math.round(fs * 0.8);
+  var perCol = Math.max(4, Math.floor((ph - padY*2) / fs));
+  var paras = buildCols(text, perCol);
+  var totalCols = 0;
+  paras.forEach(function(p){ totalCols += p.cols.length; });
+  var padX = Math.round(fs * 0.5);
+  var W = Math.round(totalCols * (fs + gap) + (paras.length-1) * gap + padX * 2);
+  var H = ph;
+  var scale = 2;
+
+  var cv = document.createElement("canvas");
+  cv.width = W * scale; cv.height = H * scale;
+  var ctx = cv.getContext("2d");
+  ctx.scale(scale, scale);
+  ctx.fillStyle = P.bg;
+  ctx.fillRect(0, 0, W, H);
+  /* 界栏 */
+  if (S.deco === "on"){
+    ctx.strokeStyle = P.bar;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(8, 8, W - 16, H - 16);
+  }
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  var charTop = padY; /* 首字顶部：与预览一致 */
+  var xRight = W - padX - fs/2;
+  var first = true;
+  paras.forEach(function(p){
+    if (!first) xRight -= gap;
+    for (var ci = p.cols.length - 1; ci >= 0; ci--){
+      drawColumn(ctx, p.cols[ci], xRight, charTop, fs, P);
+      xRight -= (fs + gap);
+    }
+    first = false;
+  });
+
+  var a = document.createElement("a");
+  a.download = "shupai-" + Date.now() + ".png";
+  a.href = cv.toDataURL("image/png");
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  toast("PNG 已生成下载");
+}
+
+/* 复制：按竖排列输出纯文本（右起） */
+function copyText(){
+  var text = $("src").value;
+  if (!text.trim()){ toast("请先输入内容"); return; }
+  var fs = +$("fs").value, ph = +$("ph").value;
+  var padY = Math.round(fs * 0.8);
+  var perCol = Math.max(4, Math.floor((ph - padY*2) / fs));
+  var paras = buildCols(text, perCol);
+  var maxLen = 0;
+  paras.forEach(function(p){ p.cols.forEach(function(c){ maxLen = Math.max(maxLen, c.length); }); });
+  var lines = [];
+  var allCols = [];
+  paras.forEach(function(p, idx){
+    if (idx > 0) allCols.push(null);
+    p.cols.forEach(function(c){ allCols.push(c); });
+  });
+  /* 右起：视觉上最右列最先输出 */
+  allCols.reverse();
+  for (var r = 0; r < maxLen; r++){
+    var line = allCols.map(function(c){ return c ? (c[r] || "　") : "　"; }).join(" ");
+    lines.push(line);
+  }
+  var out = lines.join("\n");
+  var done = function(){ toast("竖排文本已复制"); };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(out).then(done, function(){ fallbackCopy(out) ? done() : toast("复制失败，请手动选择"); });
+  } else {
+    fallbackCopy(out) ? done() : toast("复制失败，请手动选择");
+  }
+}
+function fallbackCopy(s){
+  var ta = document.createElement("textarea");
+  ta.value = s;
+  ta.style.cssText = "position:fixed;left:-999px";
+  document.body.appendChild(ta);
+  ta.select();
+  var ok = false;
+  try { ok = document.execCommand("copy"); } catch(e){}
+  ta.remove();
+  return ok;
+}
+
+/* ===== 控件绑定 ===== */
+function bindRange(id, vid){
+  $(id).addEventListener("input", function(){
+    $(vid).textContent = this.value;
+    renderPreview();
+  });
+}
+bindRange("fs","fsV"); bindRange("gap","gapV"); bindRange("ph","phV");
+$("src").addEventListener("input", renderPreview);
+
+function bindChips(boxId, key){
+  var box = $(boxId);
+  box.addEventListener("click", function(e){
+    var c = e.target.closest(".chip");
+    if (!c) return;
+    box.querySelectorAll(".chip").forEach(function(x){ x.classList.remove("on"); });
+    c.classList.add("on");
+    S[key] = c.dataset.v;
+    renderPreview();
+  });
+}
+bindChips("punctChips","punct");
+bindChips("paperChips","paper");
+bindChips("decoChips","deco");
+
+$("dl").addEventListener("click", exportPNG);
+$("cp").addEventListener("click", copyText);
+$("ex").addEventListener("click", function(){
+  $("src").value = "永和九年，岁在癸丑，暮春之初，会于会稽山阴之兰亭，修禊事也。群贤毕至，少长咸集。此地有崇山峻岭，茂林修竹，又有清流激湍，映带左右。";
+  renderPreview();
+  toast("已载入示例");
+});
+
+renderPreview();
+
+/* ===== #selftest：CORE 纯逻辑冒烟 ===== */
+window.__selftest = function(){
+  var R = [];
+  function T(name, cond){ R.push((cond ? "PASS" : "FAIL") + " " + name); }
+  /* buildCols 基本切列 */
+  var c1 = buildCols("一二三四五六", 4);
+  T("buildCols 6字/列4 → 2列", c1[0].cols.length === 2 && c1[0].cols[0].join("") === "一二三四" && c1[0].cols[1].join("") === "五六");
+  /* 避头尾：列末吃满时禁首标点并回上列 */
+  var c2 = buildCols("一二三四，五", 4);
+  T("避头尾 标点并回上列", c2[0].cols[0].join("") === "一二三四，" && c2[0].cols[1].join("") === "五");
+  /* 多段 → 段间分开 */
+  var c3 = buildCols("甲乙\n丙丁", 4);
+  T("多段分段", c3.length === 2 && c3[0].cols[0].join("") === "甲乙" && c3[1].cols[0].join("") === "丙丁");
+  /* 空白/空段清理 */
+  var c4 = buildCols("  \n\n 甲乙 ", 4);
+  T("空白清理", c4.length === 1 && c4[0].cols[0].join("") === "甲乙");
+  /* perCol 下限保护 */
+  var c5 = buildCols("一二三四五六七八", 1);
+  T("perCol 下限(实际传1→按1)", c5[0].cols.length === 8);
+  /* 朱点映射 */
+  T("朱点映射 ，→︒", ZHUDIAN["，"] === "︒" && ZHUDIAN["？"] === "︒");
+  /* 无标点过滤集合含全半角 */
+  T("过滤集含半角逗号", /[，。、；：！？「」『』（）,.!?;:]/.test(",") && /[，。、；：！？「」『』（）,.!?;:]/.test("。"));
+  /* perCol=4 时 12 字含禁首标点的列数守恒（字符不丢） */
+  var c6 = buildCols("一二三四五六，七八九十。", 4);
+  var all = "";
+  c6[0].cols.forEach(function(c){ all += c.join(""); });
+  T("切列字符守恒", all === "一二三四五六，七八九十。");
+  return R.join("\n");
+};
+</script>
+</body>
+</html>
