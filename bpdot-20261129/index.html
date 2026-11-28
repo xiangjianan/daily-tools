@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="输入高压/低压两个数字，瞬间把血压读数落在一幅分区地图上——分类、平均动脉压、脉压、本地历史趋势，全部在浏览器本地完成。">
+<title>血压落点仪 BPDOT · 两个数字，一眼定位</title>
+<style>
+  :root{
+    --bg:#101418; --panel:#181e24; --panel2:#1e262e; --line:#2a343e;
+    --ink:#e8edf2; --dim:#8fa0ae; --faint:#5c6d7a;
+    --ok:#3fb26f; --elev:#d9a13b; --st1:#e08b3d; --st2:#dd5f4c; --crisis:#c43a3a;
+    --accent:#5aa7e8; --dot:#ff5a5a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+    min-height:100vh; padding:16px; -webkit-tap-highlight-color:transparent;
+  }
+  .wrap{max-width:920px;margin:0 auto}
+  header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  h1{font-size:1.35rem;letter-spacing:.5px}
+  h1 .en{color:var(--accent);font-size:.85rem;font-weight:600;letter-spacing:2px}
+  header p{width:100%;color:var(--dim);font-size:.85rem}
+  .grid{display:grid;grid-template-columns:340px 1fr;gap:16px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .panel h2{font-size:.8rem;color:var(--dim);font-weight:600;letter-spacing:1px;margin-bottom:12px}
+
+  /* ---- inputs ---- */
+  .field{margin-bottom:14px}
+  .field .lab{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .field .lab span{font-size:.85rem;color:var(--dim)}
+  .field .lab b{font-size:1.6rem;font-variant-numeric:tabular-nums}
+  .sys .lab b{color:var(--dot)} .dia .lab b{color:var(--accent)}
+  .field .unit{font-size:.75rem;color:var(--faint);margin-left:2px}
+  input[type=range]{
+    width:100%;height:34px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer;touch-action:none;
+  }
+  input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:var(--panel2);border:1px solid var(--line)}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:26px;height:26px;border-radius:50%;margin-top:-11px;
+    background:var(--ink);border:3px solid var(--bg);box-shadow:0 0 0 1px var(--line);
+  }
+  input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:var(--panel2)}
+  input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--ink);border:3px solid var(--bg)}
+  .nums{display:flex;gap:8px;align-items:center;margin-top:2px}
+  .nums input[type=number]{
+    width:84px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:7px 8px;font-size:1rem;font-variant-numeric:tabular-nums;text-align:center;
+  }
+  .nums input:focus{outline:none;border-color:var(--accent)}
+  .stepper{display:flex;gap:4px}
+  .stepper button{
+    width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);
+    color:var(--ink);font-size:1.1rem;cursor:pointer;line-height:1;
+  }
+  .stepper button:active{background:var(--line)}
+  .hr-row{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:.85rem;color:var(--dim)}
+  .hr-row input[type=number]{
+    width:70px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:5px 6px;font-size:.95rem;text-align:center;
+  }
+  .hr-row small{color:var(--faint)}
+
+  /* ---- chart ---- */
+  .chartbox{position:relative}
+  canvas{width:100%;display:block;border-radius:10px;background:var(--panel2);touch-action:none}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:.72rem;color:var(--dim)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  /* ---- result ---- */
+  .verdict{border-radius:12px;padding:14px 16px;margin-top:14px;border:1px solid var(--line);background:var(--panel2)}
+  .verdict .tag{display:inline-block;padding:4px 12px;border-radius:999px;font-weight:700;font-size:.95rem;color:#0e1114}
+  .verdict .desc{margin-top:8px;font-size:.85rem;color:var(--dim);line-height:1.6}
+  .metrics{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .metric{flex:1;min-width:100px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .metric .k{font-size:.7rem;color:var(--faint);letter-spacing:1px}
+  .metric .v{font-size:1.15rem;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+  .metric .s{font-size:.68rem;color:var(--faint);margin-top:2px}
+
+  .hint{margin-top:12px;font-size:.82rem;color:var(--dim);line-height:1.7;border-left:3px solid var(--line);padding-left:10px}
+  .warn{color:var(--elev)}
+
+  /* ---- actions ---- */
+  .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .btn{
+    border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:10px;
+    padding:9px 14px;font-size:.85rem;cursor:pointer;
+  }
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#0d1520;font-weight:700}
+  .btn:active{filter:brightness(.9)}
+  .copied{color:var(--ok)!important;border-color:var(--ok)!important}
+
+  /* ---- history ---- */
+  .hist{margin-top:8px}
+  .hist-item{
+    display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:7px 4px;border-bottom:1px solid var(--line);font-size:.85rem;
+  }
+  .hist-item:last-child{border-bottom:none}
+  .hist-item .when{color:var(--faint);font-size:.75rem}
+  .hist-item .val{font-weight:700;font-variant-numeric:tabular-nums}
+  .hist-item .cat{font-size:.72rem;padding:2px 8px;border-radius:999px;color:#0e1114;font-weight:600}
+  .hist-empty{color:var(--faint);font-size:.8rem;padding:6px 0}
+  footer{margin-top:18px;text-align:center;color:var(--faint);font-size:.72rem;line-height:1.8}
+  footer a{color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>血压落点仪 <span class="en">BPDOT</span></h1>
+    <p>输入高压 / 低压两个数字，读数瞬间落在一幅血压分区地图上。所有计算与历史记录都保存在本机浏览器，不上传任何数据。</p>
+  </header>
+
+  <div class="grid">
+    <!-- ============ 左：输入 ============ -->
+    <div class="panel">
+      <h2>① 读数输入</h2>
+
+      <div class="field sys">
+        <div class="lab"><span>收缩压（高压）</span><b id="sysNum">120</b><span class="unit">mmHg</span></div>
+        <input type="range" id="sysRange" min="70" max="200" step="1" value="120" aria-label="收缩压">
+        <div class="nums">
+          <input type="number" id="sysInput" min="50" max="260" value="120" inputmode="numeric" aria-label="收缩压数值">
+          <div class="stepper">
+            <button id="sysDown" aria-label="减1">−</button>
+            <button id="sysUp" aria-label="加1">＋</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="field dia">
+        <div class="lab"><span>舒张压（低压）</span><b id="diaNum">80</b><span class="unit">mmHg</span></div>
+        <input type="range" id="diaRange" min="40" max="130" step="1" value="80" aria-label="舒张压">
+        <div class="nums">
+          <input type="number" id="diaInput" min="30" max="180" value="80" inputmode="numeric" aria-label="舒张压数值">
+          <div class="stepper">
+            <button id="diaDown" aria-label="减1">−</button>
+            <button id="diaUp" aria-label="加1">＋</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="hr-row">
+        心率（可选）<input type="number" id="hrInput" min="30" max="220" placeholder="--" inputmode="numeric" aria-label="心率"> 次/分
+        <small>记录用，不参与分级</small>
+      </div>
+
+      <!-- 结果卡 -->
+      <div class="verdict" id="verdict">
+        <span class="tag" id="verdictTag">—</span>
+        <div class="desc" id="verdictDesc">滑动或输入两个读数，地图上会实时落点。</div>
+        <div class="metrics">
+          <div class="metric"><div class="k">平均动脉压 MAP</div><div class="v" id="mapVal">—</div><div class="s">正常约 70–100</div></div>
+          <div class="metric"><div class="k">脉压 PP</div><div class="v" id="ppVal">—</div><div class="s">正常约 30–50</div></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="saveBtn">📌 记下这次读数</button>
+        <button class="btn" id="copyBtn">复制摘要</button>
+        <button class="btn" id="clearBtn">清空历史</button>
+      </div>
+      <div class="hint" id="hint">读数应在安静休息 5 分钟后测量；同一时间、同一体位复测更有参考价值。本工具只做可视化定位，不构成医疗建议，异常请咨询医生。</div>
+    </div>
+
+    <!-- ============ 右：地图 + 历史 ============ -->
+    <div class="panel">
+      <h2>② 血压地图（收缩压 → 横轴 · 舒张压 → 纵轴）</h2>
+      <div class="chartbox">
+        <canvas id="map" width="1000" height="760"></canvas>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--ok)"></i>正常</span>
+        <span><i style="background:var(--elev)"></i>血压升高</span>
+        <span><i style="background:var(--st1)"></i>1 级高血压</span>
+        <span><i style="background:var(--st2)"></i>2 级高血压</span>
+        <span><i style="background:var(--crisis)"></i>高血压危机</span>
+        <span><i style="background:#3d4a56"></i>偏低区域</span>
+      </div>
+
+      <h2 style="margin-top:18px">③ 本地历史痕（淡点为历史读数）</h2>
+      <div class="hist" id="histList"><div class="hist-empty">还没有记录。点「📌 记下这次读数」，历史会以淡点留在地图上，形成你自己的趋势痕。</div></div>
+    </div>
+  </div>
+
+  <footer>
+    分级参考：AHA 2017 血压分类；中国高血压防治指南以 140/90 mmHg 为诊断界值，1 级区间两者略有差异，本图按 AHA 区间着色。<br>
+    BPDOT · <a href="https://github.com/xiangjianan/daily-tools/tree/main/bpdot-20261129">xiangjianan/daily-tools</a> · 纯前端 · 零依赖 · 数据不出浏览器
+  </footer>
+</div>
+
+<script>
+'use strict';
+/* ================= 分级定义（AHA 2017 区间着色，标注中国 140/90 界值） ================= */
+// 每档：判定谓词 → 文案。取「命中的最严重档」。
+var CATS = [
+  { id:'crisis', color:'#c43a3a', name:'高血压危机', test:function(s,d){return s>180||d>120;},
+    desc:'读数越过 180/120 的红线。若同时伴有胸痛、呼吸困难、剧烈头痛、视物模糊或言语不利，请立即就医；无症状也建议尽快联系医生复测。' },
+  { id:'st2', color:'#dd5f4c', name:'2 级高血压', test:function(s,d){return s>=140||d>=90;},
+    desc:'已达到或超过 140/90 的诊断线（中国指南界值）。这通常不是一次读数能下的结论——建议连续几天复测并记录，把趋势带给医生看。' },
+  { id:'st1', color:'#e08b3d', name:'1 级高血压', test:function(s,d){return s>=130||d>=80;},
+    desc:'落在 130–139 / 80–89 区间。AHA 归为 1 级；中国指南此区间仍属「正常高值」。先从作息、减盐、运动入手，并保持复测习惯。' },
+  { id:'elev', color:'#d9a13b', name:'血压升高', test:function(s,d){return s>=120&&d<80;},
+    desc:'收缩压在 120–129、舒张压正常。还够不上高血压，但已是提醒区：留意睡眠与盐分，定期复测即可。' },
+  { id:'normal', color:'#3fb26f', name:'正常', test:function(s,d){return s<120&&d<80;},
+    desc:'低于 120/80，处于公认的理想区间。保持现状，规律运动与睡眠就是最好的维护。' },
+  { id:'low', color:'#5aa7e8', name:'读数偏低', test:function(s,d){return s<90||d<60;},
+    desc:'低于 90/60 的常见低血压界线。没有头晕、乏力等不适一般无需处理；若常伴黑矇或晕厥，建议就医排查。' }
+];
+function classify(s,d){
+  // low 优先（低于界线时即使收缩压正常也按低提示），其余取第一个命中（数组已按严重到轻排序）
+  if(s<90||d<60) return CATS[5];
+  for(var i=0;i<5;i++){ if(CATS[i].test(s,d)) return CATS[i]; }
+  return CATS[4];
+}
+
+/* ================= 元素 ================= */
+var $=function(id){return document.getElementById(id);};
+var sysRange=$('sysRange'),diaRange=$('diaRange'),sysInput=$('sysInput'),diaInput=$('diaInput');
+var sysNum=$('sysNum'),diaNum=$('diaNum'),hrInput=$('hrInput');
+var mapEl=$('map'),ctx=mapEl.getContext('2d');
+
+/* ================= 坐标映射 ================= */
+// 横轴收缩压 70–200，纵轴舒张压 40–130（纵轴向上为增大）
+var AX={sMin:70,sMax:200,dMin:40,dMax:130};
+var M={l:46,r:14,t:14,b:40}; // canvas 内边距
+function X(s){return M.l+(s-AX.sMin)/(AX.sMax-AX.sMin)*(mapEl.width-M.l-M.r);}
+function Y(d){return mapEl.height-M.b-(d-AX.dMin)/(AX.dMax-AX.dMin)*(mapEl.height-M.t-M.b);}
+
+/* ================= 分区底图绘制 ================= */
+// 用「列扫描」：每个像素列的收缩压值，从低到高找舒张压分界，把该列按档位分段着色
+function zoneColor(s,d){
+  if(s<90||d<60) return '#3d4a56';      // 偏低
+  if(s>180||d>120) return '#c43a3a';
+  if(s>=140||d>=90) return '#dd5f4c';
+  if(s>=130||d>=80) return '#e08b3d';
+  if(s>=120) return '#d9a13b';
+  return '#3fb26f';
+}
+var baseCache=null;
+function drawBase(){
+  if(baseCache) return baseCache;
+  var c=document.createElement('canvas');c.width=mapEl.width;c.height=mapEl.height;
+  var g=c.getContext('2d');
+  g.fillStyle='#1e262e';g.fillRect(0,0,c.width,c.height);
+  // 网格
+  g.strokeStyle='rgba(255,255,255,.05)';g.lineWidth=1;
+  for(var s=80;s<=200;s+=20){g.beginPath();g.moveTo(X(s),Y(AX.dMin));g.lineTo(X(s),Y(AX.dMax));g.stroke();}
+  for(var d=50;d<=130;d+=10){g.beginPath();g.moveTo(X(AX.sMin),Y(d));g.lineTo(X(AX.sMax),Y(d));g.stroke();}
+  // 分区：步进 1mmHg 列扫描，每列按「该收缩压下各档舒张压分界」分色
+  for(var ss=AX.sMin;ss<=AX.sMax;ss++){
+    var segs=[],cur=null;
+    for(var dd=AX.dMin;dd<=AX.dMax;dd++){
+      var col=zoneColor(ss,dd);
+      if(!cur||cur.col!==col){cur={col:col,d0:dd};segs.push(cur);}
+    }
+    for(var k=0;k<segs.length;k++){
+      var sg=segs[k],dEnd=(k===segs.length-1)?AX.dMax:sg.d0;
+      g.fillStyle=sg.col;g.globalAlpha=.42;
+      g.fillRect(X(ss)-.6,Y(dEnd),1.3,Y(sg.d0)-Y(dEnd));
+    }
+    g.globalAlpha=1;
+  }
+  // 关键参考线：120/80 与 140/90（虚线）
+  g.setLineDash([6,5]);g.lineWidth=1.5;
+  g.strokeStyle='rgba(63,178,111,.9)';line(g,X(120),Y(AX.dMin),X(120),Y(AX.dMax));line(g,X(AX.sMin),Y(80),X(AX.sMax),Y(80));
+  g.strokeStyle='rgba(221,95,76,.9)';line(g,X(140),Y(AX.dMin),X(140),Y(AX.dMax));line(g,X(AX.sMin),Y(90),X(AX.sMax),Y(90));
+  g.setLineDash([]);
+  // 坐标标注
+  g.fillStyle='#8fa0ae';g.font='16px sans-serif';g.textAlign='center';
+  for(var s2=80;s2<=200;s2+=20) g.fillText(s2,X(s2),c.height-16);
+  g.textAlign='right';
+  for(var d2=50;d2<=130;d2+=10) g.fillText(d2,X(AX.sMin)-8,Y(d2)+5);
+  g.textAlign='center';g.fillStyle='#5c6d7a';g.font='15px sans-serif';
+  g.fillText('收缩压 mmHg →',c.width/2,c.height-2);
+  g.save();g.translate(12,c.height/2);g.rotate(-Math.PI/2);g.fillText('舒张压 mmHg →',0,0);g.restore();
+  baseCache=c;return c;
+}
+function line(g,x1,y1,x2,y2){g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();}
+
+/* ================= 动画落点 ================= */
+var cur={s:120,d:80},anim=null;
+function draw(t){
+  ctx.drawImage(drawBase(),0,0);
+  // 十字导引
+  ctx.strokeStyle='rgba(255,255,255,.18)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  line(ctx,X(cur.s),Y(AX.dMin),X(cur.s),Y(cur.d));
+  line(ctx,X(AX.sMin),Y(cur.d),X(cur.s),Y(cur.d));
+  ctx.setLineDash([]);
+  // 历史淡点
+  ctx.globalAlpha=.5;
+  for(var i=0;i<hist.length;i++){
+    var h=hist[i];ctx.fillStyle=h.color;
+    ctx.beginPath();ctx.arc(X(h.s),Y(h.d),6,0,7);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  // 当前点（带脉冲光晕）
+  var pulse=(t%2000)/2000;
+  var r=11+Math.sin(pulse*Math.PI*2)*2.5;
+  ctx.fillStyle='rgba(255,90,90,.25)';ctx.beginPath();ctx.arc(X(cur.s),Y(cur.d),r+9,0,7);ctx.fill();
+  ctx.fillStyle='#ff5a5a';ctx.strokeStyle='#101418';ctx.lineWidth=3;
+  ctx.beginPath();ctx.arc(X(cur.s),Y(cur.d),11,0,7);ctx.fill();ctx.stroke();
+  // 点旁标签
+  ctx.font='bold 17px sans-serif';ctx.textAlign='left';
+  ctx.fillStyle='#e8edf2';ctx.fillText(cur.s+'/'+cur.d,X(cur.s)+16,Y(cur.d)-12);
+  if(anim) requestAnimationFrame(draw);
+}
+function startAnim(){ if(!anim){anim=true;requestAnimationFrame(draw);} }
+function stopAnim(){anim=null;}
+
+/* ================= 状态与同步 ================= */
+var swapNote='';
+function clamp(v,lo,hi,fb){v=parseInt(v,10);if(isNaN(v))return fb;return Math.min(hi,Math.max(lo,v));}
+function render(){
+  var s=clamp(sysInput.value,50,260,120),d=clamp(diaInput.value,30,180,80);
+  // 越界收敛回滑杆范围
+  s=Math.min(200,Math.max(70,s));d=Math.min(130,Math.max(40,d));
+  sysRange.value=s;diaRange.value=d;
+  sysInput.value=s;diaInput.value=d;
+  sysNum.textContent=s;diaNum.textContent=d;
+  swapNote='';
+  if(s<d){var t=s;s=d;d=t;swapNote='⚠ 高压小于低压，通常记反了——已自动对调，请核对。';}
+  cur={s:s,d:d};
+  var cat=classify(s,d);
+  var map=Math.round(d+(s-d)/3);
+  var pp=s-d;
+  $('verdictTag').textContent=cat.name;
+  $('verdictTag').style.background=cat.color;
+  $('verdictDesc').textContent=cat.desc;
+  $('mapVal').textContent=map;
+  $('mapVal').style.color=map>=70&&map<=100?'var(--ink)':'var(--elev)';
+  $('ppVal').textContent=pp;
+  $('ppVal').style.color=(pp>=30&&pp<=50)?'var(--ink)':'var(--elev)';
+  var hr=hrInput.value.trim();
+  $('hint').innerHTML=(swapNote?swapNote+'<br>':'')+'MAP = 舒张压 + 脉压÷3，反映整体灌注；脉压 = 高−低，过大或过小都值得留意。读数应在安静休息 5 分钟后测量；同一时间、同一体位复测更有参考价值。本工具只做可视化定位，不构成医疗建议。'+(hr?' 本次心率：'+hr+' 次/分。':'');
+  startAnim();
+}
+
+/* 输入事件 */
+sysRange.addEventListener('input',function(){sysInput.value=sysRange.value;render();});
+diaRange.addEventListener('input',function(){diaInput.value=diaRange.value;render();});
+sysInput.addEventListener('input',render);
+diaInput.addEventListener('input',render);
+hrInput.addEventListener('input',render);
+$('sysUp').addEventListener('click',function(){sysInput.value=clamp(sysInput.value,50,260,120)+1;render();});
+$('sysDown').addEventListener('click',function(){sysInput.value=clamp(sysInput.value,50,260,120)-1;render();});
+$('diaUp').addEventListener('click',function(){diaInput.value=clamp(diaInput.value,30,180,80)+1;render();});
+$('diaDown').addEventListener('click',function(){diaInput.value=clamp(diaInput.value,30,180,80)-1;render();});
+
+/* ================= 本地历史 ================= */
+var KEY='bpdot.hist.v1',hist=[];
+try{hist=JSON.parse(localStorage.getItem(KEY)||'[]');}catch(e){hist=[];}
+function saveHist(){
+  try{localStorage.setItem(KEY,JSON.stringify(hist.slice(0,30)));}catch(e){}
+}
+function fmtWhen(ts){
+  var dt=new Date(ts),p=function(n){return (n<10?'0':'')+n;};
+  return dt.getFullYear()+'-'+p(dt.getMonth()+1)+'-'+p(dt.getDate())+' '+p(dt.getHours())+':'+p(dt.getMinutes());
+}
+function renderHist(){
+  var box=$('histList');
+  if(!hist.length){box.innerHTML='<div class="hist-empty">还没有记录。点「📌 记下这次读数」，历史会以淡点留在地图上，形成你自己的趋势痕。</div>';return;}
+  var html='';
+  for(var i=hist.length-1;i>=0;i--){
+    var h=hist[i];
+    html+='<div class="hist-item"><span class="when">'+fmtWhen(h.t)+'</span>'
+      +'<span class="val" style="color:'+h.color+'">'+h.s+'/'+h.d+(h.hr?' · '+h.hr+' bpm':'')+'</span>'
+      +'<span class="cat" style="background:'+h.color+'">'+h.cat+'</span></div>';
+  }
+  box.innerHTML=html;
+}
+$('saveBtn').addEventListener('click',function(){
+  var s=cur.s,d=cur.d,cat=classify(s,d);
+  hist.push({s:s,d:d,hr:hrInput.value.trim()?clamp(hrInput.value,30,220,''):null,
+    t:Date.now(),cat:cat.name,color:cat.color});
+  hist=hist.slice(-30);saveHist();renderHist();
+  $('saveBtn').textContent='✓ 已记下（本机）';
+  setTimeout(function(){$('saveBtn').textContent='📌 记下这次读数';},1200);
+});
+$('clearBtn').addEventListener('click',function(){
+  if(hist.length&&confirm('清空全部本地历史记录？')){hist=[];saveHist();renderHist();}
+});
+$('copyBtn').addEventListener('click',function(){
+  var cat=classify(cur.s,cur.d);
+  var map=Math.round(cur.d+(cur.s-cur.d)/3),pp=cur.s-cur.d;
+  var hr=hrInput.value.trim()?('，心率 '+hrInput.value.trim()+' 次/分'):'';
+  var txt='血压读数：'+cur.s+'/'+cur.d+' mmHg'+hr+'\n定位：'+cat.name+'\nMAP：'+map+' mmHg ｜ 脉压：'+pp+' mmHg\n—— 血压落点仪 BPDOT（bpdot-20261129）';
+  var btn=$('copyBtn');
+  function ok(){btn.textContent='✓ 已复制';btn.classList.add('copied');
+    setTimeout(function(){btn.textContent='复制摘要';btn.classList.remove('copied');},1200);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(ok,function(){fallbackCopy(txt);ok();});
+  }else{fallbackCopy(txt);ok();}
+});
+function fallbackCopy(txt){
+  var ta=document.createElement('textarea');ta.value=txt;
+  ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);
+  ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);
+}
+
+/* 画布随布局清晰化：高 DPI */
+function fitCanvas(){
+  var w=mapEl.clientWidth||600;
+  var cssH=Math.round(Math.min(w*0.78,560));
+  mapEl.style.height=cssH+'px';
+  mapEl.width=Math.round(w);mapEl.height=Math.round(cssH);
+  baseCache=null;
+  startAnim();
+}
+window.addEventListener('resize',fitCanvas);
+fitCanvas();
+renderHist();
+render();
+</script>
+</body>
+</html>
